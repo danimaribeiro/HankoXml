@@ -163,11 +163,19 @@ impl KeysMngr {
         // SAFETY: mngr.0 is valid and initialized; cert_pem is a valid
         // slice for the duration of this call, which is all this function
         // needs — it doesn't retain the pointer after returning.
+        //
+        // `xmlSecSize` (the type of the length parameter) is `size_t` in
+        // recent libxmlsec1 but plain `unsigned int` in older ones still
+        // shipped by some package managers (e.g. Ubuntu's apt), so casting
+        // through the bindgen-generated `sys::xmlSecSize` alias itself —
+        // rather than passing `cert_pem.len()` (`usize`) directly — is
+        // what keeps this correct on both, instead of only compiling by
+        // coincidence on whichever one happens to match `usize`.
         let loaded = unsafe {
             sys::xmlSecOpenSSLAppKeysMngrCertLoadMemory(
                 mngr.0,
                 cert_pem.as_ptr(),
-                cert_pem.len(),
+                cert_pem.len() as sys::xmlSecSize,
                 sys::xmlSecKeyDataFormat_xmlSecKeyDataFormatPem,
                 sys::xmlSecKeyDataTypeTrusted,
             )
