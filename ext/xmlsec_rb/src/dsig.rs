@@ -164,18 +164,21 @@ impl KeysMngr {
         // slice for the duration of this call, which is all this function
         // needs — it doesn't retain the pointer after returning.
         //
-        // `xmlSecSize` (the type of the length parameter) is `size_t` in
-        // recent libxmlsec1 but plain `unsigned int` in older ones still
-        // shipped by some package managers (e.g. Ubuntu's apt), so casting
-        // through the bindgen-generated `sys::xmlSecSize` alias itself —
-        // rather than passing `cert_pem.len()` (`usize`) directly — is
-        // what keeps this correct on both, instead of only compiling by
-        // coincidence on whichever one happens to match `usize`.
+        // The length parameter's type (`xmlSecSize`, i.e. `size_t`) is a
+        // simple typedef, and bindgen inlines those at each use site rather
+        // than always preserving a named `sys::xmlSecSize` alias — so it's
+        // `c_uint` in some generated bindings and `usize`-sized in others,
+        // depending on the libxmlsec1 version bindgen ran against (this
+        // typedef itself changed from `unsigned int` to `size_t` at some
+        // point). `as _` asks the compiler to infer whichever concrete type
+        // the parameter actually needs right here, so this is correct
+        // either way instead of depending on a type name bindgen may not
+        // have kept around.
         let loaded = unsafe {
             sys::xmlSecOpenSSLAppKeysMngrCertLoadMemory(
                 mngr.0,
                 cert_pem.as_ptr(),
-                cert_pem.len() as sys::xmlSecSize,
+                cert_pem.len() as _,
                 sys::xmlSecKeyDataFormat_xmlSecKeyDataFormatPem,
                 sys::xmlSecKeyDataTypeTrusted,
             )
