@@ -43,6 +43,35 @@ impl<'a> XmlDoc<'a> {
             _marker: PhantomData,
         })
     }
+
+    /// Registers common ID-attribute names across the whole document, so a
+    /// `Reference URI="#foo"` can resolve to whichever element has
+    /// `Id`/`ID`/`id="foo"`.
+    ///
+    /// xmlsec doesn't treat any attribute as type ID by default — without
+    /// this, `URI="#foo"` only resolves when the target is a descendant of
+    /// the `<Signature>` itself (xmlsec falls back to a plain subtree
+    /// search there); a *detached* signature, where the referenced element
+    /// is a sibling or elsewhere in the document, fails outright. This is
+    /// the same thing `xmlsec1`'s CLI `--add-id-attr` flag does.
+    ///
+    /// This is a broad, unconfigured default covering the common
+    /// conventions (SAML's `ID`, XML-DSig examples' and Brazilian NFe's
+    /// `Id`, XHTML's `id`); a document using some other attribute as its
+    /// ID isn't served by it.
+    fn register_common_id_attributes(&self, root: XmlNode<'a>) {
+        const NAMES: [&[u8]; 3] = [b"ID\0", b"Id\0", b"id\0"];
+        let mut ids: [*const sys::xmlChar; 4] = [
+            NAMES[0].as_ptr().cast(),
+            NAMES[1].as_ptr().cast(),
+            NAMES[2].as_ptr().cast(),
+            ptr::null(),
+        ];
+        // SAFETY: self.ptr and root.ptr are valid for 'a; `ids` is a
+        // NUL-terminated array of NUL-terminated static byte strings,
+        // matching what xmlSecAddIDs expects.
+        unsafe { sys::xmlSecAddIDs(self.ptr, root.ptr, ids.as_mut_ptr()) }
+    }
 }
 
 /// A borrowed view over a libxml2 node. Never frees anything — nodes are
@@ -218,6 +247,7 @@ impl Drop for DsigCtx<'_> {
 /// above, each individually reviewed at its own call site.
 pub fn verify_signature(doc: XmlDoc<'_>, cert_pem: &[u8]) -> Result<bool, &'static str> {
     let root = doc.root_element().ok_or("XML document has no root element")?;
+    doc.register_common_id_attributes(root);
     let sig_node = root
         .find_signature_node()
         .ok_or("no <Signature> element found in document")?;

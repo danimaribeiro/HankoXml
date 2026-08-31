@@ -1,0 +1,42 @@
+<NFe xmlns="http://www.portalfiscal.inf.br/nfe">
+  <infNFe Id="NFe35200714200166000166550010000000046900000040" versao="4.00">
+    <ide>
+      <cUF>35</cUF>
+      <natOp>Venda de mercadoria</natOp>
+      <mod>55</mod>
+      <serie>1</serie>
+      <nNF>469</nNF>
+    </ide>
+    <emit>
+      <CNPJ>14200166000166</CNPJ>
+      <xNome>Empresa Exemplo LTDA</xNome>
+    </emit>
+    <dest>
+      <CPF>12345678909</CPF>
+      <xNome>Consumidor Exemplo</xNome>
+    </dest>
+    <total>
+      <ICMSTot>
+        <vNF>1234.56</vNF>
+      </ICMSTot>
+    </total>
+  </infNFe>
+  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+    <SignedInfo>
+      <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+      <SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"/>
+      <Reference URI="#NFe35200714200166000166550010000000046900000040">
+        <Transforms>
+          <Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
+          <Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+        </Transforms>
+        <DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/>
+        <DigestValue></DigestValue>
+      </Reference>
+    </SignedInfo>
+    <SignatureValue/>
+    <KeyInfo>
+      <X509Data/>
+    </KeyInfo>
+  </Signature>
+</NFe>

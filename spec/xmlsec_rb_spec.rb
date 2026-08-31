@@ -60,5 +60,37 @@ RSpec.describe XmlsecRb do
     it "raises ArgumentError for an unsupported certificate argument type" do
       expect { described_class.validate(signed_xml, 42) }.to raise_error(ArgumentError)
     end
+
+    describe "different signature formats" do
+      # Each fixture was built by hand (Nokogiri C14N + OpenSSL::PKey::RSA#sign,
+      # not xmlsec) and cross-checked against the independent `xmlsec1 verify`
+      # CLI oracle before being committed -- see spec/fixtures and its git log.
+      #
+      # signed_detached.xml is the important one: its Reference URI="#payload-1"
+      # points at a *sibling* of <Signature>, outside its subtree. Resolving
+      # that requires registering ID attributes first (see
+      # dsig.rs#register_common_id_attributes) -- unlike signed_enveloping.xml,
+      # whose Reference target lives *inside* <Signature>, which xmlsec
+      # resolves via a plain subtree search even without registered IDs. This
+      # is the "#id" class of bug: two structurally similar references that
+      # take different code paths to resolve.
+      {
+        "signed_exc_c14n.xml" => "enveloped, Exclusive C14N (SignedInfo canon + digest transform)",
+        "signed_sha512.xml" => "enveloped, plain C14N, SHA-512 digest + RSA-SHA512 signature",
+        "signed_enveloping.xml" => "enveloping: signed data lives inside <Object> under <Signature>, " \
+                                    "Reference URI=\"#object-1\" resolved by ID",
+        "signed_detached.xml" => "detached: <Signature> and the signed element are siblings, connected " \
+                                  "only by Reference URI=\"#payload-1\" resolved by ID",
+        "signed_nfe.xml" => "Brazilian NFe shape: detached (like signed_detached.xml above) with " \
+                             "SHA-1 digest + RSA-SHA1 signature, which the NFe technical spec mandates"
+      }.each do |filename, description|
+        it "validates a #{description} signature" do
+          xml = fixtures.join(filename).read
+
+          expect(described_class.validate(xml, signer_cert_pem)).to be true
+          expect(described_class.validate(xml, other_cert_pem)).to be false
+        end
+      end
+    end
   end
 end

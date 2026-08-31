@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<Root>
+  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+    <SignedInfo>
+      <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+      <SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>
+      <Reference URI="#object-1">
+        <Transforms>
+          <Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+        </Transforms>
+        <DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+        <DigestValue>xEUCZy7LgCVBmLkze8TKql5fmYEPP3vsxxCmwV6f1A0=</DigestValue>
+      </Reference>
+    </SignedInfo>
+    <SignatureValue>b5onn5oamAPNlcMKGjXDoOYfV840YCtQiD5Qzph+DDlBhpQZ6NrpFrR2PN69NC/c/1r4j6HpFXtaLGJHJCsnZTO+SlOxa7ssxpW11N079YkEjomut8dkvh5zVGgAT/JpGA2PiG++gS/9vGHf1VuYBDkbWuOqrrP/L5eSNXMimYMeulkzM6pcc/rwX2oRiC4FUH9zg9mzwZi657g+o3QIkVnedNB8Mczfbh8iUTCUmxD73iqHWFYFGwY8y0/kCh+rfJJdme+yIeaJmwOEleEyD4/9YVmQ3b+xYF7kK9GKQbhdYJ/beZ89P0hSlyRm9yLaOQ7Q9HpJi8u6vCx2PRF6eQ==</SignatureValue>
+    <KeyInfo>
+      <X509Data><X509Certificate>MIIDITCCAgmgAwIBAgIUBSkGsa17VfTDsFP9tRznUyFqHA0wDQYJKoZIhvcNAQELBQAwIDEeMBwGA1UEAwwVeG1sc2VjX3JiIHRlc3Qgc2lnbmVyMB4XDTI2MDgzMTAzMzYyNloXDTM2MDgyODAzMzYyNlowIDEeMBwGA1UEAwwVeG1sc2VjX3JiIHRlc3Qgc2lnbmVyMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApTe+Ecwc54Oybmcn+s6qRQVH80+XIdzVocW/mB72KXwWe6IcwMu2Z651A8YLfB7Oh0L0/+J7Wk9FXpaLL1agQ+ftIctcNv48wigGTBEK94UUO0wsg4u4rzzXbJOgpuymk6STs7nbtLnzmMNc1j/LxUN3TOOmQcvTLOB3LK3kkx0NJQGZ0o4jFffESzlaEhEEs2YK29S0Jlce1Mnfacpw2olM4iSwzCA5Ug9RBIVD4sywN4HKeyV1gnCzgKRetmaMoNfYHhuiOtmKZ4VuvQX4Nh1O6z7TH0LHu+JIv63wp++a5xrgZzolL2lrYNLEwmtDDWb8acfkdySEc7W5YDZzBQIDAQABo1MwUTAdBgNVHQ4EFgQUND0/CNdOjtI3X2z5/fw6XqujZ/IwHwYDVR0jBBgwFoAUND0/CNdOjtI3X2z5/fw6XqujZ/IwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAblbUJigPRmPlDDX9X17HxtqNdv9pavt1CVQevyt0x+qwNu59g23OnGzR0pHiGznebUiQamQuWuJlfeTXD2QBkVBPK8TCaHjiOXA3qCRexXxCq7sF83gDLpjLaUHkXnXJ6rhnWn08NohaHnAkVPCoV3hVjBA9SgKVTzwBSC3KkVvm0ZmT78uWP5+GeIfw6Rx5n/w5lzSt3CM7QdbmUf9dc2KupsNCcYNuvkHmmqaQ2I8JPi8ngn1zrVy2BCftNFhCg8OXg40ZU7eOb1HCVAtf5mFK9GckFBH6srzKPGzJE+smNjJN67Ew5hm+ewgn+0ukoSmiEnuxX8UjbqF4dlM1kg==</X509Certificate></X509Data>
+    </KeyInfo>
+    <Object Id="object-1">
+      <Data xmlns="urn:xmlsec_rb:example">Hello, enveloping world!</Data>
+    </Object>
+  </Signature>
+</Root>

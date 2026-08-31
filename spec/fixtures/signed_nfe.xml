@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<NFe xmlns="http://www.portalfiscal.inf.br/nfe">
+  <infNFe Id="NFe35200714200166000166550010000000046900000040" versao="4.00">
+    <ide>
+      <cUF>35</cUF>
+      <natOp>Venda de mercadoria</natOp>
+      <mod>55</mod>
+      <serie>1</serie>
+      <nNF>469</nNF>
+    </ide>
+    <emit>
+      <CNPJ>14200166000166</CNPJ>
+      <xNome>Empresa Exemplo LTDA</xNome>
+    </emit>
+    <dest>
+      <CPF>12345678909</CPF>
+      <xNome>Consumidor Exemplo</xNome>
+    </dest>
+    <total>
+      <ICMSTot>
+        <vNF>1234.56</vNF>
+      </ICMSTot>
+    </total>
+  </infNFe>
+  <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
+    <SignedInfo>
+      <CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+      <SignatureMethod Algorithm="http://www.w3.org/2000/09/xmldsig#rsa-sha1"/>
+      <Reference URI="#NFe35200714200166000166550010000000046900000040">
+        <Transforms>
+          <Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
+          <Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+        </Transforms>
+        <DigestMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/>
+        <DigestValue>tbQ5voEASqj5TheopXp/vXnrRDA=</DigestValue>
+      </Reference>
+    </SignedInfo>
+    <SignatureValue>bewxDKOOVXKwAgZCFgICucmh1LIKyivo+rDPZzm7rjYikw1co5It8gyvFbpgTq+WuGHu7FlwD72Ga5jR5SjHaJ6961zsSu9cJzh93eolUqdpUHyAmPXZ9O3YuqaMgJNJwhZnMzIX3cmT7SRDFAc9IX59D/uioTzn+bb3NB2MxiC/egOOB75FAu2yTi9o3KrfBplS2PqkpiCsYvIy0ePiHGSz9dx3gzIA2em3NIWcp5sX05Pmx2LpWViyxUhoQC75ZSjy0z8LOK50N2EAp91RuAL7htRJnlGD3byd0MxBwLUPwgzHh/LAcydfJndtrySdQInEVhh0T2c9rVkzqdTVSg==</SignatureValue>
+    <KeyInfo>
+      <X509Data><X509Certificate>MIIDITCCAgmgAwIBAgIUBSkGsa17VfTDsFP9tRznUyFqHA0wDQYJKoZIhvcNAQELBQAwIDEeMBwGA1UEAwwVeG1sc2VjX3JiIHRlc3Qgc2lnbmVyMB4XDTI2MDgzMTAzMzYyNloXDTM2MDgyODAzMzYyNlowIDEeMBwGA1UEAwwVeG1sc2VjX3JiIHRlc3Qgc2lnbmVyMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApTe+Ecwc54Oybmcn+s6qRQVH80+XIdzVocW/mB72KXwWe6IcwMu2Z651A8YLfB7Oh0L0/+J7Wk9FXpaLL1agQ+ftIctcNv48wigGTBEK94UUO0wsg4u4rzzXbJOgpuymk6STs7nbtLnzmMNc1j/LxUN3TOOmQcvTLOB3LK3kkx0NJQGZ0o4jFffESzlaEhEEs2YK29S0Jlce1Mnfacpw2olM4iSwzCA5Ug9RBIVD4sywN4HKeyV1gnCzgKRetmaMoNfYHhuiOtmKZ4VuvQX4Nh1O6z7TH0LHu+JIv63wp++a5xrgZzolL2lrYNLEwmtDDWb8acfkdySEc7W5YDZzBQIDAQABo1MwUTAdBgNVHQ4EFgQUND0/CNdOjtI3X2z5/fw6XqujZ/IwHwYDVR0jBBgwFoAUND0/CNdOjtI3X2z5/fw6XqujZ/IwDwYDVR0TAQH/BAUwAwEB/zANBgkqhkiG9w0BAQsFAAOCAQEAblbUJigPRmPlDDX9X17HxtqNdv9pavt1CVQevyt0x+qwNu59g23OnGzR0pHiGznebUiQamQuWuJlfeTXD2QBkVBPK8TCaHjiOXA3qCRexXxCq7sF83gDLpjLaUHkXnXJ6rhnWn08NohaHnAkVPCoV3hVjBA9SgKVTzwBSC3KkVvm0ZmT78uWP5+GeIfw6Rx5n/w5lzSt3CM7QdbmUf9dc2KupsNCcYNuvkHmmqaQ2I8JPi8ngn1zrVy2BCftNFhCg8OXg40ZU7eOb1HCVAtf5mFK9GckFBH6srzKPGzJE+smNjJN67Ew5hm+ewgn+0ukoSmiEnuxX8UjbqF4dlM1kg==</X509Certificate></X509Data>
+    </KeyInfo>
+  </Signature>
+</NFe>
