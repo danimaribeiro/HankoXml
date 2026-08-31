@@ -12,4 +12,6 @@ gem "rb_sys", "~> 0.9.63"
 
 gem "rspec", "~> 3.0"
 
+gem "nokogiri", "~> 1.18"
+
 gem "rubocop", "~> 1.21"
