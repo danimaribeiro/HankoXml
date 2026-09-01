@@ -57,34 +57,7 @@ module XmlsecRb
       end
     end
 
-    # Verifies the XML-DSig <Signature> in +xml+ against +certificate+, a
-    # trusted certificate. Returns true only when libxmlsec1 confirms the
-    # signature is cryptographically valid and chains to that certificate;
-    # false for a well-formed but invalid/untrusted signature. Raises
-    # XmlsecRb::Error when verification can't run at all (unparseable XML,
-    # no <Signature> element, unreadable certificate).
-    #
-    # +xml+ accepts:
-    #   - a Nokogiri::XML::Document (serialized via #to_xml)
-    #   - a String of XML markup
-    #   - a Pathname, File, or anything responding to #to_path (read from disk)
-    #
-    # +certificate+ accepts:
-    #   - an OpenSSL::X509::Certificate (converted via #to_pem)
-    #   - a String of PEM-encoded certificate data
-    #   - a Pathname, File, or anything responding to #to_path (read from disk)
-    def validate(xml, certificate)
-      result = verify(xml, certificate: certificate)
-      
-      if !result.valid?
-        error = result.errors.first
-        if error.is_a?(XmlsecRb::ParseError) || error.is_a?(XmlsecRb::SignatureMissing) || error.is_a?(XmlsecRb::NativeError)
-          raise XmlsecRb::Error, error.message
-        end
-      end
 
-      result.valid?
-    end
 
 
     private
