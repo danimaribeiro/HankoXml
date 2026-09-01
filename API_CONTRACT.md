@@ -14,10 +14,11 @@ Rust-side), [`README.md`](README.md) (current, pre-contract behaviour).
 1. **MUST — memory safety.** The unsafe surface is small, fixed, and auditable.
    Adding a feature must not add `unsafe`. Everything that varies per use case
    (algorithm choice, reference layout, placement, trust policy) lives in Ruby.
-2. **MUST — plays well with Nokogiri.** Accepts and returns
-   `Nokogiri::XML::Document` / `::Node`. Never forces a `to_xml` round trip on
-   the caller, never silently reformats their document, never corrupts a
-   document Nokogiri owns.
+2. **MUST — plays well with Nokogiri, without requiring it.** When Nokogiri is
+   present it is first-class: we accept and return `Nokogiri::XML::Document` /
+   `::Node`, never force a `to_xml` round trip, never silently reformat, never
+   corrupt a document Nokogiri owns. When it is absent the gem still installs
+   and still verifies — see §6.1, which draws the line at what needs a DOM.
 3. **SHOULD — the Ruby way.** Keyword arguments with real defaults, predicates
    ending in `?`, bang methods that mutate, blocks for configuration, value
    objects that are frozen and comparable, exceptions for exceptional things.
@@ -70,12 +71,12 @@ What C# gets **wrong**, that we must not copy:
 │ Layer 2  XmlsecRb.sign / .valid? / .verify!                   │  convenience
 ├──────────────────────────────────────────────────────────────┤
 │ Layer 1  Signer, Verifier, Verification, Reference,           │  100% Ruby
-│          Transform, KeyInfo, Placement, Policy, Algorithms    │  + Nokogiri
-│          — template building, policy enforcement, trust       │  no unsafe
-│            chain validation, ID resolution, write-back        │
+│          Transform, KeyInfo, Placement, Policy, Algorithms    │  Nokogiri
+│          — template building, policy enforcement, trust       │  optional
+│            chain validation, ID resolution, write-back        │  no unsafe
 ├──────────────────────────────────────────────────────────────┤
-│ Layer 0  XmlsecRb::Native — 4 functions, bytes in/bytes out   │  Rust
-│          canonicalize + digest + sign / verify, nothing else  │  all unsafe
+│ Layer 0  XmlsecRb::Native — 5 functions, bytes in/bytes out   │  Rust
+│          parse + inspect + canonicalize + digest + sign/verify│  all unsafe
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -84,7 +85,8 @@ What C# gets **wrong**, that we must not copy:
 Everything that varies — which algorithms, which references, where the signature
 goes, which certificates are trusted, whether SHA-1 is acceptable — is plain
 XML manipulation and plain OpenSSL, both of which Ruby already does well and
-memory-safely. The only thing Ruby cannot do is canonicalize-digest-and-sign.
+memory-safely. Most of it is string comparison against an allowlist, which is
+why the policy layer works even with no DOM available (§6.1). The only thing Ruby cannot do is canonicalize-digest-and-sign.
 That, and only that, crosses into Rust.
 
 Consequences worth stating plainly:
@@ -129,7 +131,7 @@ The specs pass today. They pass the way use-after-free specs pass.
 
 **Therefore: XML crosses the Ruby/Rust boundary as bytes, always, by default.**
 "Plays well with Nokogiri" is delivered at the *API* level (we accept and return
-Nokogiri documents, and we write results back into the caller's own nodes — §6.3)
+Nokogiri documents, and we write results back into the caller's own nodes — §6.4)
 rather than at the pointer level. Pointer sharing becomes an opt-in mode gated
 on a runtime check (§7.4) that is false for every precompiled Nokogiri.
 
@@ -158,6 +160,8 @@ lib/xmlsec_rb/verifier.rb
 lib/xmlsec_rb/verification.rb
 lib/xmlsec_rb/signed_document.rb     # safe-serialization wrapper returned by #sign
 lib/xmlsec_rb/signed_info.rb         # parsed, authenticated view of <SignedInfo>
+lib/xmlsec_rb/dom.rb                 # the ONLY place that probes for Nokogiri (§6.1)
+lib/xmlsec_rb/signature_info.rb      # DOM-free <SignedInfo> value object
 lib/xmlsec_rb/xml.rb                 # XmlsecRb.parse / .serialize, Nokogiri helpers
 lib/xmlsec_rb/backends/xmlsec.rb     # default: the native extension
 lib/xmlsec_rb/backends/ruby.rb       # Nokogiri C14N + OpenSSL (§7.3), Phase 5
@@ -185,7 +189,7 @@ instead of Ruby's. See §5.10 for the names we use instead.
 ```ruby
 require "xmlsec_rb"
 
-# Sign. Returns a NEW XmlsecRb::SignedDocument (§6.7); `doc` is untouched.
+# Sign. Returns a NEW XmlsecRb::SignedDocument (§6.8); `doc` is untouched.
 signed = XmlsecRb.sign(doc, key: key, certificate: cert)
 signed.to_xml   # signature-safe serialization; #to_s and #write_to too
 
@@ -204,6 +208,10 @@ XmlsecRb.signed?(xml)                          # => true / false
 
 Every keyword accepted by `Signer.new` / `Verifier.new` is accepted here and
 forwarded; these are constructor + single call, nothing more.
+
+`valid?`, `verify!` and `signed?` run with or without Nokogiri. `sign` and
+`sign!` need Nokogiri unless the document already carries a `<Signature>`
+template (§5.2, §6.1).
 
 **There is deliberately no `XmlsecRb.verify` returning a rich object.** A
 `Verification` instance is always truthy, so `if XmlsecRb.verify(doc, ...)` would
@@ -252,7 +260,7 @@ share across threads (§9).
 #### Methods
 
 ```ruby
-signer.sign(doc_or_xml)   # => XmlsecRb::SignedDocument (§6.7), input untouched
+signer.sign(doc_or_xml)   # => XmlsecRb::SignedDocument (§6.8), input untouched
 signer.sign!(doc)         # => the same Nokogiri::XML::Document, now signed
 signer.template(doc)      # => Nokogiri::XML::Element — the unsigned <Signature>
                           #    it would insert. For inspection and testing.
@@ -288,6 +296,9 @@ first:
   **ignored**, because the template already states them; they are read *out* of
   the template and validated against `Policy` exactly as on verification. Only
   `key`, `certificates`, `key_info` and `id_attributes` still apply.
+
+`:require` is also the one signing mode that runs without Nokogiri (§6.1):
+nothing has to be constructed, so no DOM is needed.
 
 A `Signer` configured with explicit `references:` that then adopts a template
 raises `XmlsecRb::ConfigurationError` rather than silently discarding them —
@@ -607,7 +618,9 @@ assertion = doc.at_xpath("//saml:Assertion", ns)
 assertion = v.at_signed("//saml:Assertion", ns)
 ```
 
-`#at_signed` performs the XPath *and* the `#signed?` check, raising
+`#at_signed` needs a DOM and raises `XmlsecRb::NokogiriRequired` without one
+(§6.1) — never `false`, and never a node it could not check. It performs the
+XPath *and* the `#signed?` check, raising
 `XmlsecRb::NotSignedError` if the node it found is not covered — so forgetting
 the check is no longer possible by omission, only by deliberately using
 `doc.at_xpath` instead. Ergonomics is a security control: a defence that costs
@@ -986,6 +999,7 @@ StandardError
     ├── XmlsecRb::ConfigurationError invalid Signer/Verifier construction
     │   ├── XmlsecRb::PolicyError    a Policy allowlist was violated
     │   ├── XmlsecRb::PlacementError placement XPath matched 0 or >1 nodes
+    │   ├── XmlsecRb::NokogiriRequired  this capability needs a DOM (§6.1)
     │   └── XmlsecRb::SchemaError    <Signature> failed XSD validation (§5.3)
     ├── XmlsecRb::ParseError         the XML would not parse
     ├── XmlsecRb::KeyLoadError       key or certificate unreadable / unsupported
@@ -1005,7 +1019,7 @@ StandardError
     ├── XmlsecRb::NotSignedError     Verification#at_signed found a node that
     │                                the signature does not cover (§5.4)
     ├── XmlsecRb::FrozenSignatureError  a mutator was called on a
-    │                                SignedDocument (§6.6)
+    │                                SignedDocument (§6.7)
     └── XmlsecRb::NativeError        libxmlsec1 failed in an unexpected way
 ```
 
@@ -1056,16 +1070,95 @@ be half-implemented.
 
 ---
 
-## 6. The Nokogiri contract
+## 6. The XML layer: Nokogiri, and life without it
 
-### 6.1 Accepted inputs
+### 6.1 Nokogiri is an optional dependency
+
+**Nokogiri is not required to install or use this gem.** It is declared as an
+optional dependency, loaded only if present, and the library degrades to a
+documented, narrower API without it — it does not fail to load, and it does not
+fall back silently to something less safe.
+
+This preserves what works in the pre-contract code today: `lib/xmlsec_rb.rb`
+never `require`s Nokogiri, probing for it with `defined?(Nokogiri::XML::Document)`
+instead, so `XmlsecRb.validate(xml_string, cert_pem)` already runs with Nokogiri
+absent. Making it mandatory would have been an unannounced dependency
+regression on existing callers.
+
+The split falls along one line: **what needs a DOM in Ruby, and what does not.**
+
+| Capability | Nokogiri absent | Nokogiri present |
+| --- | :---: | :---: |
+| Verify — verdict, `#errors`, full `Policy` enforcement | ✅ | ✅ |
+| Authenticated metadata — algorithms, reference URIs, transforms, certificate | ✅ | ✅ |
+| `#signed?` / `#at_signed` — node-identity coverage | ❌ | ✅ |
+| XSD schema validation of `<Signature>` (§5.3) | ❌ | ✅ |
+| Sign into a `<Signature>` template already in the document (`template: :require`) | ✅ | ✅ |
+| Build a template — choose references, transforms, placement | ❌ | ✅ |
+| `XmlsecRb.parse` / `.serialize`, `SignedDocument`, `nokogiri_ext` | ❌ | ✅ |
+| `backend: :ruby` (§7.4) and therefore external signers (§5.2) | ❌ | ✅ |
+
+Verification survives DOM-free because the native layer must parse the document
+anyway: `Native.inspect` (§7) returns the `<SignedInfo>` metadata as plain Ruby
+`String`s and `Symbol`s, and `Policy` is very largely a set of string
+allowlists. No DOM is needed to decide that
+`http://www.w3.org/TR/1999/REC-xslt-19991116` is not an acceptable transform.
+
+Signing survives DOM-free in `template: :require` mode only (§5.2), where the
+caller's document already carries the `<Signature>` skeleton and the native
+layer only fills in `DigestValue`, `SignatureValue` and `X509Certificate`.
+*Building* a template needs a DOM: doing it by string concatenation would put
+attacker-influenced values into markup we assemble by hand, and that is an
+injection bug waiting for its first unusual reference URI.
+
+#### How it degrades
+
+```ruby
+XmlsecRb.nokogiri?          # => false
+XmlsecRb.capabilities       # => {verify: true, sign: :template_only,
+                            #     coverage_checks: false, schema: false, …}
+```
+
+Calling a capability that needs the DOM raises `XmlsecRb::NokogiriRequired`
+(a `ConfigurationError`) naming the capability and the fix, never a
+`NoMethodError` on a missing constant:
+
+```
+XmlsecRb::NokogiriRequired: Verification#at_signed needs a DOM to resolve
+node identity, and Nokogiri is not loaded. Add `gem "nokogiri"` to your
+Gemfile, or verify without coverage checks using #valid? and treat the whole
+document as untrusted beyond the verdict.
+```
+
+The rule for what may degrade: **a missing Nokogiri may remove a capability, it
+may never weaken one.** No check that runs with Nokogiri present is skipped in
+its absence — `Policy` is enforced identically on both paths. The capabilities
+that disappear are the ones that cannot be expressed at all without a DOM, and
+each of them raises rather than quietly returning a less careful answer. In
+particular `#signed?` never degrades to `true`.
+
+#### Declaring it
+
+```ruby
+# xmlsec_rb.gemspec — NOT a runtime dependency
+spec.metadata["optional_dependencies"] = "nokogiri"
+spec.add_development_dependency "nokogiri", "~> 1.18"
+```
+
+`lib/xmlsec_rb/dom.rb` is the single place that probes for Nokogiri and holds
+every `defined?(Nokogiri…)` check. Nothing else in the library references the
+constant directly, so the DOM-free path is one seam rather than a condition
+scattered through twelve files, and "does this work without Nokogiri" is
+answerable by reading one file.
+
+### 6.2 Accepted inputs
 
 Everywhere a document is taken (`sign`, `sign!`, `verify`, `valid?`, `signed?`):
 
 - `Nokogiri::XML::Document` — used as-is
 - `Nokogiri::XML::Node` / `::Element` — its `#document` is used; for signing,
   the node becomes the default reference target
-- `String` of XML markup — parsed with `XmlsecRb.parse` (§6.2)
+- `String` of XML markup — parsed with `XmlsecRb.parse` (§6.3)
 - `Pathname` / `File` / anything responding to `#to_path` — read binary, parsed
 - anything responding to `#read` (`IO`, `StringIO`) — read fully, parsed
   (this was in the POC, dropped in the rewrite, and comes back here)
@@ -1073,7 +1166,7 @@ Everywhere a document is taken (`sign`, `sign!`, `verify`, `valid?`, `signed?`):
 Anything else raises `::ArgumentError` — core Ruby's, deliberately, because it
 is a programmer error and not an XML-signature condition.
 
-### 6.2 Parsing and serialization helpers
+### 6.3 Parsing and serialization helpers
 
 ```ruby
 XmlsecRb.parse(source)      # => Nokogiri::XML::Document
@@ -1110,7 +1203,7 @@ Nokogiri, and everyone learns that the hard way.
 `XmlsecRb.serialize(signed)`, and that is the only serialization we support for
 signed documents.
 
-### 6.3 The write-back guarantee (how `sign!` stays safe)
+### 6.4 The write-back guarantee (how `sign!` stays safe)
 
 `sign!` must mutate the caller's Nokogiri document, and §3.1 forbids handing that
 document's pointer to our libxml2. The resolution:
@@ -1158,7 +1251,7 @@ internal subset containing `ATTLIST` declarations *and* was parsed with
 for nobody else. Documents whose DTD declares no attribute defaults, and
 documents parsed with our own options, are unaffected.
 
-### 6.4 Side effects of verification
+### 6.5 Side effects of verification
 
 Verification does **not** mutate the caller's document. It serializes to bytes;
 ID registration happens on Rust's private copy. (Contrast with the current
@@ -1168,7 +1261,7 @@ implementation, where `xmlSecAddIDs` mutates the caller's document's ID table.)
 document using Ruby-side ID/XPath resolution (§5.9), which is why the resolver
 consistency check exists.
 
-### 6.5 Optional core extension
+### 6.6 Optional core extension
 
 Off by default. The Ruby way is not to monkeypatch someone else's classes
 without being asked.
@@ -1187,7 +1280,7 @@ Namespaced deliberately as `signature_valid?` rather than `valid?` — Nokogiri
 already has `Document#validate`, and a bare `valid?` on a document means schema
 validity to most readers.
 
-### 6.6 `XmlsecRb::SignedDocument` — a document you cannot mis-serialize
+### 6.7 `XmlsecRb::SignedDocument` — a document you cannot mis-serialize
 
 `Signer#sign` and `XmlsecRb.sign` do **not** return a bare
 `Nokogiri::XML::Document`. A bare document's `#to_xml` defaults to
@@ -1225,9 +1318,9 @@ mysteriously at the counterparty.
 because the caller already holds that object and wrapping it would be a lie
 about what they have. The `sign` / `sign!` asymmetry is therefore: `sign` is
 safe by construction, `sign!` is in-place and expects you to know that
-`XmlsecRb.serialize` (§6.2) is how you write it out.
+`XmlsecRb.serialize` (§6.3) is how you write it out.
 
-### 6.7 Namespace helpers
+### 6.8 Namespace helpers
 
 ```ruby
 XmlsecRb::NS = {
@@ -1268,6 +1361,21 @@ XmlsecRb::Native.sign(xml, key_pem, cert_pems, id_attributes, signature_index)
 # => String (binary) — the signed document
 # raises XmlsecRb::SigningError / NativeError, with #xmlsec_errors populated
 
+XmlsecRb::Native.inspect(xml, signature_index)
+#   Parses, locates the nth <ds:Signature>, and returns its <SignedInfo> as
+#   plain Ruby data. NO cryptography, no transform execution, no key material:
+#   this is a libxml2 parse and some attribute reads, safe to run on untrusted
+#   input, which is what lets Policy be enforced before any crypto happens.
+# => { signature_method:  "http://…#rsa-sha256",
+#      canonicalization_method: "http://…#exc-c14n",
+#      signature_count:   2,
+#      key_names:         ["idp-1"],
+#      certificates:      ["-----BEGIN CERTIFICATE-----…"],   # from KeyInfo, untrusted
+#      references: [ { uri: "#infNFe01",
+#                      digest_method: "http://…#sha256",
+#                      transforms: ["http://…#enveloped-signature", "http://…#exc-c14n"],
+#                      id: nil, type: nil } ] }
+
 XmlsecRb::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signature_index)
 #   trusted_pems    : Array<String> — certs/keys that establish trust
 #   untrusted_pems  : Array<String> — intermediates, for chain building
@@ -1276,10 +1384,21 @@ XmlsecRb::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signat
 #   (unparseable input, index out of range, unreadable key material)
 ```
 
-That is four functions. Everything else in this document is Ruby.
+That is five functions. Everything else in this document is Ruby.
 
 ### 7.1 Design notes for the native layer
 
+- **`inspect` is the single source of signature metadata**, used on both the
+  Nokogiri and the DOM-free path. Ruby could read `<SignedInfo>` with Nokogiri
+  when it is available and skip this call, but then two implementations would
+  extract the same metadata and could disagree — and "two resolvers disagree"
+  is already a hazard class this document has to guard against elsewhere
+  (§5.9). One implementation, one answer, at the cost of one extra parse.
+- **`inspect` runs before `Policy`, `verify` runs after.** It performs no
+  cryptography and executes no transforms, so running it on untrusted input is
+  no more dangerous than parsing that input — which any caller does anyway.
+  The ordering that matters is preserved: nothing an attacker chose reaches
+  libxmlsec1's *crypto* until the allowlists have passed.
 - **`signature_index`, not a node pointer.** Ruby locates the signature it means
   with a namespace-qualified XPath and passes its position in document order.
   Rust walks `ds:Signature` elements and takes the nth. This removes
@@ -1314,7 +1433,7 @@ ext/xmlsec_rb/src/
   errors.rs   the xmlSecErrorsSetCallback handler + thread-local buffer
   dsig.rs     RAII wrappers (OwnedXmlDoc, Key, KeysMngr, DsigCtx) and the two
               operations (sign_document, verify_document)
-  lib.rs      magnus glue: 4 functions, argument coercion, error construction
+  lib.rs      magnus glue: 5 functions, argument coercion, error construction
 ```
 
 Simplifications adopted from the POC, per `RUST_COMPARISON.md` §"What the
@@ -1569,7 +1688,7 @@ Behavioural differences the migration notes must call out:
 1. `valid?` applies `Policy.strict`; the current `validate` applies nothing. The
    existing `signed_nfe.xml` spec fixture (SHA-1) will fail under `valid?`
    without `policy: Policy.legacy_sha1`. That is the point.
-2. Verification no longer mutates the caller's document's ID table (§6.4).
+2. Verification no longer mutates the caller's document's ID table (§6.5).
 3. `Nokogiri::XML::Document` inputs are no longer passed by pointer (§3.1).
 
 ---
@@ -1601,7 +1720,7 @@ to this contract as a direct result of this comparison**.
 | `Signature#signed?` / `#unsigned?` | `SignedDocument#signatures`, `force:` skip logic — §5.2 | ➕ **added** |
 | `force:` — re-sign already-signed | `sign!(force: true)` — §5.2 | ➕ **added** |
 | `referenced_documents:` — refs into other documents | `referenced_documents:`, map-only, no fetching — §5.3 | ➕ **added** |
-| `instruct` — emit `<?xml?>` or not | `SignedDocument#to_xml(declaration: false)` — §6.6 | ➕ **added** |
+| `instruct` — emit `<?xml?>` or not | `SignedDocument#to_xml(declaration: false)` — §6.7 | ➕ **added** |
 | `ec:InclusiveNamespaces PrefixList` | `Transform.exc_c14n(inclusive_prefixes:)` | ✅ |
 | `Xmldsig::SchemaError` | `XmlsecRb::SchemaError < ConfigurationError` | ✅ |
 | Pure Ruby, no C dependency | `backend: :ruby` — §7.3 | ✅ available, not default |
@@ -1609,14 +1728,14 @@ to this contract as a direct result of this comparison**.
 **Not adopted:** their `Canonicalizer`/`Reference`/`Signature` classes are
 internal machinery we do not need to expose, since libxmlsec1 performs the
 transforms. Their `sign` returning a `String` we improve on with
-`SignedDocument` (§6.6).
+`SignedDocument` (§6.7).
 
 ### 11.2 vs. `instructure/nokogiri-xmlsec-instructure`
 
 | Their API | Ours | |
 | --- | --- | --- |
 | `Document#sign!(cert:, key:, name:, digest_alg:, signature_alg:, canon_alg:)` | `Signer` + `sign!`; algorithms as Symbols via the registry | ✅ superset |
-| `Node#sign!` — sign a subtree | Node accepted as input, becomes the reference target — §6.1 | ✅ |
+| `Node#sign!` — sign a subtree | Node accepted as input, becomes the reference target — §6.2 | ✅ |
 | `name:` → `<ds:KeyName>` | `key_info :key_name, name:` | ✅ |
 | `verify_with(key:)` / `(cert:)` / `(certs: [...])` | `key:` / `certificate:` / `certificates:` | ✅ |
 | `verify_with({'key-name' => key})` — select by `<KeyName>` | `keys:` map — §5.3 | ➕ **added** |
@@ -1749,14 +1868,37 @@ silently accepts wrapped documents. That trade is clearly correct.
 
 ### 13.4 `sign` returns `XmlsecRb::SignedDocument` — **decided**
 
-Specified at §6.6. A bare `Nokogiri::XML::Document`'s `#to_xml` reindents and
+Specified at §6.7. A bare `Nokogiri::XML::Document`'s `#to_xml` reindents and
 invalidates the signature, silently, producing XML that looks fine and fails at
 the counterparty. `SignedDocument#to_xml` is always the safe serialization,
 mutators raise instead of corrupting, and `#document` remains as an explicit
 escape hatch. `sign!` still returns the caller's own document unwrapped, because
 they already hold it.
 
-### 13.5 XML Encryption stays out of v1 — **confirmed by the project owner**
+### 13.5 Nokogiri is optional, not required — **confirmed by the project owner**
+
+Specified at §6.1. The draft of this contract made Nokogiri mandatory by
+building Layer 1 on it throughout, which would have been an unannounced
+dependency regression: the pre-contract `lib/xmlsec_rb.rb` never requires
+Nokogiri, and `XmlsecRb.validate(xml_string, cert_pem)` runs today with it
+absent.
+
+Verification and template-fill signing stay DOM-free; coverage checks
+(`#signed?` / `#at_signed`), schema validation, template *building*, the
+`SignedDocument` wrapper and the `:ruby` backend need Nokogiri and raise
+`NokogiriRequired` without it. The invariant that makes this safe rather than
+merely convenient: **a missing Nokogiri may remove a capability, never weaken
+one.** `Policy` is enforced identically on both paths, and `#signed?` never
+degrades to `true`.
+
+Rejected alternative: build templates in Rust to drop Nokogiri entirely, as the
+POC and `nokogiri-xmlsec` do. It moves the most variable logic in the library
+back into `unsafe`, against §1's first requirement.
+
+The cost accepted: one new native function (`Native.inspect`, §7), one extra
+parse on the Nokogiri path, and a capability matrix that has to stay true.
+
+### 13.6 XML Encryption stays out of v1 — **confirmed by the project owner**
 
 §11.3. The only capability `nokogiri-xmlsec` has that we do not. Put to the
 project owner on 2026-08-31 and confirmed: this project signs documents and
@@ -1772,24 +1914,29 @@ Each phase is independently shippable and independently testable.
 
 **Phase 1 — foundations, no new native code.**
 `Algorithms`, `Policy`, `Transform`, `Reference`, `KeyInfo`, `Placement`,
-`Key`, errors, `XmlsecRb.parse` / `.serialize`, `Template` (builds the
-`<Signature>` Nokogiri tree), `Signer#template`. Testable entirely with XML
-assertions and no keys. This is most of the library.
+`Key`, errors, `SignatureInfo`, `XmlsecRb.parse` / `.serialize`, `Template`
+(builds the `<Signature>` Nokogiri tree), `Signer#template`, and `Dom` — the
+single Nokogiri probe (§6.1). Build `Policy` against `SignatureInfo`'s plain
+strings, not against Nokogiri nodes, from the first commit: retrofitting the
+DOM-free path later means rewriting the policy layer. Testable entirely with
+XML assertions and no keys. This is most of the library.
 
 **Phase 2 — native rewrite to the §7 contract.**
 Replace `validate_bytes` / `validate_doc_pointer` with `Native.sign` /
-`Native.verify` / `Native.versions`, add the error-callback capture, delete
-`XmlDoc<'a>` and its `PhantomData`. Verify the `unsafe`-block count drops.
+`Native.verify` / `Native.inspect` / `Native.versions`, add the error-callback
+capture, delete `XmlDoc<'a>` and its `PhantomData`. Verify the `unsafe`-block
+count drops despite the extra function — `inspect` is attribute reads over a
+document the crate already knows how to parse.
 
 **Phase 3 — `Signer` and `Verifier` end to end.**
-Write-back (§6.3), `Verification` including `#signed?`, trust modes, policy
+Write-back (§6.4), `Verification` including `#signed?`, trust modes, policy
 enforcement wired in, `verify_all`. The existing fixture matrix
 (`signed_exc_c14n`, `signed_sha512`, `signed_enveloping`, `signed_detached`,
 `signed_nfe`) becomes the round-trip suite: sign with `Signer`, verify with
 `xmlsec1` CLI as the external oracle, and vice versa.
 
 **Phase 4 — ergonomics and hardening.**
-`SignedDocument` (§6.6), `Profiles::NFe`, `nokogiri_ext`, `verification_time:`,
+`SignedDocument` (§6.7), `Profiles::NFe`, `nokogiri_ext`, `verification_time:`,
 `keys:` KeyName selection, `schema:` validation, `referenced_documents:`,
 `zero_copy_available?`, deprecation shim for `validate`, README rewrite, RBS
 signatures in `sig/`, YARD.
@@ -1820,3 +1967,9 @@ libxmlsec1.
 - A round-trip property test: `verify(sign(doc)) == true` across the fixture
   matrix and across `{sign, sign!}` × `{Document, String, Pathname, IO}`.
 - An `unsafe`-block count assertion over `ext/xmlsec_rb/src` (§7.2).
+- **The whole suite run twice: once with Nokogiri loaded, once with it hidden**
+  (a `$LOAD_PATH` stub that makes `require "nokogiri"` fail). Every DOM-free
+  capability in §6.1's matrix must pass in both runs with identical verdicts,
+  and every DOM-only one must raise `NokogiriRequired` rather than fail some
+  other way. A capability matrix that is not executed is a capability matrix
+  that drifts.
