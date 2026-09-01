@@ -116,16 +116,40 @@ fn main() {
             "#include <xmlsec/xmlsec.h>\n\
              #include <xmlsec/crypto.h>\n\
              #include <xmlsec/xmldsig.h>\n\
-             #include <xmlsec/xmltree.h>\n",
+             #include <xmlsec/xmltree.h>\n\
+             #include <xmlsec/errors.h>\n\
+             #include <xmlsec/keys.h>\n\
+             #include <xmlsec/keyinfo.h>\n\
+             #include <xmlsec/app.h>\n\
+             #include <xmlsec/openssl/app.h>\n\
+             #include <xmlsec/openssl/crypto.h>\n\
+             #include <libxml/tree.h>\n\
+             #include <libxml/xmlmemory.h>\n\
+             #include <libxml/xmlversion.h>\n",
         )
         .allowlist_function("xmlSec.*")
         .allowlist_type("xmlSec.*")
         .allowlist_var("xmlSec.*")
         .allowlist_var("XMLSEC_.*")
-        // libxml2 parsing/freeing entry points xmlsec itself doesn't wrap.
+        .allowlist_var("LIBXML_.*")
+        // libxml2 parsing and document management
         .allowlist_function("xmlReadMemory")
         .allowlist_function("xmlFreeDoc")
         .allowlist_function("xmlDocGetRootElement")
+        // libxml2 serialization (for sign → return signed bytes)
+        .allowlist_function("xmlDocDumpMemory")
+        .allowlist_function("xmlDocDumpFormatMemory")
+        // libxml2 node content and attribute extraction (for inspect)
+        .allowlist_function("xmlNodeGetContent")
+        .allowlist_function("xmlGetProp")
+        .allowlist_function("__xmlFree")
+        .allowlist_function("xmlMemFree")
+        // libxml2 node/child traversal
+        .allowlist_function("xmlNodeListGetString")
+        .allowlist_type("xmlNode")
+        .allowlist_type("xmlDoc")
+        .allowlist_type("xmlAttr")
+        .allowlist_type("xmlNs")
         .derive_default(true)
         .generate_comments(false)
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()));

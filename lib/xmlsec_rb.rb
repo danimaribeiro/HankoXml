@@ -48,22 +48,19 @@ module XmlsecRb
     #   - a Pathname, File, or anything responding to #to_path (read from disk)
     def validate(xml, certificate)
       cert = cert_pem_bytes(certificate)
+      data = xml_bytes(xml)
 
-      # A Nokogiri::XML::Document is handed to the native layer by pointer
-      # (#pointer_id), not by re-serializing + re-parsing: the caller may
-      # have just built this document in memory (e.g. about to sign it), and
-      # a to_xml round trip would be wasted work at best and risk subtly
-      # reformatting it at worst.
-      if nokogiri_document?(xml)
-        Native.validate_doc_pointer(xml.pointer_id, cert)
-      else
-        Native.validate_bytes(xml_bytes(xml), cert)
-      end
+      result = Native.verify(data, [cert], [], %w[Id ID id], 0)
+      result[:status] == :succeeded
     end
 
     private
 
     def xml_bytes(xml)
+      if defined?(::Nokogiri::XML::Document) && (xml.is_a?(::Nokogiri::XML::Document) || xml.is_a?(::Nokogiri::XML::Node))
+        return XmlsecRb.serialize(xml).b
+      end
+
       case xml
       when String
         xml.b
@@ -94,4 +91,6 @@ module XmlsecRb
             "(Pathname/File), got #{certificate.class}"
     end
   end
+
+  ::Xmlsec = XmlsecRb unless defined?(::Xmlsec)
 end
