@@ -87,22 +87,142 @@ module XmlsecRb
       }
     end
 
-    def sign(_doc_or_xml)
-      raise NotImplementedError,
-            "XmlsecRb::Signer#sign needs the native rewrite (API_CONTRACT.md §14 Phase 2/3), " \
-            "not yet implemented. Use #template to inspect what would be built."
+    def sign(doc_or_xml, force: false, signature: nil)
+      doc = XmlsecRb.coerce_document(doc_or_xml)
+      # Deep clone the document to avoid mutating the input if it's already a document.
+      cloned = doc.dup
+      sign!(cloned, force: force, signature: signature)
+      # In Phase 3, we just return the document. SignedDocument will be added in Phase 4.
+      cloned
     end
 
-    def sign!(_doc)
-      raise NotImplementedError,
-            "XmlsecRb::Signer#sign! needs the native rewrite (API_CONTRACT.md §14 Phase 2/3), " \
-            "not yet implemented. Use #template to inspect what would be built."
+    def sign!(doc_or_xml, force: false, signature: nil)
+      doc = XmlsecRb.coerce_document(doc_or_xml)
+      Dom.require!("XmlsecRb::Signer#sign!")
+
+      # 1. Find existing signatures or build one
+      signatures = find_or_build_signatures(doc)
+
+      # Sort by depth descending (innermost first)
+      signatures.sort_by! { |node| -node.ancestors.size }
+
+      signatures_to_sign = if signature
+                             [signatures[signature]].compact
+                           else
+                             signatures
+                           end
+
+      # Filter out already signed if not forced
+      unless force
+        signatures_to_sign.reject! { |node| node_signed?(node) }
+      end
+
+      # If there's nothing to sign, return the doc as-is
+      return doc if signatures_to_sign.empty?
+
+      # 2. Serialize the DOM state to bytes
+      xml_bytes = XmlsecRb.serialize(doc)
+
+      # 3. For each signature to sign, we call the native layer sequentially.
+      # Wait, Native.sign takes a single signature_index and returns a fully signed byte array.
+      # But since Native.sign returns bytes, and we need to sign multiple, we can do it iteratively
+      # on the byte string, but that changes the signature index if we re-parse!
+      # Actually, since we only need to write back, we can just call Native.sign for all indices,
+      # but Native.sign operates on one index at a time.
+      # Let's do it correctly: for each signature node, find its index in document order,
+      # sign it via Native.sign, update xml_bytes for the next iteration.
+      signatures_to_sign.each do |sig_node|
+        # In the *current* xml_bytes, we need the document-order index of this signature.
+        # But wait, we can just sign it and update xml_bytes.
+        # To find its index, we can search the Nokogiri document since we haven't changed the DOM structure.
+        all_sigs_in_order = doc.xpath(".//ds:Signature", ds: NS["ds"])
+        index = all_sigs_in_order.index(sig_node)
+        
+        cert_pems = @certificates.map(&:to_pem)
+        cert_pems.unshift(@certificate.to_pem) if @certificate
+
+        xml_bytes = Native.sign(
+          xml_bytes,
+          @key.to_pem,
+          cert_pems,
+          @id_attributes,
+          index
+        )
+
+        # 4. Write back the signed values to the caller's node
+        write_back_signature(doc, xml_bytes, index, sig_node)
+      end
+
+      doc
     end
 
     def inspect
       "#<#{self.class} key=[FILTERED] signature_method=#{signature_method.inspect} " \
         "canonicalization_method=#{canonicalization_method.inspect} digest_method=#{digest_method.inspect} " \
         "references=#{references.size}>"
+    end
+
+    private
+
+    def find_or_build_signatures(doc)
+      existing = doc.xpath(".//ds:Signature", ds: NS["ds"]).to_a
+      
+      if existing.empty?
+        raise XmlsecRb::ConfigurationError, "template: :require but no <Signature> found" if @template_mode == :require
+        
+        # Build one
+        template_node = template(doc)
+        @placement.insert(doc, template_node)
+        [template_node]
+      else
+        raise XmlsecRb::ConfigurationError, "template: :build but <Signature> already exists" if @template_mode == :build
+        
+        existing
+      end
+    end
+
+    def node_signed?(sig_node)
+      val = sig_node.at_xpath("./ds:SignatureValue", ds: NS["ds"])
+      val && !val.content.strip.empty?
+    end
+
+    def write_back_signature(doc, signed_bytes, index, caller_sig_node)
+      # Parse the signed bytes
+      signed_doc = XmlsecRb.parse(signed_bytes)
+      signed_sigs = signed_doc.xpath(".//ds:Signature", ds: NS["ds"])
+      signed_sig_node = signed_sigs[index]
+
+      # Copy ds:Reference/ds:DigestValue
+      caller_refs = caller_sig_node.xpath(".//ds:Reference", ds: NS["ds"])
+      signed_refs = signed_sig_node.xpath(".//ds:Reference", ds: NS["ds"])
+      
+      caller_refs.each_with_index do |caller_ref, i|
+        signed_ref = signed_refs[i]
+        caller_dv = caller_ref.at_xpath("./ds:DigestValue", ds: NS["ds"])
+        signed_dv = signed_ref.at_xpath("./ds:DigestValue", ds: NS["ds"])
+        
+        if caller_dv && signed_dv
+          caller_dv.content = signed_dv.content
+        end
+      end
+
+      # Copy ds:SignatureValue
+      caller_sv = caller_sig_node.at_xpath("./ds:SignatureValue", ds: NS["ds"])
+      signed_sv = signed_sig_node.at_xpath("./ds:SignatureValue", ds: NS["ds"])
+      if caller_sv && signed_sv
+        caller_sv.content = signed_sv.content
+      end
+
+      # Copy KeyInfo//X509Certificate (and KeyValue leaves if applicable, though for now we just copy X509Certificate)
+      caller_certs = caller_sig_node.xpath(".//ds:KeyInfo//X509Certificate", ds: NS["ds"])
+      signed_certs = signed_sig_node.xpath(".//ds:KeyInfo//X509Certificate", ds: NS["ds"])
+      
+      caller_certs.each_with_index do |caller_cert, i|
+        signed_cert = signed_certs[i]
+        if signed_cert
+          caller_cert.content = signed_cert.content
+        end
+      end
     end
   end
 end

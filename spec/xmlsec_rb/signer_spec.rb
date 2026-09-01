@@ -66,14 +66,6 @@ RSpec.describe XmlsecRb::Signer do
     end
   end
 
-  describe "#sign / #sign!" do
-    it "are not implemented yet (Phase 2/3)" do
-      signer = described_class.new(key: key_pem)
-      expect { signer.sign("<a/>") }.to raise_error(NotImplementedError, %r{Phase 2/3})
-      expect { signer.sign!(Nokogiri::XML("<a/>")) }.to raise_error(NotImplementedError, %r{Phase 2/3})
-    end
-  end
-
   describe "#inspect" do
     it "never includes key material" do
       signer = described_class.new(key: key_pem)

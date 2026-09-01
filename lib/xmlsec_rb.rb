@@ -15,6 +15,8 @@ require_relative "xmlsec_rb/signature_info"
 require_relative "xmlsec_rb/policy"
 require_relative "xmlsec_rb/template"
 require_relative "xmlsec_rb/signer"
+require_relative "xmlsec_rb/verification"
+require_relative "xmlsec_rb/verifier"
 
 # XML digital signature verification backed by libxmlsec1.
 module XmlsecRb
@@ -28,6 +30,31 @@ module XmlsecRb
     # See §6.1.
     def capabilities
       Dom.capabilities
+    end
+
+    def sign(doc_or_xml, **kwargs)
+      XmlsecRb::Signer.new(**kwargs).sign(doc_or_xml)
+    end
+
+    def sign!(doc, **kwargs)
+      XmlsecRb::Signer.new(**kwargs).sign!(doc)
+    end
+
+    def verify(xml, **kwargs)
+      XmlsecRb::Verifier.new(**kwargs).verify(xml)
+    end
+
+    def verify!(xml, **kwargs)
+      XmlsecRb::Verifier.new(**kwargs).verify!(xml)
+    end
+
+    def signed?(xml)
+      doc = XmlsecRb.coerce_document(xml)
+      sigs = doc.xpath(".//ds:Signature", ds: NS["ds"])
+      sigs.any? do |sig|
+        val = sig.at_xpath("./ds:SignatureValue", ds: NS["ds"])
+        val && !val.content.strip.empty?
+      end
     end
 
     # Verifies the XML-DSig <Signature> in +xml+ against +certificate+, a
@@ -47,12 +74,18 @@ module XmlsecRb
     #   - a String of PEM-encoded certificate data
     #   - a Pathname, File, or anything responding to #to_path (read from disk)
     def validate(xml, certificate)
-      cert = cert_pem_bytes(certificate)
-      data = xml_bytes(xml)
+      result = verify(xml, certificate: certificate)
+      
+      if !result.valid?
+        error = result.errors.first
+        if error.is_a?(XmlsecRb::ParseError) || error.is_a?(XmlsecRb::SignatureMissing) || error.is_a?(XmlsecRb::NativeError)
+          raise XmlsecRb::Error, error.message
+        end
+      end
 
-      result = Native.verify(data, [cert], [], %w[Id ID id], 0)
-      result[:status] == :succeeded
+      result.valid?
     end
+
 
     private
 
