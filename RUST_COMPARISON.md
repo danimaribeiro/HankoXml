@@ -1,7 +1,7 @@
 # Rust Implementation Comparison
 
 Original: `nokogiri-xmlsec-danimar/ext/xmlsec_danimar_rust/src/lib.rs` (single file, ~440 lines)
-New: `xmlsec_rb/ext/xmlsec_rb/src/{sys.rs, dsig.rs, lib.rs}` + `build.rs` (~460 lines total)
+New: `hanko_xml/ext/hanko_xml/src/{sys.rs, dsig.rs, lib.rs}` + `build.rs` (~460 lines total)
 
 ---
 
@@ -248,10 +248,10 @@ pub fn verify_signature(...) -> Result<bool, &'static str> { ... }
 fn xmlsec_error(ruby: &Ruby, message: impl Into<String>) -> Error {
     Error::new(xmlsec_error_class(ruby), message.into())
 }
-// where xmlsec_error_class resolves to XmlsecRb::Error
+// where xmlsec_error_class resolves to HankoXml::Error
 ```
 
-The new version is better here. A custom `XmlsecRb::Error < StandardError` lets callers rescue specifically. And using `Result<bool, &str>` instead of bare `bool` distinguishes "signature is invalid" (Ok(false)) from "couldn't even attempt verification" (Err("no Signature element")).
+The new version is better here. A custom `HankoXml::Error < StandardError` lets callers rescue specifically. And using `Result<bool, &str>` instead of bare `bool` distinguishes "signature is invalid" (Ok(false)) from "couldn't even attempt verification" (Err("no Signature element")).
 
 The original conflates both cases into `false`, which means "failed to parse XML" and "signature didn't verify" look the same to the caller.
 
@@ -317,7 +317,7 @@ def self.validate(xml_source, cert, id_attr: nil)
 end
 ```
 
-**New** (`lib/xmlsec_rb.rb`):
+**New** (`lib/hanko_xml.rb`):
 ```ruby
 def self.validate(xml, certificate)
   cert = cert_pem_bytes(certificate)
@@ -396,7 +396,7 @@ The new version is better — it keeps the `funcall` in Ruby land (where it's a 
 1. **`std::sync::Once`** instead of `static mut` for initialization
 2. **`xmlSecAddIDs`** instead of manual tree walk for ID registration
 3. **`Result<bool, &str>`** instead of bare `bool` — distinguishes "invalid" from "error"
-4. **Custom exception class** (`XmlsecRb::Error`) instead of `RuntimeError`
+4. **Custom exception class** (`HankoXml::Error`) instead of `RuntimeError`
 5. **`// SAFETY:` comments** on every unsafe block
 6. **`build.rs`** handles libxml2 ABI mismatch and Homebrew keg-only discovery automatically
 7. **Lifetime-parameterized** `DsigCtx<'mngr>` enforces drop ordering at compile time

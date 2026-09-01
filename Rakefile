@@ -13,10 +13,10 @@ require "rb_sys/extensiontask"
 
 task build: :compile
 
-GEMSPEC = Gem::Specification.load("xmlsec_rb.gemspec")
+GEMSPEC = Gem::Specification.load("hanko_xml.gemspec")
 
-RbSys::ExtensionTask.new("xmlsec_rb", GEMSPEC) do |ext|
-  ext.lib_dir = "lib/xmlsec_rb"
+RbSys::ExtensionTask.new("hanko_xml", GEMSPEC) do |ext|
+  ext.lib_dir = "lib/hanko_xml"
 end
 
 task default: %i[compile spec rubocop]

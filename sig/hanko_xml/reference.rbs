@@ -1,0 +1,26 @@
+module HankoXml
+  class Transform
+    attr_reader uri: String
+    
+    def self.exc_c14n: (?inclusive_prefixes: Array[String]) -> instance
+    def self.c14n: () -> instance
+    def self.enveloped_signature: () -> instance
+    def self.coerce: (instance | Symbol input) -> instance
+
+    def initialize: (String | Symbol algorithm) -> void
+    def enveloped_signature?: () -> bool
+  end
+
+  class Reference
+    attr_reader uri: String
+    attr_reader transforms: Array[Transform]
+    attr_reader digest_method: Symbol
+    attr_reader digest_method_uri: String
+
+    def self.coerce: (instance | String | Hash[Symbol, untyped] input) -> instance
+
+    def initialize: (?uri: String, ?transforms: Array[Transform | Symbol], ?digest_method: Symbol) -> void
+    def fragment?: () -> bool
+    def target_id: () -> String?
+  end
+end

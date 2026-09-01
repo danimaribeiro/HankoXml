@@ -1,8 +1,8 @@
-# xmlsec_rb — API Contract
+# hanko_xml — API Contract
 
 Status: **design contract, not yet implemented.** This document is the reference
 we implement against. Where it disagrees with the code in `lib/` or
-`ext/xmlsec_rb/`, this document wins and the code is behind.
+`ext/hanko_xml/`, this document wins and the code is behind.
 
 Companion documents: [`RUST_COMPARISON.md`](RUST_COMPARISON.md) (POC vs rewrite,
 Rust-side), [`README.md`](README.md) (current, pre-contract behaviour).
@@ -41,10 +41,10 @@ has used (C#, Python, Ruby). What makes it good:
 | C# behaviour | We keep it as |
 | --- | --- |
 | You describe `Reference`s, `Transform`s and `KeyInfo` clauses as objects; the library emits the `<Signature>` XML | `Signer#reference`, `Transform`, `KeyInfo` clauses — §5.2 |
-| `CryptoConfig.AddAlgorithm` — register your own algorithm URI | `XmlsecRb::Algorithms.register` — §5.7 |
-| `SafeCanonicalizationMethods` — an allowlist that verification enforces | `XmlsecRb::Policy` generalised to *every* algorithm slot — §5.8 |
+| `CryptoConfig.AddAlgorithm` — register your own algorithm URI | `HankoXml::Algorithms.register` — §5.7 |
+| `SafeCanonicalizationMethods` — an allowlist that verification enforces | `HankoXml::Policy` generalised to *every* algorithm slot — §5.8 |
 | `GetIdElement` override — custom ID resolution | `id_attributes:` + `resolver:` — §5.9 |
-| You choose where the `<Signature>` element goes | `XmlsecRb::Placement` — §5.5 |
+| You choose where the `<Signature>` element goes | `HankoXml::Placement` — §5.5 |
 
 What C# gets **wrong**, that we must not copy:
 
@@ -68,14 +68,14 @@ What C# gets **wrong**, that we must not copy:
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ Layer 2  XmlsecRb.sign / .valid? / .verify!                   │  convenience
+│ Layer 2  HankoXml.sign / .valid? / .verify!                   │  convenience
 ├──────────────────────────────────────────────────────────────┤
 │ Layer 1  Signer, Verifier, Verification, Reference,           │  100% Ruby
 │          Transform, KeyInfo, Placement, Policy, Algorithms    │  Nokogiri
 │          — template building, policy enforcement, trust       │  optional
 │            chain validation, ID resolution, write-back        │  no unsafe
 ├──────────────────────────────────────────────────────────────┤
-│ Layer 0  XmlsecRb::Native — 5 functions, bytes in/bytes out   │  Rust
+│ Layer 0  HankoXml::Native — 5 functions, bytes in/bytes out   │  Rust
 │          parse + inspect + canonicalize + digest + sign/verify│  all unsafe
 └──────────────────────────────────────────────────────────────┘
 ```
@@ -143,39 +143,39 @@ for a signing library.
 ## 4. Naming, module layout, files
 
 ```
-lib/xmlsec_rb.rb                     # requires everything, Layer 2 module methods
-lib/xmlsec_rb/version.rb
-lib/xmlsec_rb/errors.rb
-lib/xmlsec_rb/algorithms.rb          # registry
-lib/xmlsec_rb/policy.rb
-lib/xmlsec_rb/key.rb                 # key + certificate coercion
-lib/xmlsec_rb/reference.rb
-lib/xmlsec_rb/transform.rb
-lib/xmlsec_rb/key_info.rb
-lib/xmlsec_rb/placement.rb
-lib/xmlsec_rb/data_object.rb
-lib/xmlsec_rb/template.rb            # builds the <Signature> Nokogiri tree
-lib/xmlsec_rb/signer.rb
-lib/xmlsec_rb/verifier.rb
-lib/xmlsec_rb/verification.rb
-lib/xmlsec_rb/signed_document.rb     # safe-serialization wrapper returned by #sign
-lib/xmlsec_rb/signed_info.rb         # parsed, authenticated view of <SignedInfo>
-lib/xmlsec_rb/dom.rb                 # the ONLY place that probes for Nokogiri (§6.1)
-lib/xmlsec_rb/signature_info.rb      # DOM-free <SignedInfo> value object
-lib/xmlsec_rb/xml.rb                 # XmlsecRb.parse / .serialize, Nokogiri helpers
-lib/xmlsec_rb/xmldsig-core-schema.xsd # bundled, for Verifier(schema: :default)
-lib/xmlsec_rb/profiles/nfe.rb        # optional, require-on-demand
-lib/xmlsec_rb/nokogiri_ext.rb        # optional, require-on-demand core extension
+lib/hanko_xml.rb                     # requires everything, Layer 2 module methods
+lib/hanko_xml/version.rb
+lib/hanko_xml/errors.rb
+lib/hanko_xml/algorithms.rb          # registry
+lib/hanko_xml/policy.rb
+lib/hanko_xml/key.rb                 # key + certificate coercion
+lib/hanko_xml/reference.rb
+lib/hanko_xml/transform.rb
+lib/hanko_xml/key_info.rb
+lib/hanko_xml/placement.rb
+lib/hanko_xml/data_object.rb
+lib/hanko_xml/template.rb            # builds the <Signature> Nokogiri tree
+lib/hanko_xml/signer.rb
+lib/hanko_xml/verifier.rb
+lib/hanko_xml/verification.rb
+lib/hanko_xml/signed_document.rb     # safe-serialization wrapper returned by #sign
+lib/hanko_xml/signed_info.rb         # parsed, authenticated view of <SignedInfo>
+lib/hanko_xml/dom.rb                 # the ONLY place that probes for Nokogiri (§6.1)
+lib/hanko_xml/signature_info.rb      # DOM-free <SignedInfo> value object
+lib/hanko_xml/xml.rb                 # HankoXml.parse / .serialize, Nokogiri helpers
+lib/hanko_xml/xmldsig-core-schema.xsd # bundled, for Verifier(schema: :default)
+lib/hanko_xml/profiles/nfe.rb        # optional, require-on-demand
+lib/hanko_xml/nokogiri_ext.rb        # optional, require-on-demand core extension
 ```
 
-Top-level module stays `XmlsecRb` (matches the gem name and the compiled
-extension's `magnus::init`). `Xmlsec = XmlsecRb` is defined as an alias only if
+Top-level module stays `HankoXml` (matches the gem name and the compiled
+extension's `magnus::init`). `Xmlsec = HankoXml` is defined as an alias only if
 the constant is not already taken — see Decision §13.1.
 
-**Naming rule we enforce:** no exception or class in `XmlsecRb` may shadow a
-core Ruby constant. Specifically **not** `XmlsecRb::KeyError`,
-`XmlsecRb::ArgumentError`, `XmlsecRb::TypeError`, `XmlsecRb::IOError` — inside
-`module XmlsecRb`, a bare `rescue KeyError` would then silently resolve to ours
+**Naming rule we enforce:** no exception or class in `HankoXml` may shadow a
+core Ruby constant. Specifically **not** `HankoXml::KeyError`,
+`HankoXml::ArgumentError`, `HankoXml::TypeError`, `HankoXml::IOError` — inside
+`module HankoXml`, a bare `rescue KeyError` would then silently resolve to ours
 instead of Ruby's. See §5.10 for the names we use instead.
 
 ---
@@ -185,23 +185,23 @@ instead of Ruby's. See §5.10 for the names we use instead.
 ### 5.1 Layer 2 — the 90% case
 
 ```ruby
-require "xmlsec_rb"
+require "hanko_xml"
 
-# Sign. Returns a NEW XmlsecRb::SignedDocument (§6.8); `doc` is untouched.
-signed = XmlsecRb.sign(doc, key: key, certificate: cert)
+# Sign. Returns a NEW HankoXml::SignedDocument (§6.8); `doc` is untouched.
+signed = HankoXml.sign(doc, key: key, certificate: cert)
 signed.to_xml   # signature-safe serialization; #to_s and #write_to too
 
 # Sign in place. Returns the same object you passed, now containing <Signature>.
-XmlsecRb.sign!(doc, key: key, certificate: cert)
+HankoXml.sign!(doc, key: key, certificate: cert)
 
 # Verify — predicate. Safe to use directly in a conditional.
-XmlsecRb.valid?(xml, certificate: cert)        # => true / false
+HankoXml.valid?(xml, certificate: cert)        # => true / false
 
 # Verify — raising. Returns a Verification; raises on anything but success.
-XmlsecRb.verify!(xml, certificate: cert)       # => Verification, or raises
+HankoXml.verify!(xml, certificate: cert)       # => Verification, or raises
 
 # Is there a signature at all? (structural, no crypto)
-XmlsecRb.signed?(xml)                          # => true / false
+HankoXml.signed?(xml)                          # => true / false
 ```
 
 Every keyword accepted by `Signer.new` / `Verifier.new` is accepted here and
@@ -211,16 +211,16 @@ forwarded; these are constructor + single call, nothing more.
 `sign!` need Nokogiri unless the document already carries a `<Signature>`
 template (§5.2, §6.1).
 
-**There is deliberately no `XmlsecRb.verify` returning a rich object.** A
-`Verification` instance is always truthy, so `if XmlsecRb.verify(doc, ...)` would
+**There is deliberately no `HankoXml.verify` returning a rich object.** A
+`Verification` instance is always truthy, so `if HankoXml.verify(doc, ...)` would
 be a security bug that reads like correct code. The rich object is reachable
 only through `verify!` (which raises on failure) or `Verifier#verify` (§5.4,
 where the object's role is explicit). This asymmetry is intentional.
 
-### 5.2 `XmlsecRb::Signer`
+### 5.2 `HankoXml::Signer`
 
 ```ruby
-signer = XmlsecRb::Signer.new(
+signer = HankoXml::Signer.new(
   key:                     key,                # §5.6
   certificate:             cert,               # §5.6, optional
   certificates:            [cert, intermediate], # chain for <X509Data>, optional
@@ -233,7 +233,7 @@ signer = XmlsecRb::Signer.new(
   id_attributes:           %w[Id ID id],       # §5.9
   namespaces:              {},                 # prefix => href, for XPath args
   signature_id:            nil,                # sets <Signature Id="...">
-  policy:                  XmlsecRb::Policy.strict, # §5.8
+  policy:                  HankoXml::Policy.strict, # §5.8
   template:                :adopt,             # :adopt | :build | :require, below
 )
 ```
@@ -241,12 +241,12 @@ signer = XmlsecRb::Signer.new(
 Block form, for when the reference list is non-trivial:
 
 ```ruby
-signer = XmlsecRb::Signer.new(key: key, certificate: cert) do |s|
+signer = HankoXml::Signer.new(key: key, certificate: cert) do |s|
   s.signature_method = :rsa_sha1
   s.canonicalization_method = :c14n
   s.reference "#NFe3520...", transforms: %i[enveloped_signature c14n], digest_method: :sha1
   s.key_info :x509_certificate
-  s.placement = XmlsecRb::Placement.append_to("/nfe:NFe", namespaces: { "nfe" => NFE_NS })
+  s.placement = HankoXml::Placement.append_to("/nfe:NFe", namespaces: { "nfe" => NFE_NS })
 end
 ```
 
@@ -257,7 +257,7 @@ share across threads (§9).
 #### Methods
 
 ```ruby
-signer.sign(doc_or_xml)   # => XmlsecRb::SignedDocument (§6.8), input untouched
+signer.sign(doc_or_xml)   # => HankoXml::SignedDocument (§6.8), input untouched
 signer.sign!(doc)         # => the same Nokogiri::XML::Document, now signed
 signer.template(doc)      # => Nokogiri::XML::Element — the unsigned <Signature>
                           #    it would insert. For inspection and testing.
@@ -298,7 +298,7 @@ first:
 nothing has to be constructed, so no DOM is needed.
 
 A `Signer` configured with explicit `references:` that then adopts a template
-raises `XmlsecRb::ConfigurationError` rather than silently discarding them —
+raises `HankoXml::ConfigurationError` rather than silently discarding them —
 "I told it what to sign and it did something else" is not a failure mode we
 ship.
 
@@ -336,13 +336,13 @@ responding to `#sign(data, algorithm:)` and `#signature_method`, or a
 `sign_with` block receiving the canonicalized `<SignedInfo>`, matching what
 `xmldsig`'s `sign { |data| … }` block receives — is recorded in §7.3 as a
 sketch. It is **not implemented**, and `Signer.new` raises
-`XmlsecRb::ConfigurationError` if `key:` is anything but key material or an
-`XmlsecRb::Key`.
+`HankoXml::ConfigurationError` if `key:` is anything but key material or an
+`HankoXml::Key`.
 
-### 5.3 `XmlsecRb::Verifier`
+### 5.3 `HankoXml::Verifier`
 
 ```ruby
-verifier = XmlsecRb::Verifier.new(
+verifier = HankoXml::Verifier.new(
   certificate:   cert,             # pin exactly this certificate
   # or
   certificates:  [cert_a, cert_b], # any one of these
@@ -355,7 +355,7 @@ verifier = XmlsecRb::Verifier.new(
   keys:          { "key-name-1" => cert_a, "key-name-2" => key_b },
                  # select by the <ds:KeyName> the document declares
 
-  policy:        XmlsecRb::Policy.strict,  # default, §5.8
+  policy:        HankoXml::Policy.strict,  # default, §5.8
   id_attributes: %w[Id ID id],
   namespaces:    {},
   signature:     :first,   # :first | :only | :all | Integer index | XPath String
@@ -385,7 +385,7 @@ or a timestamp from a trusted source — never one the signed document itself
 supplies unless it is inside signed material.
 
 ```ruby
-XmlsecRb::Verifier.new(store: store, verification_time: nfe.emission_time)
+HankoXml::Verifier.new(store: store, verification_time: nfe.emission_time)
 ```
 
 Setting `policy: policy.with(check_certificate_validity: false)` skips the
@@ -424,7 +424,7 @@ hidden behind an empty array.
 Methods:
 
 ```ruby
-verifier.verify(xml)      # => XmlsecRb::Verification. ALWAYS TRUTHY — check #valid?
+verifier.verify(xml)      # => HankoXml::Verification. ALWAYS TRUTHY — check #valid?
 verifier.verify!(xml)     # => Verification, or raises (§5.10)
 verifier.valid?(xml)      # => true / false. Never raises for signature-level
                           #    failures; still raises ParseError / KeyLoadError.
@@ -435,7 +435,7 @@ verifier.verify_all(xml)  # => Array<Verification>, one per <ds:Signature>
 documentation and YARD `@return` both carry the "always truthy" warning. Prefer
 `#valid?` in conditionals and `#verify!` in flows that should abort.
 
-### 5.4 `XmlsecRb::Verification` — the anti-XSW object
+### 5.4 `HankoXml::Verification` — the anti-XSW object
 
 This is the most important type in the library. It answers "what was actually
 signed", not "did something verify".
@@ -444,7 +444,7 @@ signed", not "did something verify".
 v = verifier.verify(doc)
 
 v.valid?             # => true / false — the single crypto verdict
-v.errors             # => Array<XmlsecRb::Error>  (built, not raised)
+v.errors             # => Array<HankoXml::Error>  (built, not raised)
 
 # --- What was covered -----------------------------------------------------
 v.signed?(node)      # => true / false. THE question you should be asking.
@@ -454,7 +454,7 @@ v.covers_root?       # => true when the document element is inside signed materi
 v.partial?           # => true when it does not (a fragment signature, §5.8)
 
 # --- Reading signed data safely -------------------------------------------
-v.at_signed(xpath, ns = {})   # => Node, or raises XmlsecRb::NotSignedError
+v.at_signed(xpath, ns = {})   # => Node, or raises HankoXml::NotSignedError
 v.signed(xpath, ns = {})      # => Array<Node>, all of which are covered;
                               #    raises if ANY match is not covered
 
@@ -462,12 +462,12 @@ v.signed(xpath, ns = {})      # => Array<Node>, all of which are covered;
 v.signature_method        # => :rsa_sha256
 v.canonicalization_method # => :exc_c14n
 v.digest_methods          # => [:sha256]
-v.signed_info             # => XmlsecRb::SignedInfo (frozen value object)
+v.signed_info             # => HankoXml::SignedInfo (frozen value object)
 
 # --- Who signed -----------------------------------------------------------
 v.certificate        # => OpenSSL::X509::Certificate that trust resolved to, or nil
 v.certificate_chain  # => Array<OpenSSL::X509::Certificate> as validated
-v.key_info           # => XmlsecRb::KeyInfo::Parsed — what the document *claimed*
+v.key_info           # => HankoXml::KeyInfo::Parsed — what the document *claimed*
 
 # --- Provenance -----------------------------------------------------------
 v.signature_node     # => Nokogiri::XML::Element, the <ds:Signature> verified
@@ -483,7 +483,7 @@ ref.digest_method  # => :sha1
 ref.transforms     # => [:enveloped_signature, :c14n]
 ref.enveloped?     # => true
 ref.valid?         # => false — THIS reference's digest did not match
-ref.errors         # => [#<XmlsecRb::DigestMismatch reference_uri="#infNFe01">]
+ref.errors         # => [#<HankoXml::DigestMismatch reference_uri="#infNFe01">]
 ```
 
 Per-reference validity matters because "the digest of reference 2 does not
@@ -506,10 +506,10 @@ assertion = doc.at_xpath("//saml:Assertion", ns)
 assertion = v.at_signed("//saml:Assertion", ns)
 ```
 
-`#at_signed` needs a DOM and raises `XmlsecRb::NokogiriRequired` without one
+`#at_signed` needs a DOM and raises `HankoXml::NokogiriRequired` without one
 (§6.1) — never `false`, and never a node it could not check. It performs the
 XPath *and* the `#signed?` check, raising
-`XmlsecRb::NotSignedError` if the node it found is not covered — so forgetting
+`HankoXml::NotSignedError` if the node it found is not covered — so forgetting
 the check is no longer possible by omission, only by deliberately using
 `doc.at_xpath` instead. Ergonomics is a security control: a defence that costs
 an extra line gets skipped, and one that saves a line gets adopted.
@@ -539,24 +539,24 @@ valid and invalid verifications, because "what did it claim" is exactly what you
 want when debugging a failure. Everything on a `Verification` whose `valid?` is
 `false` is **unauthenticated** and the YARD docs say so on each accessor.
 
-### 5.5 `XmlsecRb::Placement`
+### 5.5 `HankoXml::Placement`
 
 Where the `<Signature>` element goes. Frozen value object; symbols coerce.
 
 ```ruby
-XmlsecRb::Placement.append_to_root            # :append_to_root  (default)
-XmlsecRb::Placement.prepend_to_root           # :prepend_to_root
-XmlsecRb::Placement.append_to(node_or_xpath, namespaces: {})
-XmlsecRb::Placement.prepend_to(node_or_xpath, namespaces: {})
-XmlsecRb::Placement.after(node_or_xpath, namespaces: {})
-XmlsecRb::Placement.before(node_or_xpath, namespaces: {})
-XmlsecRb::Placement.detached                  # build <Signature> but insert nothing;
+HankoXml::Placement.append_to_root            # :append_to_root  (default)
+HankoXml::Placement.prepend_to_root           # :prepend_to_root
+HankoXml::Placement.append_to(node_or_xpath, namespaces: {})
+HankoXml::Placement.prepend_to(node_or_xpath, namespaces: {})
+HankoXml::Placement.after(node_or_xpath, namespaces: {})
+HankoXml::Placement.before(node_or_xpath, namespaces: {})
+HankoXml::Placement.detached                  # build <Signature> but insert nothing;
                                               # Signer#template returns it, sign raises
-XmlsecRb::Placement.custom { |doc, signature| ... }  # you insert it; return value ignored
+HankoXml::Placement.custom { |doc, signature| ... }  # you insert it; return value ignored
 ```
 
 An XPath that matches zero or more than one node raises
-`XmlsecRb::PlacementError` before any crypto runs. The `custom` block is the
+`HankoXml::PlacementError` before any crypto runs. The `custom` block is the
 full escape hatch and is what C# effectively makes you write by hand every time
 (`doc.DocumentElement.AppendChild(doc.ImportNode(sig, true))`) — here it is the
 rare case, not the default.
@@ -565,7 +565,7 @@ Signature placement happens **before** digest computation, which is why it is
 part of the `Signer` and not a post-processing step: for an enveloped signature,
 where the element sits changes what gets canonicalized.
 
-### 5.6 Keys and certificates — `XmlsecRb::Key`
+### 5.6 Keys and certificates — `HankoXml::Key`
 
 Coercion is uniform, and applies to `key:`, `certificate:`, `certificates:`.
 
@@ -574,24 +574,24 @@ Coercion is uniform, and applies to `key:`, `certificate:`, `certificates:`.
 - `OpenSSL::PKey::PKey` (RSA, EC, DSA) — used directly
 - a `String` of PEM (encrypted PEM requires `key_password:`)
 - a `Pathname` / `File` / anything responding to `#to_path` — read from disk
-- `XmlsecRb::Key` — the explicit wrapper
+- `HankoXml::Key` — the explicit wrapper
 
 `certificate:` / `certificates:` accept the same, plus `OpenSSL::X509::Certificate`.
 
 Convenience constructors, all pure Ruby over `OpenSSL`:
 
 ```ruby
-XmlsecRb::Key.from_pem(pem, password: nil)
-XmlsecRb::Key.from_der(der)
-XmlsecRb::Key.from_file(path, password: nil)
+HankoXml::Key.from_pem(pem, password: nil)
+HankoXml::Key.from_der(der)
+HankoXml::Key.from_file(path, password: nil)
 
 # PKCS#12 — the common case for Brazilian NFe A1 certificates and for
 # Windows-exported keys. Returns key + leaf certificate + CA chain in one go.
-bundle = XmlsecRb::Key.from_pkcs12("cert.pfx", password: ENV["PFX_PASSWORD"])
+bundle = HankoXml::Key.from_pkcs12("cert.pfx", password: ENV["PFX_PASSWORD"])
 bundle.key           # => OpenSSL::PKey::RSA
 bundle.certificate   # => OpenSSL::X509::Certificate
 bundle.certificates  # => [leaf, *ca_chain]
-signer = XmlsecRb::Signer.new(**bundle.to_h)   # key:, certificate:, certificates:
+signer = HankoXml::Signer.new(**bundle.to_h)   # key:, certificate:, certificates:
 ```
 
 Everything crossing into Rust is **PEM**, always. No `key_format` parameter
@@ -617,7 +617,7 @@ for:
 # Verifies self-consistency ONLY: the signature matches the certificate the
 # document itself carries. Proves the document was not modified after signing;
 # proves NOTHING about who signed it. Never sufficient on its own.
-XmlsecRb::Verifier.without_trust_verification(policy: ...)
+HankoXml::Verifier.without_trust_verification(policy: ...)
 ```
 
 Its `Verification#certificate` is populated, `#trusted?` is `false`, and
@@ -627,7 +627,7 @@ steps to get to the dangerous outcome.
 
 #### Key material handling
 
-`XmlsecRb::Key` holds PEM bytes in a Ruby `String`. Ruby strings are GC-managed
+`HankoXml::Key` holds PEM bytes in a Ruby `String`. Ruby strings are GC-managed
 and not zeroized, and we cannot promise otherwise. What we do promise:
 
 - the native layer copies what it needs and retains nothing after the call
@@ -635,23 +635,23 @@ and not zeroized, and we cannot promise otherwise. What we do promise:
 - `Key#dispose!` overwrites the Ruby-side buffer in place and marks the key
   unusable, for callers who want to bound the window;
 - a `Key` never appears in `#inspect`, `#to_s`, or an exception message.
-  `Signer#inspect` shows `#<XmlsecRb::Signer key=[FILTERED] …>`.
+  `Signer#inspect` shows `#<HankoXml::Signer key=[FILTERED] …>`.
 
-### 5.7 `XmlsecRb::Algorithms` — the registry
+### 5.7 `HankoXml::Algorithms` — the registry
 
 Every algorithm slot accepts either a **Symbol** (looked up here) or a **String
 URI** (used verbatim, subject to `Policy`). This is C#'s `CryptoConfig` without
 the global mutable state and machine.config.
 
 ```ruby
-XmlsecRb::Algorithms.signature[:rsa_sha256]
+HankoXml::Algorithms.signature[:rsa_sha256]
 # => #<Entry name=:rsa_sha256 uri="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256" secure=true>
 
-XmlsecRb::Algorithms.uri_for(:signature, :rsa_sha256)  # => "http://..."
-XmlsecRb::Algorithms.name_for(:signature, "http://...") # => :rsa_sha256, or nil
-XmlsecRb::Algorithms.secure?(:digest, :sha1)            # => false
+HankoXml::Algorithms.uri_for(:signature, :rsa_sha256)  # => "http://..."
+HankoXml::Algorithms.name_for(:signature, "http://...") # => :rsa_sha256, or nil
+HankoXml::Algorithms.secure?(:digest, :sha1)            # => false
 
-XmlsecRb::Algorithms.register(
+HankoXml::Algorithms.register(
   :signature, :rsa_pss_sha256,
   "http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1",
   secure: true
@@ -719,19 +719,19 @@ Transform (`Algorithms.transform`) — the canonicalization table above, plus:
 `secure?` is a *default recommendation*, not a hard gate — `Policy.strict`
 allows exactly the `secure?` set, and any other policy may allow more.
 
-### 5.8 `XmlsecRb::Policy`
+### 5.8 `HankoXml::Policy`
 
 A frozen allowlist, enforced **in Ruby, before anything reaches libxmlsec1**,
 on both signing and verification.
 
 ```ruby
-XmlsecRb::Policy.strict        # default everywhere
-XmlsecRb::Policy.fragment      # strict, minus require_signed_root — for protocols
+HankoXml::Policy.strict        # default everywhere
+HankoXml::Policy.fragment      # strict, minus require_signed_root — for protocols
                                # that sign a fragment (SAML assertions). §5.8.1
-XmlsecRb::Policy.legacy_sha1   # strict + SHA-1 digest and RSA-SHA1 signature
-XmlsecRb::Policy.permissive    # everything libxmlsec1 supports. Documented as unsafe.
+HankoXml::Policy.legacy_sha1   # strict + SHA-1 digest and RSA-SHA1 signature
+HankoXml::Policy.permissive    # everything libxmlsec1 supports. Documented as unsafe.
 
-policy = XmlsecRb::Policy.strict.with(
+policy = HankoXml::Policy.strict.with(
   digest_methods:    %i[sha1 sha256],
   max_references:    4,
   max_document_size: 8 * 1024 * 1024,
@@ -741,7 +741,7 @@ policy = XmlsecRb::Policy.strict.with(
 Full field list, with `strict` defaults:
 
 ```ruby
-XmlsecRb::Policy.new(
+HankoXml::Policy.new(
   # --- algorithm allowlists (Symbols or URI Strings) ---------------------
   signature_methods:        %i[rsa_sha256 rsa_sha384 rsa_sha512
                                ecdsa_sha256 ecdsa_sha384 ecdsa_sha512],
@@ -792,13 +792,13 @@ Notes on the non-obvious ones:
   rejected in Ruby before xmlsec sees it, so libxmlsec1's own I/O callbacks are
   never reached with attacker-controlled URIs.
 
-Violations raise `XmlsecRb::PolicyError` from `verify!`/`sign`, and appear in
+Violations raise `HankoXml::PolicyError` from `verify!`/`sign`, and appear in
 `Verification#errors` with `#valid?` false from `#verify` / `#valid?`. The
 message always names the offending value and the field:
 
 ```
-XmlsecRb::PolicyError: digest method http://www.w3.org/2000/09/xmldsig#sha1 (:sha1)
-is not in this policy's digest_methods. Use XmlsecRb::Policy.legacy_sha1 or
+HankoXml::PolicyError: digest method http://www.w3.org/2000/09/xmldsig#sha1 (:sha1)
+is not in this policy's digest_methods. Use HankoXml::Policy.legacy_sha1 or
 Policy#with(digest_methods: …) if this document genuinely requires SHA-1.
 ```
 
@@ -826,7 +826,7 @@ is not.
 So: **`true` by default**, and the fragment case is served by three things that
 together make the opt-out safe rather than merely available:
 
-1. **A named preset, not a boolean.** `policy: XmlsecRb::Policy.fragment` reads
+1. **A named preset, not a boolean.** `policy: HankoXml::Policy.fragment` reads
    as a deliberate protocol decision at the call site. `require_signed_root:
    false` reads as a flag someone flipped to make an error go away. Both work;
    the preset is what the docs and error messages point at.
@@ -839,10 +839,10 @@ together make the opt-out safe rather than merely available:
 And the error you get without the preset names the preset:
 
 ```
-XmlsecRb::PolicyError: the signature covers <saml:Assertion> but not the document
+HankoXml::PolicyError: the signature covers <saml:Assertion> but not the document
 element <samlp:Response>; this policy requires the document root to be signed.
 If this protocol signs a fragment by design (SAML assertions do), use
-policy: XmlsecRb::Policy.fragment and read signed data via Verification#at_signed.
+policy: HankoXml::Policy.fragment and read signed data via Verification#at_signed.
 ```
 
 ### 5.9 ID attributes and reference resolution
@@ -875,7 +875,7 @@ resolver: ->(doc, uri_fragment) { doc.at_xpath("//*[@wsu:Id=$id]", …) }
 The resolver is used for `Verification#references[].node` and for `#signed?`
 coverage. It does **not** change what libxmlsec1 itself resolves — if your
 resolver and `id_attributes` disagree, `Verification` reports
-`XmlsecRb::ResolutionMismatch` in `#errors` and `#valid?` becomes `false`.
+`HankoXml::ResolutionMismatch` in `#errors` and `#valid?` becomes `false`.
 Silently letting the two disagree is exactly how "verified a different node than
 the one I read" happens.
 
@@ -883,35 +883,35 @@ the one I read" happens.
 
 ```
 StandardError
-└── XmlsecRb::Error                  base; rescue this to catch everything
-    ├── XmlsecRb::ConfigurationError invalid Signer/Verifier construction
-    │   ├── XmlsecRb::PolicyError    a Policy allowlist was violated
-    │   ├── XmlsecRb::PlacementError placement XPath matched 0 or >1 nodes
-    │   ├── XmlsecRb::NokogiriRequired  this capability needs a DOM (§6.1)
-    │   └── XmlsecRb::SchemaError    <Signature> failed XSD validation (§5.3)
-    ├── XmlsecRb::ParseError         the XML would not parse
-    ├── XmlsecRb::KeyLoadError       key or certificate unreadable / unsupported
-    ├── XmlsecRb::ReferenceError     a reference target does not exist, is
+└── HankoXml::Error                  base; rescue this to catch everything
+    ├── HankoXml::ConfigurationError invalid Signer/Verifier construction
+    │   ├── HankoXml::PolicyError    a Policy allowlist was violated
+    │   ├── HankoXml::PlacementError placement XPath matched 0 or >1 nodes
+    │   ├── HankoXml::NokogiriRequired  this capability needs a DOM (§6.1)
+    │   └── HankoXml::SchemaError    <Signature> failed XSD validation (§5.3)
+    ├── HankoXml::ParseError         the XML would not parse
+    ├── HankoXml::KeyLoadError       key or certificate unreadable / unsupported
+    ├── HankoXml::ReferenceError     a reference target does not exist, is
     │                                ambiguous, or has no ID attribute
-    ├── XmlsecRb::SigningError       libxmlsec1 could not produce a signature
-    ├── XmlsecRb::VerificationError  verification did not succeed  (raised by verify!)
-    │   ├── XmlsecRb::SignatureInvalid       cryptographic mismatch
-    │   ├── XmlsecRb::SignatureMissing       no <ds:Signature> in the document
-    │   ├── XmlsecRb::MultipleSignatures     signature: :only and >1 present
-    │   ├── XmlsecRb::UntrustedCertificate   chain/pinning failed
-    │   ├── XmlsecRb::CertificateExpired     outside notBefore/notAfter, as of
+    ├── HankoXml::SigningError       libxmlsec1 could not produce a signature
+    ├── HankoXml::VerificationError  verification did not succeed  (raised by verify!)
+    │   ├── HankoXml::SignatureInvalid       cryptographic mismatch
+    │   ├── HankoXml::SignatureMissing       no <ds:Signature> in the document
+    │   ├── HankoXml::MultipleSignatures     signature: :only and >1 present
+    │   ├── HankoXml::UntrustedCertificate   chain/pinning failed
+    │   ├── HankoXml::CertificateExpired     outside notBefore/notAfter, as of
     │   │                                    verification_time (§5.3)
-    │   ├── XmlsecRb::DigestMismatch         one <Reference>'s digest is wrong;
+    │   ├── HankoXml::DigestMismatch         one <Reference>'s digest is wrong;
     │   │                                    carries #reference_uri (§5.4)
-    │   └── XmlsecRb::ResolutionMismatch     resolver vs xmlsec disagree (§5.9)
-    ├── XmlsecRb::NotSignedError     Verification#at_signed found a node that
+    │   └── HankoXml::ResolutionMismatch     resolver vs xmlsec disagree (§5.9)
+    ├── HankoXml::NotSignedError     Verification#at_signed found a node that
     │                                the signature does not cover (§5.4)
-    ├── XmlsecRb::FrozenSignatureError  a mutator was called on a
+    ├── HankoXml::FrozenSignatureError  a mutator was called on a
     │                                SignedDocument (§6.7)
-    └── XmlsecRb::NativeError        libxmlsec1 failed in an unexpected way
+    └── HankoXml::NativeError        libxmlsec1 failed in an unexpected way
 ```
 
-`XmlsecRb::KeyLoadError`, not `KeyError` — see the shadowing rule in §4.
+`HankoXml::KeyLoadError`, not `KeyError` — see the shadowing rule in §4.
 
 Every error carries structured context, not just a message:
 
@@ -929,7 +929,7 @@ the difference between `SigningError: failed to sign` and an actual diagnosis,
 and it is the single highest-value thing the Rust layer can add beyond the
 crypto itself.
 
-**`XmlsecRb::Error` and subclasses never carry key material.** The error
+**`HankoXml::Error` and subclasses never carry key material.** The error
 constructor filters any value that came from a `Key`.
 
 
@@ -945,9 +945,9 @@ optional dependency, loaded only if present, and the library degrades to a
 documented, narrower API without it — it does not fail to load, and it does not
 fall back silently to something less safe.
 
-This preserves what works in the pre-contract code today: `lib/xmlsec_rb.rb`
+This preserves what works in the pre-contract code today: `lib/hanko_xml.rb`
 never `require`s Nokogiri, probing for it with `defined?(Nokogiri::XML::Document)`
-instead, so `XmlsecRb.validate(xml_string, cert_pem)` already runs with Nokogiri
+instead, so `HankoXml.validate(xml_string, cert_pem)` already runs with Nokogiri
 absent. Making it mandatory would have been an unannounced dependency
 regression on existing callers.
 
@@ -961,7 +961,7 @@ The split falls along one line: **what needs a DOM in Ruby, and what does not.**
 | XSD schema validation of `<Signature>` (§5.3) | ❌ | ✅ |
 | Sign into a `<Signature>` template already in the document (`template: :require`) | ✅ | ✅ |
 | Build a template — choose references, transforms, placement | ❌ | ✅ |
-| `XmlsecRb.parse` / `.serialize`, `SignedDocument`, `nokogiri_ext` | ❌ | ✅ |
+| `HankoXml.parse` / `.serialize`, `SignedDocument`, `nokogiri_ext` | ❌ | ✅ |
 
 Verification survives DOM-free because the native layer must parse the document
 anyway: `Native.inspect` (§7) returns the `<SignedInfo>` metadata as plain Ruby
@@ -979,17 +979,17 @@ injection bug waiting for its first unusual reference URI.
 #### How it degrades
 
 ```ruby
-XmlsecRb.nokogiri?          # => false
-XmlsecRb.capabilities       # => {verify: true, sign: :template_only,
+HankoXml.nokogiri?          # => false
+HankoXml.capabilities       # => {verify: true, sign: :template_only,
                             #     coverage_checks: false, schema: false, …}
 ```
 
-Calling a capability that needs the DOM raises `XmlsecRb::NokogiriRequired`
+Calling a capability that needs the DOM raises `HankoXml::NokogiriRequired`
 (a `ConfigurationError`) naming the capability and the fix, never a
 `NoMethodError` on a missing constant:
 
 ```
-XmlsecRb::NokogiriRequired: Verification#at_signed needs a DOM to resolve
+HankoXml::NokogiriRequired: Verification#at_signed needs a DOM to resolve
 node identity, and Nokogiri is not loaded. Add `gem "nokogiri"` to your
 Gemfile, or verify without coverage checks using #valid? and treat the whole
 document as untrusted beyond the verdict.
@@ -1005,12 +1005,12 @@ particular `#signed?` never degrades to `true`.
 #### Declaring it
 
 ```ruby
-# xmlsec_rb.gemspec — NOT a runtime dependency
+# hanko_xml.gemspec — NOT a runtime dependency
 spec.metadata["optional_dependencies"] = "nokogiri"
 spec.add_development_dependency "nokogiri", "~> 1.18"
 ```
 
-`lib/xmlsec_rb/dom.rb` is the single place that probes for Nokogiri and holds
+`lib/hanko_xml/dom.rb` is the single place that probes for Nokogiri and holds
 every `defined?(Nokogiri…)` check. Nothing else in the library references the
 constant directly, so the DOM-free path is one seam rather than a condition
 scattered through twelve files, and "does this work without Nokogiri" is
@@ -1023,7 +1023,7 @@ Everywhere a document is taken (`sign`, `sign!`, `verify`, `valid?`, `signed?`):
 - `Nokogiri::XML::Document` — used as-is
 - `Nokogiri::XML::Node` / `::Element` — its `#document` is used; for signing,
   the node becomes the default reference target
-- `String` of XML markup — parsed with `XmlsecRb.parse` (§6.3)
+- `String` of XML markup — parsed with `HankoXml.parse` (§6.3)
 - `Pathname` / `File` / anything responding to `#to_path` — read binary, parsed
 - anything responding to `#read` (`IO`, `StringIO`) — read fully, parsed
   (this was in the POC, dropped in the rewrite, and comes back here)
@@ -1034,27 +1034,27 @@ is a programmer error and not an XML-signature condition.
 ### 6.3 Parsing and serialization helpers
 
 ```ruby
-XmlsecRb.parse(source)      # => Nokogiri::XML::Document
-XmlsecRb.serialize(doc)     # => String
+HankoXml.parse(source)      # => Nokogiri::XML::Document
+HankoXml.serialize(doc)     # => String
 ```
 
 These exist because both operations have a signature-breaking default in
 Nokogiri, and everyone learns that the hard way.
 
-`XmlsecRb.parse` is `Nokogiri::XML(source) { |c| c.strict.nonet }`:
+`HankoXml.parse` is `Nokogiri::XML(source) { |c| c.strict.nonet }`:
 
 - **`strict`** (no `RECOVER`): a malformed document must raise, not be silently
   repaired into a different document than the one that was signed.
 - **`nonet`**: no network fetches for DTDs or entities (Nokogiri's default, made
   explicit and non-negotiable here).
 - **never `noblanks`**: `NOBLANKS` strips whitespace text nodes, which changes
-  canonical form and breaks every signature over the document. `XmlsecRb.parse`
+  canonical form and breaks every signature over the document. `HankoXml.parse`
   raises `ArgumentError` if handed a `ParseOptions` with `NOBLANKS` set.
 - **never `noent`**: entity substitution is left off, so entity-expansion
   attacks and signature-over-expanded-entities confusion are both avoided.
 - **never `huge`**: libxml2's built-in limits stay on.
 
-`XmlsecRb.serialize` is
+`HankoXml.serialize` is
 `doc.to_xml(save_with: Nokogiri::XML::Node::SaveOptions::AS_XML)`:
 
 - Nokogiri's default is `DEFAULT_XML == FORMAT | AS_XML` (`33`). `FORMAT`
@@ -1065,7 +1065,7 @@ Nokogiri, and everyone learns that the hard way.
   `Verification#inspect`.
 
 `Signer#sign` returns a document; getting bytes out of it is
-`XmlsecRb.serialize(signed)`, and that is the only serialization we support for
+`HankoXml.serialize(signed)`, and that is the only serialization we support for
 signed documents.
 
 ### 6.4 The write-back guarantee (how `sign!` stays safe)
@@ -1106,11 +1106,11 @@ purposes.
 The one documented exception is a **parse-option mismatch on DTD default
 attributes**. libxml2 only materialises `<!ATTLIST>` defaults into the tree when
 the document was parsed with `DTDATTR` or `DTDVALID` (verified: neither is set
-by `Nokogiri::XML` by default, nor by `XmlsecRb.parse`). If the caller parsed
+by `Nokogiri::XML` by default, nor by `HankoXml.parse`). If the caller parsed
 their document *with* those options, their in-memory tree carries attributes
-that step 3's re-parse — which uses `XmlsecRb.parse`'s options — will not, and
+that step 3's re-parse — which uses `HankoXml.parse`'s options — will not, and
 the signature would cover different content than the caller's tree. `sign!`
-therefore raises `XmlsecRb::ConfigurationError` when the document has an
+therefore raises `HankoXml::ConfigurationError` when the document has an
 internal subset containing `ATTLIST` declarations *and* was parsed with
 `DTDATTR`/`DTDVALID`, rather than producing a signature that verifies for us and
 for nobody else. Documents whose DTD declares no attribute defaults, and
@@ -1132,7 +1132,7 @@ Off by default. The Ruby way is not to monkeypatch someone else's classes
 without being asked.
 
 ```ruby
-require "xmlsec_rb/nokogiri_ext"
+require "hanko_xml/nokogiri_ext"
 
 doc.sign(key: key, certificate: cert)     # => new Nokogiri::XML::Document
 doc.sign!(key: key, certificate: cert)    # => doc
@@ -1145,9 +1145,9 @@ Namespaced deliberately as `signature_valid?` rather than `valid?` — Nokogiri
 already has `Document#validate`, and a bare `valid?` on a document means schema
 validity to most readers.
 
-### 6.7 `XmlsecRb::SignedDocument` — a document you cannot mis-serialize
+### 6.7 `HankoXml::SignedDocument` — a document you cannot mis-serialize
 
-`Signer#sign` and `XmlsecRb.sign` do **not** return a bare
+`Signer#sign` and `HankoXml.sign` do **not** return a bare
 `Nokogiri::XML::Document`. A bare document's `#to_xml` defaults to
 `FORMAT | AS_XML`, which reindents the tree and invalidates the signature that
 was just computed — a footgun that fires silently, produces valid-looking XML,
@@ -1155,8 +1155,8 @@ and is discovered by the counterparty. Handing the caller an object whose
 obvious method breaks the thing we just built is not acceptable ergonomics.
 
 ```ruby
-signed = XmlsecRb.sign(doc, key: key, certificate: cert)
-# => #<XmlsecRb::SignedDocument signatures=1 valid=true>
+signed = HankoXml.sign(doc, key: key, certificate: cert)
+# => #<HankoXml::SignedDocument signatures=1 valid=true>
 
 signed.to_xml                       # => String, always AS_XML. Safe.
 signed.to_s                         # => same
@@ -1174,7 +1174,7 @@ signed.valid?(certificate: cert)    # => self-check round trip
 `SignedDocument` delegates read-only Nokogiri methods (`#at_xpath`, `#xpath`,
 `#root`, `#encoding`, `#errors`, …) to the wrapped document, so it is a drop-in
 for reading. It deliberately does **not** delegate mutators — `#add_child`,
-`#remove`, `#content=` and friends raise `XmlsecRb::FrozenSignatureError` with
+`#remove`, `#content=` and friends raise `HankoXml::FrozenSignatureError` with
 a message pointing at `#document` for callers who genuinely mean it. Any
 mutation invalidates the signature; failing loudly at the mutation beats failing
 mysteriously at the counterparty.
@@ -1183,12 +1183,12 @@ mysteriously at the counterparty.
 because the caller already holds that object and wrapping it would be a lie
 about what they have. The `sign` / `sign!` asymmetry is therefore: `sign` is
 safe by construction, `sign!` is in-place and expects you to know that
-`XmlsecRb.serialize` (§6.3) is how you write it out.
+`HankoXml.serialize` (§6.3) is how you write it out.
 
 ### 6.8 Namespace helpers
 
 ```ruby
-XmlsecRb::NS = {
+HankoXml::NS = {
   "ds"  => "http://www.w3.org/2000/09/xmldsig#",
   "ds11"=> "http://www.w3.org/2009/xmldsig11#",
   "ec"  => "http://www.w3.org/2001/10/xml-exc-c14n#",
@@ -1200,33 +1200,33 @@ never `//Signature`, never `local-name()=`. A document that puts a decoy
 `<Signature>` in another namespace must not confuse us.
 
 Caller-supplied XPaths (`placement:`, `signature:`, `reference(xpath:)`) get the
-caller's `namespaces:` map merged over `XmlsecRb::NS`.
+caller's `namespaces:` map merged over `HankoXml::NS`.
 
 ---
 
 ## 7. Layer 0 — the native contract
 
-This is the entire Ruby↔Rust surface. It is `XmlsecRb::Native`, documented as
+This is the entire Ruby↔Rust surface. It is `HankoXml::Native`, documented as
 **private API**: no semantic versioning guarantees, not for direct use.
 
 ```ruby
-XmlsecRb::Native.check_version
+HankoXml::Native.check_version
 # => true when the linked libxmlsec1 matches what bindgen ran against
 
-XmlsecRb::Native.versions
+HankoXml::Native.versions
 # => { xmlsec: "1.3.4", libxml2: "2.15.3", crypto: "openssl-3.5.0" }
-#    Used by XmlsecRb.zero_copy_available? (§7.4) and by bug reports.
+#    Used by HankoXml.zero_copy_available? (§7.4) and by bug reports.
 
-XmlsecRb::Native.sign(xml, key_pem, cert_pems, id_attributes, signature_index)
+HankoXml::Native.sign(xml, key_pem, cert_pems, id_attributes, signature_index)
 #   xml             : String (binary) — the complete document, template included
 #   key_pem         : String (binary) — PEM private key, already decrypted
 #   cert_pems       : Array<String>   — PEM certs to attach to the key for KeyInfo
 #   id_attributes   : Array<String | [href, name]>
 #   signature_index : Integer — which <ds:Signature> in document order to fill
 # => String (binary) — the signed document
-# raises XmlsecRb::SigningError / NativeError, with #xmlsec_errors populated
+# raises HankoXml::SigningError / NativeError, with #xmlsec_errors populated
 
-XmlsecRb::Native.inspect(xml, signature_index)
+HankoXml::Native.inspect(xml, signature_index)
 #   Parses, locates the nth <ds:Signature>, and returns its <SignedInfo> as
 #   plain Ruby data. NO cryptography, no transform execution, no key material:
 #   this is a libxml2 parse and some attribute reads, safe to run on untrusted
@@ -1241,7 +1241,7 @@ XmlsecRb::Native.inspect(xml, signature_index)
 #                      transforms: ["http://…#enveloped-signature", "http://…#exc-c14n"],
 #                      id: nil, type: nil } ] }
 
-XmlsecRb::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signature_index)
+HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signature_index)
 #   trusted_pems    : Array<String> — certs/keys that establish trust
 #   untrusted_pems  : Array<String> — intermediates, for chain building
 # => { status: :succeeded | :invalid | :unknown, errors: Array<String> }
@@ -1291,7 +1291,7 @@ Keeping the rewrite's split, with the POC's readability lessons from
 `RUST_COMPARISON.md` applied:
 
 ```
-ext/xmlsec_rb/src/
+ext/hanko_xml/src/
   sys.rs      bindgen output include, plus thin aliases for the enum constants
               whose generated names are unreadable
               (sys::KEY_FORMAT_PEM = sys::xmlSecKeyDataFormat_xmlSecKeyDataFormatPem)
@@ -1360,9 +1360,9 @@ where the final signature operation executes.
 Sketched, not specified: this would surface as
 
 ```ruby
-key = XmlsecRb::Key.from_engine("pkcs11", uri: "pkcs11:object=my-a3;type=private",
+key = HankoXml::Key.from_engine("pkcs11", uri: "pkcs11:object=my-a3;type=private",
                                 pin: ENV["PKCS11_PIN"])
-XmlsecRb::Signer.new(key: key, certificate: cert).sign(doc)
+HankoXml::Signer.new(key: key, certificate: cert).sign(doc)
 ```
 
 and would add one native entry point (an engine/provider-aware variant of the
@@ -1393,16 +1393,16 @@ For deployments that build Nokogiri against the system libxml2 — the only
 configuration in which pointer sharing is defined behaviour:
 
 ```ruby
-XmlsecRb.zero_copy_available?
+HankoXml.zero_copy_available?
 # true only when ALL of:
 #   Nokogiri::VERSION_INFO["libxml"]["source"] == "system"
 #   Nokogiri::VERSION_INFO["libxml"]["loaded"] == Native.versions[:libxml2]
 # i.e. one shared libxml2, one allocator, one struct layout.
 
-XmlsecRb.sign(doc, key: k, certificate: c, zero_copy: true)
+HankoXml.sign(doc, key: k, certificate: c, zero_copy: true)
 ```
 
-`zero_copy: true` raises `XmlsecRb::ConfigurationError` when
+`zero_copy: true` raises `HankoXml::ConfigurationError` when
 `zero_copy_available?` is false, naming both versions in the message. It is
 never a default and never inferred. On the machine this document was written on
 it is false (`source=packaged`, 2.13.9 vs 2.15.3).
@@ -1418,15 +1418,15 @@ the library and should not be built until someone has that measurement.
 ### 8.1 The simplest thing
 
 ```ruby
-require "xmlsec_rb"
+require "hanko_xml"
 
 key  = OpenSSL::PKey::RSA.new(File.read("signer.key"))
 cert = OpenSSL::X509::Certificate.new(File.read("signer.crt"))
 
-signed = XmlsecRb.sign(XmlsecRb.parse(File.read("doc.xml")), key: key, certificate: cert)
-File.binwrite("signed.xml", XmlsecRb.serialize(signed))
+signed = HankoXml.sign(HankoXml.parse(File.read("doc.xml")), key: key, certificate: cert)
+File.binwrite("signed.xml", HankoXml.serialize(signed))
 
-XmlsecRb.valid?(signed, certificate: cert)  # => true
+HankoXml.valid?(signed, certificate: cert)  # => true
 ```
 
 Enveloped, whole document, RSA-SHA256, exclusive C14N, `<Signature>` appended to
@@ -1435,12 +1435,12 @@ the root. No template, no keys manager, no algorithm URIs.
 ### 8.2 Brazilian NFe (the driving use case)
 
 ```ruby
-require "xmlsec_rb"
+require "hanko_xml"
 
-bundle = XmlsecRb::Key.from_pkcs12("certificado_a1.pfx", password: ENV.fetch("PFX_PASSWORD"))
+bundle = HankoXml::Key.from_pkcs12("certificado_a1.pfx", password: ENV.fetch("PFX_PASSWORD"))
 
 # NFe requires SHA-1 and explicit configuration
-signer = XmlsecRb::Signer.new(
+signer = HankoXml::Signer.new(
   key:                     bundle.key,
   certificates:            bundle.certificates,
   signature_method:        :rsa_sha1,
@@ -1448,7 +1448,7 @@ signer = XmlsecRb::Signer.new(
   canonicalization_method: :c14n,
   id_attributes:           %w[Id],
   key_info:                [:x509_certificate],
-  placement:               XmlsecRb::Placement.after("//ds:Signature")
+  placement:               HankoXml::Placement.after("//ds:Signature")
 )
 
 signed = signer.sign(nfe_doc)
@@ -1457,9 +1457,9 @@ signed = signer.sign(nfe_doc)
 Which is equivalent to writing this manually without the helper wrapper.
 
 ```ruby
-v = XmlsecRb::Verifier.new(
+v = HankoXml::Verifier.new(
   store:         idp_store,
-  policy:        XmlsecRb::Policy.strict.with(require_signed_root: false),
+  policy:        HankoXml::Policy.strict.with(require_signed_root: false),
   id_attributes: %w[ID],
   signature:     :only,
 ).verify(response_doc)
@@ -1483,16 +1483,16 @@ mandatory rather than merely advisable. The documentation for
 ### 8.4 Detached signature, custom placement
 
 ```ruby
-signer = XmlsecRb::Signer.new(key: key, certificate: cert) do |s|
+signer = HankoXml::Signer.new(key: key, certificate: cert) do |s|
   s.reference "#payload-1", transforms: %i[exc_c14n]
-  s.placement = XmlsecRb::Placement.after("//*[@Id='payload-1']")
+  s.placement = HankoXml::Placement.after("//*[@Id='payload-1']")
 end
 ```
 
 ### 8.5 Enveloping signature
 
 ```ruby
-signer = XmlsecRb::Signer.new(key: key, certificate: cert) do |s|
+signer = HankoXml::Signer.new(key: key, certificate: cert) do |s|
   s.object payload_element, id: "object-1"
   s.reference "#object-1", transforms: %i[exc_c14n]
 end
@@ -1502,7 +1502,7 @@ signer.sign(Nokogiri::XML("<Root/>"))
 ### 8.6 Multiple signatures
 
 ```ruby
-XmlsecRb::Verifier.new(store: store).verify_all(doc).each do |v|
+HankoXml::Verifier.new(store: store).verify_all(doc).each do |v|
   puts "#{v.certificate&.subject} → #{v.valid? ? "ok" : v.errors.map(&:message).join("; ")}"
 end
 ```
@@ -1519,7 +1519,7 @@ puts signer.to_h                   # every default resolved to a concrete URI
 ## 9. Threading, reentrancy, resource lifetime
 
 - `xmlSecInit` / `xmlSecOpenSSLAppInit` / `xmlSecOpenSSLInit` run once per
-  process under `std::sync::Once` (kept from the rewrite). `XmlsecRb.init!` is
+  process under `std::sync::Once` (kept from the rewrite). `HankoXml.init!` is
   exposed so applications can force it at boot rather than on first use — the
   recommendation for forking servers is to call it in the parent before fork,
   and for threaded servers to call it during boot.
@@ -1545,13 +1545,13 @@ audit.
 
 ## 10. Compatibility with today's API
 
-`XmlsecRb.validate(xml, certificate)` is kept as a deprecated alias:
+`HankoXml.validate(xml, certificate)` is kept as a deprecated alias:
 
 ```ruby
 def self.validate(xml, certificate)
-  warn "[DEPRECATION] XmlsecRb.validate is deprecated; use XmlsecRb.valid?(xml, certificate:). " \
+  warn "[DEPRECATION] HankoXml.validate is deprecated; use HankoXml.valid?(xml, certificate:). " \
        "Note that valid? applies Policy.strict, which rejects SHA-1; pass " \
-       "policy: XmlsecRb::Policy.legacy_sha1 for documents that require it.",
+       "policy: HankoXml::Policy.legacy_sha1 for documents that require it.",
        uplevel: 1
   valid?(xml, certificate: certificate, policy: Policy.permissive)
 end
@@ -1600,7 +1600,7 @@ to this contract as a direct result of this comparison**.
 | `referenced_documents:` — refs into other documents | `referenced_documents:`, map-only, no fetching — §5.3 | ➕ **added** |
 | `instruct` — emit `<?xml?>` or not | `SignedDocument#to_xml(declaration: false)` — §6.7 | ➕ **added** |
 | `ec:InclusiveNamespaces PrefixList` | `Transform.exc_c14n(inclusive_prefixes:)` | ✅ |
-| `Xmldsig::SchemaError` | `XmlsecRb::SchemaError < ConfigurationError` | ✅ |
+| `Xmldsig::SchemaError` | `HankoXml::SchemaError < ConfigurationError` | ✅ |
 | Pure Ruby, no C dependency | not offered — libxmlsec1 always — §13.6 | ❌ **declined** |
 
 **Not adopted:** their `Canonicalizer`/`Reference`/`Signature` classes are
@@ -1647,7 +1647,7 @@ native surface roughly the size of the first — and it does not compose with
 anything in this document. Signing is the problem the author actually has;
 shipping a good signing library beats shipping half of two.
 
-When it is built, it is `XmlsecRb::Encryptor` / `XmlsecRb::Decryptor` with the
+When it is built, it is `HankoXml::Encryptor` / `HankoXml::Decryptor` with the
 same shape as `Signer`/`Verifier` — a `Policy` (which would default-deny
 `rsa-1_5` and `tripledes-cbc`, both broken, and both `nokogiri-xmlsec` defaults),
 a registry, and bytes across the boundary. Noted in §12 so it is a decision on
@@ -1706,10 +1706,10 @@ Listed so that "not implemented" is a decision rather than an omission:
 Resolved. Recorded with reasoning so they can be revisited on evidence rather
 than re-argued from scratch.
 
-### 13.1 Top-level constant name — `XmlsecRb`, with an opportunistic alias
+### 13.1 Top-level constant name — `HankoXml`, with an opportunistic alias
 
-Keep `XmlsecRb` canonical (it matches the gem name and the compiled extension's
-`magnus::init`). Define `Xmlsec = XmlsecRb` only when `Xmlsec` is not already
+Keep `HankoXml` canonical (it matches the gem name and the compiled extension's
+`magnus::init`). Define `Xmlsec = HankoXml` only when `Xmlsec` is not already
 defined, so loading alongside the `xmlsec` or `nokogiri-xmlsec` gems is not a
 constant collision.
 
@@ -1719,13 +1719,13 @@ constant collision.
 SHA-1, RSA-SHA1, XSLT/XPath transforms, external references and HMAC.
 
 Consequence to plan for: the existing `signed_nfe.xml` fixture fails under the
-default and must pass `policy: XmlsecRb::Policy.legacy_sha1`, and so must every
+default and must pass `policy: HankoXml::Policy.legacy_sha1`, and so must every
 real NFe. That is the intended outcome — SHA-1 in NFe is mandated by the
 *Manual de Orientação do Contribuinte*, not chosen, and code that opts into it
 should say so at the call site. explicitly passing the right algorithms carries the opt-in once,
 in a file with a comment explaining why, so application code never spells it out.
 
-`XmlsecRb.validate` keeps `Policy.permissive` while deprecated (§10), so nothing
+`HankoXml.validate` keeps `Policy.permissive` while deprecated (§10), so nothing
 existing breaks silently; the deprecation warning is what announces the change.
 
 ### 13.3 `require_signed_root` defaults to `true` — **decided**
@@ -1746,7 +1746,7 @@ The failure mode we are choosing: SAML users hit one error, once, and are
 pointed at the right construct. The failure mode we are avoiding: everyone else
 silently accepts wrapped documents. That trade is clearly correct.
 
-### 13.4 `sign` returns `XmlsecRb::SignedDocument` — **decided**
+### 13.4 `sign` returns `HankoXml::SignedDocument` — **decided**
 
 Specified at §6.7. A bare `Nokogiri::XML::Document`'s `#to_xml` reindents and
 invalidates the signature, silently, producing XML that looks fine and fails at
@@ -1759,8 +1759,8 @@ they already hold it.
 
 Specified at §6.1. The draft of this contract made Nokogiri mandatory by
 building Layer 1 on it throughout, which would have been an unannounced
-dependency regression: the pre-contract `lib/xmlsec_rb.rb` never requires
-Nokogiri, and `XmlsecRb.validate(xml_string, cert_pem)` runs today with it
+dependency regression: the pre-contract `lib/hanko_xml.rb` never requires
+Nokogiri, and `HankoXml.validate(xml_string, cert_pem)` runs today with it
 absent.
 
 Verification and template-fill signing stay DOM-free; coverage checks
@@ -1838,7 +1838,7 @@ Each phase is independently shippable and independently testable.
 
 **Phase 1 — foundations, no new native code.**
 `Algorithms`, `Policy`, `Transform`, `Reference`, `KeyInfo`, `Placement`,
-`Key`, errors, `SignatureInfo`, `XmlsecRb.parse` / `.serialize`, `Template`
+`Key`, errors, `SignatureInfo`, `HankoXml.parse` / `.serialize`, `Template`
 (builds the `<Signature>` Nokogiri tree), `Signer#template`, and `Dom` — the
 single Nokogiri probe (§6.1). Build `Policy` against `SignatureInfo`'s plain
 strings, not against Nokogiri nodes, from the first commit: retrofitting the
@@ -1867,7 +1867,7 @@ signatures in `sig/`, YARD.
 
 **Cross-cutting test requirements**, to be written alongside each phase:
 
-- Every fixture verifies identically under `XmlsecRb` and under the `xmlsec1`
+- Every fixture verifies identically under `HankoXml` and under the `xmlsec1`
   CLI. The CLI stays the external oracle it already is.
 - An XSW corpus: signature-wrapping documents that verify `true` under a naive
   implementation and must produce `signed?(node) == false` here. Seed it from
@@ -1884,7 +1884,7 @@ signatures in `sig/`, YARD.
   each asserting a `PolicyError` naming the offending URI.
 - A round-trip property test: `verify(sign(doc)) == true` across the fixture
   matrix and across `{sign, sign!}` × `{Document, String, Pathname, IO}`.
-- An `unsafe`-block count assertion over `ext/xmlsec_rb/src` (§7.2).
+- An `unsafe`-block count assertion over `ext/hanko_xml/src` (§7.2).
 - **The whole suite run twice: once with Nokogiri loaded, once with it hidden**
   (a `$LOAD_PATH` stub that makes `require "nokogiri"` fail). Every DOM-free
   capability in §6.1's matrix must pass in both runs with identical verdicts,

@@ -1,9 +1,0 @@
-module XmlsecRb
-  module Native
-    def self.check_version: () -> bool
-    def self.versions: () -> Hash[Symbol, String]
-    def self.inspect_sig: (String xml_bytes, Integer index) -> Hash[Symbol, untyped]
-    def self.verify: (String xml_bytes, Array[String] trusted, Array[String] untrusted, Array[String] id_attributes, Integer index) -> Hash[Symbol, untyped]
-    def self.sign: (String xml_bytes, String key_pem, Array[String] cert_pems, Array[String] id_attributes, Integer index) -> String
-  end
-end

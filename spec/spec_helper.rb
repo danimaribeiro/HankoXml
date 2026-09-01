@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "xmlsec_rb"
+require "hanko_xml"
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure

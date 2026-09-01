@@ -1,0 +1,32 @@
+module HankoXml
+  class Policy
+    attr_reader require_signed_root: bool
+    attr_reader allowed_digest_methods: Array[Symbol]?
+    attr_reader allowed_signature_methods: Array[Symbol]?
+    attr_reader allow_external_references: bool
+    attr_reader max_references: Integer?
+
+    def self.strict: () -> instance
+    def self.fragment: () -> instance
+    def self.legacy_sha1: () -> instance
+
+    def initialize: (
+      require_signed_root: bool,
+      allowed_digest_methods: Array[Symbol]?,
+      allowed_signature_methods: Array[Symbol]?,
+      allow_external_references: bool,
+      max_references: Integer?
+    ) -> void
+
+    def with: (
+      ?require_signed_root: bool,
+      ?allowed_digest_methods: Array[Symbol]?,
+      ?allowed_signature_methods: Array[Symbol]?,
+      ?allow_external_references: bool,
+      ?max_references: Integer?
+    ) -> instance
+
+    def enforce!: (HankoXml::SignatureInfo sig_info) -> void
+    def violations: (HankoXml::SignatureInfo sig_info) -> Array[String]
+  end
+end

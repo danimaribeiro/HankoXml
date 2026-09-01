@@ -1,0 +1,41 @@
+module HankoXml
+  class Signer
+    attr_reader key: Key
+    attr_reader certificate: Key?
+    attr_reader certificates: Array[Key]
+    attr_reader signature_method: Symbol
+    attr_reader digest_method: Symbol
+    attr_reader canonicalization_method: Symbol
+    attr_reader placement: Placement
+    attr_reader references: Array[Reference]
+    attr_reader key_info: Array[Symbol]
+    attr_reader id_attributes: Array[String]
+    attr_reader template_mode: Symbol
+    attr_reader signature_id: String?
+
+    def initialize: (
+      ?key: (Key | OpenSSL::PKey::PKey | String | _ToPath)?,
+      ?certificate: (Key | OpenSSL::X509::Certificate | String | _ToPath)?,
+      ?certificates: Array[Key | OpenSSL::X509::Certificate | String | _ToPath],
+      ?signature_method: Symbol,
+      ?digest_method: Symbol,
+      ?canonicalization_method: Symbol,
+      ?placement: Placement | Symbol,
+      ?references: Array[Reference | String | Hash[Symbol, untyped]],
+      ?key_info: Array[Symbol],
+      ?id_attributes: Array[String],
+      ?template: Symbol,
+      ?signature_id: String?
+    ) ?{ (self) -> void } -> void
+
+    def sign: (String | Nokogiri::XML::Node | Nokogiri::XML::Document doc_or_xml, ?force: bool, ?signature: untyped) -> HankoXml::SignedDocument
+    def sign!: (Nokogiri::XML::Node | Nokogiri::XML::Document doc_or_xml, ?force: bool, ?signature: untyped) -> (Nokogiri::XML::Node | Nokogiri::XML::Document)
+    
+    def to_h: () -> Hash[Symbol, untyped]
+
+    private
+    def template: (Nokogiri::XML::Document doc) -> Nokogiri::XML::Node
+    def node_signed?: (Nokogiri::XML::Node sig_node) -> bool
+    def write_back_signature: (Nokogiri::XML::Document doc, String signed_bytes, Integer index, Nokogiri::XML::Node caller_sig_node) -> void
+  end
+end

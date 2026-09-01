@@ -1,0 +1,35 @@
+module HankoXml
+  class Verifier
+    attr_reader policy: Policy
+    attr_reader id_attributes: Array[String]
+    attr_reader namespaces: Hash[String, String]
+    attr_reader signature: Symbol | Integer | String
+    attr_reader verification_time: Time?
+    attr_reader schema: Symbol | String | Nokogiri::XML::Schema | nil
+    attr_reader referenced_documents: Hash[String, Nokogiri::XML::Document]
+
+    def initialize: (
+      ?certificate: (Key | OpenSSL::X509::Certificate | String | _ToPath)?,
+      ?certificates: Array[Key | OpenSSL::X509::Certificate | String | _ToPath]?,
+      ?store: OpenSSL::X509::Store?,
+      ?key: (Key | OpenSSL::PKey::PKey | String | _ToPath)?,
+      ?keys: Hash[String, Key | OpenSSL::X509::Certificate | String | _ToPath]?,
+      ?policy: Policy,
+      ?id_attributes: Array[String],
+      ?namespaces: Hash[String, String],
+      ?signature: Symbol | Integer | String,
+      ?verification_time: Time?,
+      ?schema: Symbol | String | Nokogiri::XML::Schema | nil,
+      ?referenced_documents: Hash[String, Nokogiri::XML::Document]
+    ) -> void
+
+    def verify: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml) -> Verification
+    def verify!: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml) -> Verification
+    def valid?: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml) -> bool
+    def verify_all: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml) -> Array[Verification]
+
+    private
+    def resolve_signature_target: (Nokogiri::XML::NodeSet sigs, Symbol | Integer | String signature_option) -> [Nokogiri::XML::Node?, Integer]
+    def verify_single: (Nokogiri::XML::Document doc, Nokogiri::XML::Node sig_node, Integer index) -> Verification
+  end
+end

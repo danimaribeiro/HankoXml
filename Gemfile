@@ -2,7 +2,7 @@
 
 source "https://rubygems.org"
 
-# Specify your gem's dependencies in xmlsec_rb.gemspec
+# Specify your gem's dependencies in hanko_xml.gemspec
 gemspec
 
 gem "rake", "~> 13.0"

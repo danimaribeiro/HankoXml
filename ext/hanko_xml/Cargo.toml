@@ -1,0 +1,17 @@
+[package]
+name = "hanko_xml"
+version = "0.1.0"
+edition = "2021"
+authors = ["Danimar Ribeiro <danimaribeiro@gmail.com>"]
+license = "MIT"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+magnus = { version = "0.6.2" }
+
+[build-dependencies]
+bindgen = "0.69"
+pkg-config = "0.3"

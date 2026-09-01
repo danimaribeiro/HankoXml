@@ -3,5 +3,5 @@
 # in the ext/ directory.
 
 [workspace]
-members = ["./ext/xmlsec_rb"]
+members = ["./ext/hanko_xml"]
 resolver = "2"

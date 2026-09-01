@@ -1,4 +1,4 @@
-# XmlsecRb
+# HankoXml
 
 XML digital signature (XML-DSig) verification for Ruby, implemented as a
 Rust native extension that calls [libxmlsec1](https://www.aleksey.com/xmlsec/)
@@ -7,7 +7,7 @@ FFI bindings — not by shelling out to the `xmlsec1` CLI. The Ruby-facing API
 is built with [Magnus](https://github.com/matsadler/magnus) and
 [rb-sys](https://github.com/oxidize-rb/rb-sys).
 
-The Rust side is deliberately split in two: `ext/xmlsec_rb/src/lib.rs`'s
+The Rust side is deliberately split in two: `ext/hanko_xml/src/lib.rs`'s
 `sys` module is thin, unsafe, one-to-one bindgen output; `verify_signature`
 and its two entry points are the only place that coordinates those raw calls
 into something safe, mirroring xmlsec's own `verify2.c` example (find the
@@ -35,10 +35,10 @@ lookups, etc.) — two different libxml2 ABIs operating on the same
 by its exact absolute path rather than `-lxml2` + `-L` (rustc always emits
 `-l` flags before `-L` search paths, so a plain search-based link can't be
 fixed by adding `-L` — verified empirically with a linker-trace wrapper).
-If you ever see `xmlsec_rb` crash or misbehave specifically on `#id`/ID
+If you ever see `hanko_xml` crash or misbehave specifically on `#id`/ID
 lookups or other structural reads on a parsed doc, this class of bug —
 two different libxml2s loaded into the same process — is the first thing to
-check (`otool -L` on `xmlsec_rb.bundle` and on `libxmlsec1-openssl.dylib`
+check (`otool -L` on `hanko_xml.bundle` and on `libxmlsec1-openssl.dylib`
 should show the exact same libxml2 path).
 
 ## Installation
@@ -47,20 +47,20 @@ Not yet released to RubyGems.org. To use from a Gemfile pointed at this
 repo:
 
 ```ruby
-gem "xmlsec_rb", git: "https://github.com/danimaribeiro/xmlsec_rb"
+gem "hanko_xml", git: "https://github.com/danimaribeiro/hanko_xml"
 ```
 
 ## Usage
 
 ```ruby
-require "xmlsec_rb"
+require "hanko_xml"
 
-XmlsecRb.validate(xml, certificate) # => true / false, or raises XmlsecRb::Error
+HankoXml.validate(xml, certificate) # => true / false, or raises HankoXml::Error
 ```
 
 Returns `true` only when libxmlsec1 confirms the `<Signature>` in `xml` is
 cryptographically valid and chains to `certificate`; `false` for a
-well-formed but invalid/untrusted signature. Raises `XmlsecRb::Error` when
+well-formed but invalid/untrusted signature. Raises `HankoXml::Error` when
 verification can't run at all (unparseable XML, no `<Signature>` element,
 unreadable certificate).
 
@@ -91,7 +91,7 @@ signature verification, not mocks.
 ## Contributing
 
 Bug reports and pull requests are welcome on GitHub at
-https://github.com/danimaribeiro/xmlsec_rb.
+https://github.com/danimaribeiro/hanko_xml.
 
 ## License
 
