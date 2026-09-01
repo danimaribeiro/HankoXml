@@ -1,9 +1,27 @@
 # frozen_string_literal: true
 
 module XmlsecRb
+  # Orchestrates XML Digital Signature verification.
+  # Handles fetching signatures, validating against a schema, verifying cryptographic integrity,
+  # and enforcing security policies.
   class Verifier
     attr_reader :policy, :id_attributes, :namespaces, :signature, :verification_time, :schema, :referenced_documents
     
+    # Creates a new Verifier with the given trust anchors and configuration.
+    # Note: You must specify exactly one trust source.
+    #
+    # @param certificate [Key, OpenSSL::X509::Certificate, String, Pathname] A single trusted certificate.
+    # @param certificates [Array<Key, OpenSSL::X509::Certificate, String, Pathname>] A list of trusted certificates.
+    # @param store [OpenSSL::X509::Store] An OpenSSL store of trusted root certificates.
+    # @param key [Key, OpenSSL::PKey::PKey, String, Pathname] A trusted public key.
+    # @param keys [Hash<String, Key>] A mapping of `<KeyName>` to trusted keys.
+    # @param policy [Policy] The security policy to enforce (defaults to {Policy.strict}).
+    # @param id_attributes [Array<String>] Attributes to consider as IDs for `#foo` references.
+    # @param namespaces [Hash<String, String>] Namespaces for XPath signature selection.
+    # @param signature [Symbol, Integer, String] Which signature to verify: `:first`, `:only`, `:all`, an integer index, or an XPath.
+    # @param verification_time [Time, nil] The time to use for checking certificate expiration bounds.
+    # @param schema [Symbol, String, Nokogiri::XML::Schema, nil] An XSD schema to pre-validate the signature node (e.g. `:default`).
+    # @param referenced_documents [Hash<String, Nokogiri::XML::Document>] Documents to resolve external references.
     def initialize(certificate: nil, certificates: nil, store: nil, key: nil, keys: nil,
                    policy: XmlsecRb::Policy.strict, id_attributes: %w[Id ID id],
                    namespaces: {}, signature: :first, verification_time: nil,
@@ -30,6 +48,11 @@ module XmlsecRb
       freeze
     end
 
+    # Verifies the target signature(s). Returns a single {Verification} object.
+    # Does not raise cryptographic errors; instead, captures them in the returned object.
+    #
+    # @param xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The signed XML.
+    # @return [XmlsecRb::Verification] The verification result.
     def verify(xml)
       doc = XmlsecRb.coerce_document(xml)
       # Find signatures
@@ -64,6 +87,11 @@ module XmlsecRb
       verify_single(doc, target_sig, index)
     end
 
+    # Verifies the target signature(s) and raises an error if verification fails.
+    #
+    # @param xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The signed XML.
+    # @raise [XmlsecRb::VerificationError] If the signature is invalid or violates policy.
+    # @return [XmlsecRb::Verification] The valid verification result.
     def verify!(xml)
       result = verify(xml)
       unless result.valid?
@@ -74,10 +102,18 @@ module XmlsecRb
       result
     end
     
+    # Returns true if the document signature is valid.
+    #
+    # @param xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The signed XML.
+    # @return [Boolean] True if valid, false otherwise.
     def valid?(xml)
       verify(xml).valid?
     end
 
+    # Verifies all signatures in the document and returns an array of {Verification} results.
+    #
+    # @param xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The signed XML.
+    # @return [Array<XmlsecRb::Verification>] An array of verification results.
     def verify_all(xml)
       doc = XmlsecRb.coerce_document(xml)
       sigs = doc.xpath(".//ds:Signature", ds: NS["ds"])

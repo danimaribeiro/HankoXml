@@ -16,9 +16,24 @@ module XmlsecRb
 
     attr_accessor :key, :certificate, :certificates, :signature_method, :canonicalization_method,
                   :digest_method, :references, :placement, :id_attributes, :namespaces,
-                  :signature_id, :policy
+                  :signature_id, :policy, :key_info
     attr_reader :template_mode
 
+    # Creates a new Signer with the given configuration.
+    # Yields +self+ to a block if provided, allowing block-based configuration before freezing.
+    #
+    # @param key [Key, OpenSSL::PKey::PKey, String, Pathname] The private key used to sign the document.
+    # @param certificate [Key, OpenSSL::X509::Certificate, String, Pathname, nil] The certificate corresponding to the key.
+    # @param certificates [Array<Key, OpenSSL::X509::Certificate, String, Pathname>] Extra certificates for the chain.
+    # @param signature_method [Symbol] The signature algorithm (e.g., :rsa_sha256).
+    # @param digest_method [Symbol] The digest algorithm for references (e.g., :sha256).
+    # @param canonicalization_method [Symbol] The canonicalization method for SignedInfo (e.g., :exc_c14n).
+    # @param placement [Placement, Symbol] Where to insert the `<Signature>` node (e.g., :append_to_root).
+    # @param references [Array<Reference, String, Hash>] The references to sign.
+    # @param key_info [Array<Symbol>] The elements to include in `<KeyInfo>` (e.g., :x509_certificate, :key_name).
+    # @param id_attributes [Array<String>] The attribute names considered as IDs for `#foo` references.
+    # @param template [Symbol] Either :adopt (reuse existing signature template), :build, or :require.
+    # @param signature_id [String, nil] The Id attribute to place on the `<Signature>` element itself.
     def initialize(key:, certificate: nil, certificates: nil, signature_method: :rsa_sha256,
                    canonicalization_method: :exc_c14n, digest_method: :sha256, references: [],
                    key_info: [:x509_certificate], placement: :append_to_root,
@@ -87,6 +102,13 @@ module XmlsecRb
       }
     end
 
+    # Signs a document without modifying the original.
+    # Returns a {SignedDocument} safe for serialization.
+    #
+    # @param doc_or_xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The document to sign.
+    # @param force [Boolean] Whether to re-sign already signed signatures.
+    # @param signature [Symbol, Integer, String, nil] The target signature to sign (defaults to all).
+    # @return [XmlsecRb::SignedDocument] The new signed document.
     def sign(doc_or_xml, force: false, signature: nil)
       doc = XmlsecRb.coerce_document(doc_or_xml)
       # Deep clone the document to avoid mutating the input if it's already a document.
@@ -95,6 +117,13 @@ module XmlsecRb
       XmlsecRb::SignedDocument.new(cloned)
     end
 
+    # Signs a Nokogiri XML document in place.
+    # Mutates the provided document by appending/writing back signature bytes.
+    #
+    # @param doc_or_xml [Nokogiri::XML::Node, Nokogiri::XML::Document] The document to mutate.
+    # @param force [Boolean] Whether to re-sign already signed signatures.
+    # @param signature [Symbol, Integer, String, nil] The target signature to sign (defaults to all).
+    # @return [Nokogiri::XML::Node, Nokogiri::XML::Document] The mutated document.
     def sign!(doc_or_xml, force: false, signature: nil)
       doc = XmlsecRb.coerce_document(doc_or_xml)
       Dom.require!("XmlsecRb::Signer#sign!")

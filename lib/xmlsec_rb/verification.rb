@@ -1,8 +1,14 @@
 # frozen_string_literal: true
 
 module XmlsecRb
+  # The result of a signature verification attempt.
+  # Provides methods to inspect which nodes were actually signed, defending against
+  # XML Signature Wrapping (XSW) attacks.
+  # See API_CONTRACT.md §5.4.
   class Verification
+    # Details about a specific `<Reference>` inside the verified signature.
     Reference = Struct.new(:uri, :node, :digest_method, :transforms, :valid?, :errors, keyword_init: true) do
+      # @return [Boolean] True if the reference uses the enveloped-signature transform.
       def enveloped?
         transforms.include?(:enveloped_signature)
       end
@@ -20,17 +26,18 @@ module XmlsecRb
       freeze
     end
 
+    # @return [Boolean] True if the signature is completely valid.
     def valid?
       @valid
     end
 
     # --- Authenticated metadata ---
     def signature_method
-      signature_info.signature_method_name
+      signature_info&.signature_method
     end
 
     def canonicalization_method
-      signature_info.canonicalization_method_name
+      signature_info&.canonicalization_method
     end
 
     def digest_methods
