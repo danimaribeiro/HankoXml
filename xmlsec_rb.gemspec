@@ -8,9 +8,9 @@ Gem::Specification.new do |spec|
   spec.authors = ["Danimar Ribeiro"]
   spec.email = ["danimaribeiro@gmail.com"]
 
-  spec.summary = "XML digital signatures for Ruby via a Rust extension calling libxmlsec1."
-  spec.description = "xmlsec_rb signs and verifies XML documents (XML-DSig) by binding to " \
-                      "libxmlsec1 through a Rust extension built with Magnus and rb-sys."
+  spec.summary = "XML digital signature verification for Ruby via a Rust extension calling libxmlsec1."
+  spec.description = "xmlsec_rb verifies XML-DSig signatures by binding to libxmlsec1 through a " \
+                      "Rust extension built with Magnus and rb-sys. Signing is not implemented yet."
   spec.homepage = "https://github.com/danimaribeiro/xmlsec_rb"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0.0"
