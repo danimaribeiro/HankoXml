@@ -1,99 +1,127 @@
 # HankoXml
 
-XML digital signature (XML-DSig) verification for Ruby, implemented as a
-Rust native extension that calls [libxmlsec1](https://www.aleksey.com/xmlsec/)
-directly through hand-written [bindgen](https://github.com/rust-lang/rust-bindgen)
-FFI bindings — not by shelling out to the `xmlsec1` CLI. The Ruby-facing API
-is built with [Magnus](https://github.com/matsadler/magnus) and
-[rb-sys](https://github.com/oxidize-rb/rb-sys).
+A high-performance, strictly secure XML Digital Signature (XML-DSig) library for Ruby.
 
-The Rust side is deliberately split in two: `ext/hanko_xml/src/lib.rs`'s
-`sys` module is thin, unsafe, one-to-one bindgen output; `verify_signature`
-and its two entry points are the only place that coordinates those raw calls
-into something safe, mirroring xmlsec's own `verify2.c` example (find the
-`<Signature>` node, build a keys manager trusting one certificate, verify,
-check status). Signing is not implemented yet.
+HankoXml is backed by a native Rust extension that binds directly to [libxmlsec1](https://www.aleksey.com/xmlsec/) using [Magnus](https://github.com/matsadler/magnus). It is designed to be completely byte-faithful, blazingly fast, and natively immune to XML Signature Wrapping (XSW) attacks.
+
+It tightly integrates with Nokogiri, allowing you to sign and verify documents directly in memory without fragile re-serialization.
+
+## Features
+- **Full XML-DSig Support:** Sign and verify Enveloped, Enveloping, and Detached signatures.
+- **Nokogiri Native:** Directly patches `Nokogiri::XML::Document` for seamless `.sign!` and `.verify!` calls.
+- **XSW Defense:** Provides a robust `Policy` engine and structural `signed?(node)` checks to defeat XML Signature Wrapping (XSW) attacks.
+- **Rust-Backed:** Memory-safe FFI boundaries, zero shell-outs to CLI binaries, and massive performance gains over pure-Ruby cryptography.
 
 ## Requirements
 
+- Ruby 3.0+
 - Rust toolchain (stable)
-- libxmlsec1 development headers, discoverable via `pkg-config`:
-  - macOS: `brew install xmlsec1` (also pulls in `libxml2`, which is linked
-    explicitly — see the note below)
-  - Debian/Ubuntu: `apt install libxmlsec1-dev pkg-config`
+- `libxmlsec1` development headers:
+  - **macOS:** `brew install xmlsec1`
+  - **Debian/Ubuntu:** `apt install libxmlsec1-dev pkg-config`
 
-### A macOS-specific gotcha this build works around
-
-Homebrew's `libxml2` is keg-only, and `xmlsec1-openssl.pc`'s own `Libs:`
-line references it with a bare `-lxml2` (no `-L`). Left alone, that makes
-the linker fall back to macOS's own ancient system libxml2
-(`/usr/lib/libxml2.2.dylib`) for our own direct `xmlReadMemory`/`xmlFreeDoc`
-calls, while `libxmlsec1-openssl.dylib` itself links Homebrew's newer
-`libxml2.dylib` for its internal calls (`xmlSecFindNode`, ID-attribute
-lookups, etc.) — two different libxml2 ABIs operating on the same
-`xmlDocPtr` in one process. `build.rs` works around this by linking libxml2
-by its exact absolute path rather than `-lxml2` + `-L` (rustc always emits
-`-l` flags before `-L` search paths, so a plain search-based link can't be
-fixed by adding `-L` — verified empirically with a linker-trace wrapper).
-If you ever see `hanko_xml` crash or misbehave specifically on `#id`/ID
-lookups or other structural reads on a parsed doc, this class of bug —
-two different libxml2s loaded into the same process — is the first thing to
-check (`otool -L` on `hanko_xml.bundle` and on `libxmlsec1-openssl.dylib`
-should show the exact same libxml2 path).
+*(Note for macOS: Homebrew's `libxml2` is keg-only. HankoXml's `build.rs` automatically works around this by resolving absolute library paths during compilation.)*
 
 ## Installation
 
-Not yet released to RubyGems.org. To use from a Gemfile pointed at this
-repo:
+Add this line to your application's Gemfile:
 
 ```ruby
-gem "hanko_xml", git: "https://github.com/danimaribeiro/hanko_xml"
+gem "hanko_xml", git: "https://github.com/danimaribeiro/HankoXml"
 ```
 
 ## Usage
 
+### 1. The Nokogiri API (Recommended)
+
+HankoXml extends Nokogiri directly, making signing and verifying incredibly ergonomic.
+
+```ruby
+require "nokogiri"
+require "hanko_xml"
+
+doc = Nokogiri::XML(File.read("document.xml"))
+private_key = File.read("private.pem")
+certificate = File.read("public.crt")
+
+# Sign the document in place
+doc.sign!(key: private_key, certificate: certificate)
+
+# Safely serialize without destroying the signature bytes
+File.write("signed.xml", doc.to_xml(save_with: Nokogiri::XML::Node::SaveOptions::AS_XML))
+
+# Verify it later
+signed_doc = Nokogiri::XML(File.read("signed.xml"))
+if signed_doc.signature_valid?(certificate: certificate)
+  puts "Signature is valid!"
+end
+```
+
+### 2. The Module API
+
+If you prefer not to use the Nokogiri monkey-patches, you can use the top-level module:
+
+#### Verification
 ```ruby
 require "hanko_xml"
 
-HankoXml.validate(xml, certificate) # => true / false, or raises HankoXml::Error
+xml = File.read("signed.xml")
+
+# Raises HankoXml::VerificationError if the signature is invalid or tampered with
+result = HankoXml.verify!(xml, certificate: "public.crt")
+
+puts result.valid? # => true
 ```
 
-Returns `true` only when libxmlsec1 confirms the `<Signature>` in `xml` is
-cryptographically valid and chains to `certificate`; `false` for a
-well-formed but invalid/untrusted signature. Raises `HankoXml::Error` when
-verification can't run at all (unparseable XML, no `<Signature>` element,
-unreadable certificate).
+#### Signing (Immutable)
+```ruby
+# Returns a safe `SignedDocument` wrapper without mutating the original
+signed_doc = HankoXml.sign(xml, key: "private.pem", certificate: "public.crt")
 
-`xml` accepts:
-- a `Nokogiri::XML::Document` — passed to Rust by pointer
-  (`#pointer_id`), not re-serialized/re-parsed, so a document you just
-  built in memory (e.g. about to sign) is handled as-is
-- a `String` of XML markup
-- a `Pathname`, `File`, or anything responding to `#to_path` (read from disk)
+puts signed_doc.to_s
+```
 
-`certificate` accepts:
-- an `OpenSSL::X509::Certificate` (converted via `#to_pem`)
-- a `String` of PEM-encoded certificate data
-- a `Pathname`, `File`, or anything responding to `#to_path` (read from disk)
+### Defending against XML Signature Wrapping (XSW)
 
-## Development
+A signature is only secure if it actually signed the data you are looking at. Attackers often wrap or move the `<Signature>` block to trick naive verifiers. HankoXml provides a structural `signed?` check on the verification result to prove a specific node was cryptographically covered by the digest.
 
-After checking out the repo, run `bin/setup` to install dependencies. Then,
-run `rake spec` to compile the extension and run the tests. You can also run
-`bin/console` for an interactive prompt.
+```ruby
+result = HankoXml.verify!(doc, certificate: cert)
 
-`spec/fixtures/` includes a real signed document (`signed.xml`) and its
-signer/unrelated certificates, built by hand via Nokogiri's C14N +
-`OpenSSL::PKey::RSA#sign` (see git history) and cross-checked against the
-independent `xmlsec1 verify` CLI oracle — the specs exercise genuine
-signature verification, not mocks.
+# Find the critical data in your document
+payload = doc.at_xpath("//Invoice")
+
+# Ensure the attacker didn't move it outside the signed block
+unless result.signed?(payload)
+  raise "XSW Attack Detected: The invoice was tampered with!"
+end
+```
+
+### Trust Anchors & Verification Options
+
+You can verify signatures against multiple certificates, strict schemas, or specific validation times.
+
+```ruby
+HankoXml.verify!(
+  doc,
+  # Pass a single cert, an array of certs, an OpenSSL::X509::Store, or a mapping of <KeyName>s
+  store: my_trusted_ca_store,
+  
+  # Ensure the certificate was valid at a specific time
+  verification_time: Time.parse("2023-01-01"),
+  
+  # Pre-validate the <Signature> structure against the W3C XSD to prevent parser exploits
+  schema: :default,
+  
+  # Enforce strict security policies (no SHA-1, no external references)
+  policy: HankoXml::Policy.strict
+)
+```
 
 ## Contributing
 
-Bug reports and pull requests are welcome on GitHub at
-https://github.com/danimaribeiro/hanko_xml.
+Bug reports and pull requests are welcome on GitHub at https://github.com/danimaribeiro/HankoXml.
 
 ## License
 
-The gem is available as open source under the terms of the
-[MIT License](https://opensource.org/licenses/MIT).
+The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
