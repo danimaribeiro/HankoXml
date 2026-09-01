@@ -163,8 +163,6 @@ lib/xmlsec_rb/signed_info.rb         # parsed, authenticated view of <SignedInfo
 lib/xmlsec_rb/dom.rb                 # the ONLY place that probes for Nokogiri (§6.1)
 lib/xmlsec_rb/signature_info.rb      # DOM-free <SignedInfo> value object
 lib/xmlsec_rb/xml.rb                 # XmlsecRb.parse / .serialize, Nokogiri helpers
-lib/xmlsec_rb/backends/xmlsec.rb     # default: the native extension
-lib/xmlsec_rb/backends/ruby.rb       # Nokogiri C14N + OpenSSL (§7.3), Phase 5
 lib/xmlsec_rb/xmldsig-core-schema.xsd # bundled, for Verifier(schema: :default)
 lib/xmlsec_rb/profiles/nfe.rb        # optional, require-on-demand
 lib/xmlsec_rb/nokogiri_ext.rb        # optional, require-on-demand core extension
@@ -237,7 +235,6 @@ signer = XmlsecRb::Signer.new(
   signature_id:            nil,                # sets <Signature Id="...">
   policy:                  XmlsecRb::Policy.strict, # §5.8
   template:                :adopt,             # :adopt | :build | :require, below
-  backend:                 :xmlsec,            # :xmlsec | :ruby, §7.3
 )
 ```
 
@@ -323,132 +320,24 @@ idempotent for the parts already done.
 #### External signers — HSM, cloud KMS, smartcards
 
 The private key does not always exist as bytes you can hand to a library. AWS
-KMS, Azure Key Vault, PKCS#11 tokens and Brazilian A3 smartcards all sign
-*on the device*. `key:` accepts any object implementing the **signer protocol**
-instead of a key:
+KMS, Azure Key Vault, PKCS#11 tokens and Brazilian A3 smartcards all sign *on
+the device*.
 
-```ruby
-class KmsSigner
-  # Required. Returns the raw signature bytes over `data`.
-  # `algorithm` is the resolved Symbol, e.g. :rsa_sha256.
-  def sign(data, algorithm:) = kms.sign(key_id:, message: data, signing_algorithm: "RSASSA_PKCS1_V1_5_SHA_256").signature
+**This is not supported in v1**, and the mechanism is deliberately *not* "let
+Ruby do the signing and call out for the key operation". Doing that requires a
+Ruby implementation of reference resolution, transforms, canonicalization and
+digesting — which is where XML-DSig vulnerabilities actually live (§13.6). The
+planned route instead keeps libxmlsec1 doing all of that and gives it a
+device-backed key handle through an OpenSSL provider or PKCS#11 engine; see
+§7.3.
 
-  # Required. The Symbol the <SignatureMethod> should declare.
-  def signature_method = :rsa_sha256
-
-  # Optional. Certificate(s) for <KeyInfo>, if not passed separately.
-  def certificates = [leaf_cert]
-end
-
-XmlsecRb::Signer.new(key: KmsSigner.new, certificate: cert).sign(doc)
-```
-
-For the common one-off case, a block is accepted directly and wrapped into the
-protocol:
-
-```ruby
-XmlsecRb::Signer.new(signature_method: :rsa_sha256, certificate: cert) do |s|
-  s.sign_with { |data, algorithm:| hsm.sign(data, algorithm) }
-end
-```
-
-`data` is the canonicalized `<SignedInfo>` — exactly what `xmldsig`'s
-`sign { |data| ... }` block receives, so existing `xmldsig` integrations port
-across unchanged.
-
-This path cannot run through libxmlsec1, which owns the whole sign operation
-and has no seam to hand out the canonicalized bytes. It therefore selects the
-`:ruby` backend automatically (§7.4), which canonicalizes with Nokogiri and
-digests with OpenSSL. `Signer.new` raises `XmlsecRb::ConfigurationError` if the
-configuration uses a transform the `:ruby` backend does not implement, naming
-it — rather than failing later with a signature nobody can verify.
-
-#### Declaring references
-
-`Signer#reference` and the `references:` keyword accept the same forms:
-
-```ruby
-# The whole document, enveloped. This is the default when you declare none.
-s.reference :document
-# => URI="", transforms [:enveloped_signature, :exc_c14n]
-
-# By URI fragment — the element carrying that ID must exist at sign time.
-s.reference "#infNFe01"
-
-# By Nokogiri node — we read its ID attribute (per id_attributes:), and raise
-# XmlsecRb::ReferenceError if it has none. We never invent one silently.
-s.reference doc.at_xpath("//nfe:infNFe", nfe: NFE_NS)
-
-# By XPath, resolved against the document at sign time.
-s.reference xpath: "//saml:Assertion", namespaces: { "saml" => SAML_NS }
-
-# Enveloping: the data lives in an <Object> we create under <Signature>.
-s.object payload_node, id: "object-1"
-s.reference "#object-1", transforms: %i[exc_c14n]
-
-# Full control over one reference.
-s.reference "#payload-1",
-            id:            "ref-1",              # <Reference Id="ref-1">
-            type:          "http://www.w3.org/2000/09/xmldsig#Object",
-            digest_method: :sha512,
-            transforms:    [:exc_c14n, XmlsecRb::Transform.exc_c14n(inclusive_prefixes: %w[ds saml])]
-```
-
-Default transforms are inferred, and the inference is documented, not magic:
-
-| Reference form | Default transforms |
-| --- | --- |
-| `:document` (`URI=""`) | `[:enveloped_signature, :exc_c14n]` |
-| `#id` where the target **contains** the signature | `[:enveloped_signature, :exc_c14n]` |
-| `#id` where the target does **not** contain the signature | `[:exc_c14n]` |
-| `#id` naming an `<Object>` we created | `[:exc_c14n]` |
-
-Passing `transforms:` replaces the default entirely — no merging, no surprise
-extra transform.
-
-#### `XmlsecRb::Transform`
-
-A frozen value object. Symbols coerce to it via the registry (§5.7).
-
-```ruby
-XmlsecRb::Transform.enveloped_signature
-XmlsecRb::Transform.c14n(with_comments: false)
-XmlsecRb::Transform.exc_c14n(inclusive_prefixes: %w[soap wsse])  # emits <ec:InclusiveNamespaces>
-XmlsecRb::Transform.base64
-XmlsecRb::Transform.new("http://example.invalid/my-transform", &block_that_emits_children)
-
-t.uri          # => "http://www.w3.org/2001/10/xml-exc-c14n#"
-t.name         # => :exc_c14n
-t.secure?      # => true
-t.to_xml(doc)  # => Nokogiri::XML::Element  <Transform Algorithm="...">…</Transform>
-```
-
-`#to_xml(doc)` is the whole extension point: a custom transform is any object
-responding to `#uri` and `#to_xml(doc)`. That covers C#'s `Transform` subclassing
-without any of its `LoadInnerXml`/`GetOutput` surface — because the *execution*
-of the transform is libxmlsec1's job, not ours. We only have to emit its
-declaration correctly.
-
-> **Note:** a custom transform URI still has to be one libxmlsec1 implements, or
-> signing/verification fails at the crypto layer. `Transform.new` is for
-> parameterising transforms xmlsec knows, and for algorithms registered into
-> xmlsec by another extension — not for implementing new ones in Ruby.
-
-#### `XmlsecRb::KeyInfo` clauses
-
-```ruby
-s.key_info :x509_certificate           # <X509Data><X509Certificate>  (default)
-s.key_info :x509_subject_name          # <X509Data><X509SubjectName>
-s.key_info :x509_issuer_serial         # <X509Data><X509IssuerSerial>
-s.key_info :x509_ski                   # <X509Data><X509SKI>
-s.key_info :key_value                  # <KeyValue><RSAKeyValue>
-s.key_info :key_name, name: "signer-1" # <KeyName>signer-1</KeyName>
-s.key_info nil                         # omit <KeyInfo> entirely
-```
-
-Multiple clauses combine into one `<KeyInfo>`; the `X509*` ones combine into a
-single `<X509Data>` in the order given. A custom clause is any object responding
-to `#to_xml(doc, key:, certificates:)`.
+For reference, the protocol a future version would expose — an object
+responding to `#sign(data, algorithm:)` and `#signature_method`, or a
+`sign_with` block receiving the canonicalized `<SignedInfo>`, matching what
+`xmldsig`'s `sign { |data| … }` block receives — is recorded in §7.3 as a
+sketch. It is **not implemented**, and `Signer.new` raises
+`XmlsecRb::ConfigurationError` if `key:` is anything but key material or an
+`XmlsecRb::Key`.
 
 ### 5.3 `XmlsecRb::Verifier`
 
@@ -471,7 +360,6 @@ verifier = XmlsecRb::Verifier.new(
   namespaces:    {},
   signature:     :first,   # :first | :only | :all | Integer index | XPath String
 
-  backend:              :xmlsec, # :xmlsec | :ruby, §7.3
   verification_time:    nil,   # Time — evaluate certificate validity as of then
   schema:               nil,   # validate <Signature> against an XSD first
   referenced_documents: {},    # URI => document, for non-fragment references
@@ -603,8 +491,8 @@ match" and "the signature over `<SignedInfo>` does not match" are completely
 different bugs — the first means the data changed, the second means the key or
 the canonicalization is wrong — and a single `false` cannot tell you which.
 `xmldsig` gets this right with its `[:digest_value, :signature]` error symbols;
-we carry the same distinction as typed errors. When the backend is `:xmlsec`,
-per-reference status is recovered from the captured xmlsec error log (§7.1);
+we carry the same distinction as typed errors. Per-reference status is
+recovered from the captured xmlsec error log (§7.1);
 when it cannot be attributed to a specific reference, `ref.errors` is empty and
 the failure appears only at `v.errors`.
 
@@ -1096,7 +984,6 @@ The split falls along one line: **what needs a DOM in Ruby, and what does not.**
 | Sign into a `<Signature>` template already in the document (`template: :require`) | ✅ | ✅ |
 | Build a template — choose references, transforms, placement | ❌ | ✅ |
 | `XmlsecRb.parse` / `.serialize`, `SignedDocument`, `nokogiri_ext` | ❌ | ✅ |
-| `backend: :ruby` (§7.4) and therefore external signers (§5.2) | ❌ | ✅ |
 
 Verification survives DOM-free because the native layer must parse the document
 anyway: `Native.inspect` (§7) returns the `<SignedInfo>` metadata as plain Ruby
@@ -1350,7 +1237,7 @@ XmlsecRb::Native.check_version
 
 XmlsecRb::Native.versions
 # => { xmlsec: "1.3.4", libxml2: "2.15.3", crypto: "openssl-3.5.0" }
-#    Used by XmlsecRb.zero_copy_available? (§7.3) and by bug reports.
+#    Used by XmlsecRb.zero_copy_available? (§7.4) and by bug reports.
 
 XmlsecRb::Native.sign(xml, key_pem, cert_pems, id_attributes, signature_index)
 #   xml             : String (binary) — the complete document, template included
@@ -1463,34 +1350,64 @@ count. Suggested guard: a spec that greps the crate and asserts the number of
 `unsafe` blocks against a committed number, so growth is a deliberate, reviewed
 diff rather than a drift.
 
-### 7.3 Backends
+### 7.3 External signers and key devices
 
-Two implementations satisfy the same `Signer`/`Verifier` contract:
+**There is one backend: libxmlsec1.** No `backend:` keyword exists, and there
+is no pure-Ruby implementation of signing or verification. This is a deliberate
+reversal of an earlier draft, argued in §13.6.
 
-| `backend:` | Implementation | When |
-| --- | --- | --- |
-| `:xmlsec` | libxmlsec1 via §7's four native functions | default; everything |
-| `:ruby` | `Nokogiri::XML::Node#canonicalize` + `OpenSSL::Digest` + `OpenSSL::PKey` | external signers (§5.2); environments without libxmlsec1; differential testing |
+The problem this section exists to solve: sometimes the private key cannot be
+handed to a library as bytes. Brazilian **A3 certificates** live on smartcards
+and USB tokens; AWS KMS, Azure Key Vault and HSMs sign on the device. Our
+`Native.sign` takes `key_pem`, which those cannot produce.
 
-The `:ruby` backend implements the transform set itself, so it supports exactly
-`enveloped_signature`, `base64`, and the C14N family — **which is precisely the
-set `Policy.strict` allows**. That is not a coincidence worth hiding: the strict
-policy's allowlist and the pure-Ruby backend's capability set are the same list
-because both are answering "which transforms have no execution semantics". A
-configuration `Policy.strict` accepts is a configuration `:ruby` can run.
+The answer is **not** to reimplement signing in Ruby so the key operation can be
+delegated to a block. It is to give libxmlsec1 a key it can use without holding
+the key material:
 
-`backend: :ruby` is selected automatically when `key:` is an external signer
-(§5.2), and can be requested explicitly. It is *not* the default: libxmlsec1 is
-the reference implementation, is far more widely exercised against real-world
-documents, and gets interoperability right in corners we would otherwise
-rediscover.
+```
+xmlSecOpenSSLAppKeyLoadEx()      # present in the linked xmlsec (1.3.12)
+        ↑
+OpenSSL 3 provider / PKCS#11 engine
+        ↑
+smartcard · HSM · cloud KMS
+```
 
-Its real value beyond external signers is **differential testing**: every
-fixture is signed by both backends and each is verified by the other and by the
-`xmlsec1` CLI. Two independent implementations disagreeing is how
-canonicalization bugs get caught, and this repository's fixtures were already
-built the `:ruby` way (Nokogiri C14N + `OpenSSL::PKey::RSA#sign`, per the
-README), so the approach is proven here rather than speculative.
+The key becomes an `EVP_PKEY` handle whose private operation happens on the
+device. **libxmlsec1 still performs every part of the orchestration** —
+reference resolution, transforms, canonicalization, digests — exactly as it does
+for a key in memory. Nothing about the security-critical path changes; only
+where the final signature operation executes.
+
+Sketched, not specified: this would surface as
+
+```ruby
+key = XmlsecRb::Key.from_engine("pkcs11", uri: "pkcs11:object=my-a3;type=private",
+                                pin: ENV["PKCS11_PIN"])
+XmlsecRb::Signer.new(key: key, certificate: cert).sign(doc)
+```
+
+and would add one native entry point (an engine/provider-aware variant of the
+key load) rather than a second implementation of XML-DSig.
+
+It is **not in v1**, and it is not fully designed. A3 support via PKCS#11 is
+well-trodden and should work; cloud-KMS OpenSSL 3 providers exist but are
+third-party and vary in quality, so this needs proving against a real device
+before it is promised. Until then, `key:` takes key material, and the
+`sign_with` block protocol sketched in §5.2 is documented as **unimplemented**.
+
+#### Testing without a second implementation
+
+The earlier draft justified a pure-Ruby backend partly as a differential test —
+two implementations cross-checking each other. That was backwards: shipping a
+second implementation in order to test the first means shipping, maintaining and
+security-patching it forever.
+
+The independent oracle already exists and costs nothing: the **`xmlsec1` CLI**,
+a separate binary that this repository's fixtures were already cross-checked
+against (see `spec/fixtures` and the README). Every fixture we sign must verify
+under `xmlsec1 verify`, and every fixture it signs must verify under ours. Same
+cross-checking property, zero maintained surface.
 
 ### 7.4 Zero-copy: the opt-in escape hatch
 
@@ -1710,10 +1627,10 @@ to this contract as a direct result of this comparison**.
 | --- | --- | --- |
 | `SignedDocument.new(xml, id_attr:)` | `Signer`/`Verifier` `id_attributes:` (a list, incl. ns-qualified) | ✅ superset |
 | `#sign(private_key)` fills an **existing** `<Signature>` template | `template: :adopt` (default) — §5.2 | ➕ **added** |
-| `#sign { \|data\| ... }` custom signing block | external signer protocol + `sign_with` — §5.2 | ➕ **added** |
+| `#sign { \|data\| ... }` custom signing block | not in v1; device keys via OpenSSL engine — §7.3, §13.6 | ⚠️ **deferred** |
 | `#validate(cert)` | `valid?` / `verify!` | ✅ |
 | `#validate(cert, schema)` — XSD validation of `<Signature>` | `schema:`, on by default in `Policy.strict` — §5.3 | ➕ **added** |
-| `#validate { \|sig_value, data\| }` custom verify block | external signer protocol (verify side) — §5.2, §7.3 | ➕ **added** |
+| `#validate { \|sig_value, data\| }` custom verify block | not supported, deliberately — §13.6 | ❌ **declined** |
 | `#signatures` sorted by ancestor depth | `verify_all`; signing order innermost-first — §5.2 | ➕ **added** |
 | `#signed_nodes` | `Verification#signed_nodes`, plus `#signed?` / `#at_signed` | ✅ superset |
 | `Signature#errors` → `[:digest_value, :signature]` | typed per-reference errors, `Reference#valid?` — §5.4 | ➕ **added** |
@@ -1723,7 +1640,7 @@ to this contract as a direct result of this comparison**.
 | `instruct` — emit `<?xml?>` or not | `SignedDocument#to_xml(declaration: false)` — §6.7 | ➕ **added** |
 | `ec:InclusiveNamespaces PrefixList` | `Transform.exc_c14n(inclusive_prefixes:)` | ✅ |
 | `Xmldsig::SchemaError` | `XmlsecRb::SchemaError < ConfigurationError` | ✅ |
-| Pure Ruby, no C dependency | `backend: :ruby` — §7.3 | ✅ available, not default |
+| Pure Ruby, no C dependency | not offered — libxmlsec1 always — §13.6 | ❌ **declined** |
 
 **Not adopted:** their `Canonicalizer`/`Reference`/`Signature` classes are
 internal machinery we do not need to expose, since libxmlsec1 performs the
@@ -1811,10 +1728,12 @@ Listed so that "not implemented" is a decision rather than an omission:
   The `resolver:` hook (§5.9) is the extension point that makes it possible
   out-of-tree.
 - **Timestamp authority (RFC 3161)** interaction.
-- **Signing without libxmlsec1** (a pure-OpenSSL + Nokogiri-C14N backend). The
-  fixtures were built that way, so it is demonstrably possible, and it would
-  remove the C dependency entirely — but it means owning transform semantics,
-  which is precisely the part worth delegating.
+- **A pure-Ruby signing/verification backend.** Considered and rejected, not
+  merely deferred — see §13.6. Verification in Ruby is ruled out permanently.
+- **External signers (HSM, cloud KMS, A3 smartcards).** Real need, wrong
+  mechanism in the earlier draft. The route is an OpenSSL provider / PKCS#11
+  engine key handed to libxmlsec1 (§7.3), which needs proving against a real
+  device before it is promised.
 - **GVL release / large-document streaming** (§7.1, Phase 4).
 - **`zero_copy: true`** beyond the availability predicate, until someone
   measures a need (§7.4).
@@ -1885,7 +1804,7 @@ absent.
 
 Verification and template-fill signing stay DOM-free; coverage checks
 (`#signed?` / `#at_signed`), schema validation, template *building*, the
-`SignedDocument` wrapper and the `:ruby` backend need Nokogiri and raise
+`SignedDocument` wrapper need Nokogiri and raise
 `NokogiriRequired` without it. The invariant that makes this safe rather than
 merely convenient: **a missing Nokogiri may remove a capability, never weaken
 one.** `Policy` is enforced identically on both paths, and `#signed?` never
@@ -1898,7 +1817,51 @@ back into `unsafe`, against §1's first requirement.
 The cost accepted: one new native function (`Native.inspect`, §7), one extra
 parse on the Nokogiri path, and a capability matrix that has to stay true.
 
-### 13.6 XML Encryption stays out of v1 — **confirmed by the project owner**
+### 13.6 No pure-Ruby backend — **reversed from the earlier draft**
+
+An earlier draft of this contract planned a `backend: :ruby` (Nokogiri C14N +
+OpenSSL) as Phase 5, to unlock external signers and to serve as a differential
+test. The project owner pushed back: libxmlsec1 is well maintained, and
+reimplementing in Ruby means owning the security fixes. That is correct, and
+the backend is removed — **not deferred**.
+
+Being precise about what it would and would not have reimplemented, because the
+distinction is what decides the question. It would **not** have reimplemented
+the cryptography or the canonicalization: Nokogiri's `#canonicalize` is
+libxml2's `xmlC14NDocDumpMemory`, which is the same code libxmlsec1 delegates
+C14N to, and the digests and signatures would come from the same OpenSSL that
+xmlsec's OpenSSL backend calls. What it *would* have written in Ruby is the
+**orchestration** — resolve each reference URI, apply transforms in order,
+canonicalize, digest, compare, then assemble and canonicalize `<SignedInfo>`.
+
+**And that orchestration is exactly where XML-DSig vulnerabilities live.** The
+signature-wrapping CVEs are not in OpenSSL and not in libxml2's C14N; they are
+in which node `#foo` resolves to, whether transforms were applied in order,
+whether what was digested is what gets read, duplicate IDs, `RetrievalMethod`.
+So the ~200 lines that looked cheap are precisely the expensive ones.
+
+Two of the three original justifications did not survive review:
+
+- *"Environments without libxmlsec1."* Simply wrong: this gem is a compiled
+  extension against libxmlsec1. If you cannot install it, you cannot install
+  the gem.
+- *"Differential testing."* Backwards. It does not require **shipping** a
+  second implementation — the `xmlsec1` CLI is already an independent oracle,
+  and one we do not have to maintain or security-patch (§7.3).
+- *"External signers."* Real, and the only survivor — but it has a better
+  answer that keeps libxmlsec1 in charge of the orchestration: a device-backed
+  key handle via an OpenSSL provider or PKCS#11 engine (§7.3).
+
+One further asymmetry worth recording, in case this is ever revisited: under
+`:xmlsec`, our Ruby-side reference resolution is only a **cross-check** — if it
+is wrong we raise `ResolutionMismatch` (§5.9). Under a Ruby verification
+backend it would be **authoritative** — if it is wrong we accept a forged
+signature. Signing is not attacker-facing (you control the document and the
+config; a bug yields a signature that does not verify) but **verification is**.
+So if this is ever reopened, it may be reopened for signing only. Ruby-side
+verification is closed permanently.
+
+### 13.7 XML Encryption stays out of v1 — **confirmed by the project owner**
 
 §11.3. The only capability `nokogiri-xmlsec` has that we do not. Put to the
 project owner on 2026-08-31 and confirmed: this project signs documents and
@@ -1941,13 +1904,6 @@ enforcement wired in, `verify_all`. The existing fixture matrix
 `zero_copy_available?`, deprecation shim for `validate`, README rewrite, RBS
 signatures in `sig/`, YARD.
 
-**Phase 5 — the `:ruby` backend (§7.3).**
-Nokogiri C14N + OpenSSL, scoped to the `Policy.strict` transform set. Unlocks
-external signers (HSM / AWS KMS / A3 smartcards, §5.2) and, more importantly,
-turns the fixture suite into a differential test between two independent
-implementations. Ships after Phase 3 has proved the contract against
-libxmlsec1.
-
 **Cross-cutting test requirements**, to be written alongside each phase:
 
 - Every fixture verifies identically under `XmlsecRb` and under the `xmlsec1`
@@ -1959,9 +1915,10 @@ libxmlsec1.
 - A template-adoption suite: the existing `template_*.xml` fixtures signed via
   `template: :adopt`, asserting the produced signature is byte-identical to the
   matching `signed_*.xml` fixture.
-- An external-signer test: a `sign_with` block backed by a plain
-  `OpenSSL::PKey::RSA`, asserting the result verifies under the `:xmlsec`
-  backend and under the `xmlsec1` CLI.
+- Every fixture this library signs must verify under `xmlsec1 verify`, and
+  every fixture `xmlsec1` signs must verify under this library. That
+  bidirectional check against a separate binary is the differential test — it
+  needs no second implementation of our own (§7.3).
 - A policy corpus: one document per denied algorithm and per denied transform,
   each asserting a `PolicyError` naming the offending URI.
 - A round-trip property test: `verify(sign(doc)) == true` across the fixture
