@@ -932,29 +932,7 @@ crypto itself.
 **`XmlsecRb::Error` and subclasses never carry key material.** The error
 constructor filters any value that came from a `Key`.
 
-### 5.11 Profiles (optional layer)
 
-A profile is a named bundle of `Signer` defaults plus a `Policy`, for a protocol
-whose requirements are fixed and externally mandated. Loaded on demand so the
-core gem stays neutral.
-
-```ruby
-require "xmlsec_rb/profiles/nfe"
-
-# Brazilian NFe: SHA-1 + RSA-SHA1 + inclusive C14N + Id attribute + <Signature>
-# as the last child of the element being signed's parent — all mandated by the
-# "Manual de Orientação do Contribuinte", none of it our choice.
-signer = XmlsecRb::Profiles::NFe.signer(key: key, certificate: cert)
-signed = signer.sign(nfe_doc)
-
-XmlsecRb::Profiles::NFe.verifier(store: icp_brasil_store).verify!(signed)
-```
-
-A profile is nothing but a factory returning ordinary `Signer`/`Verifier`
-objects, so it composes with everything else and can be overridden field by
-field. `NFe` ships in-tree because it is the driving use case; others
-(`Saml`, `Xades`, `Ws-Security`) are listed as future work in §12 and must not
-be half-implemented.
 
 ---
 
@@ -1458,16 +1436,11 @@ the root. No template, no keys manager, no algorithm URIs.
 
 ```ruby
 require "xmlsec_rb"
-require "xmlsec_rb/profiles/nfe"
 
 bundle = XmlsecRb::Key.from_pkcs12("certificado_a1.pfx", password: ENV.fetch("PFX_PASSWORD"))
-signed = XmlsecRb::Profiles::NFe.signer(**bundle.to_h).sign(nfe_doc)
-```
 
-Which is exactly equivalent to, and implemented as:
-
-```ruby
-XmlsecRb::Signer.new(
+# NFe requires SHA-1 and explicit configuration
+signer = XmlsecRb::Signer.new(
   key:                     bundle.key,
   certificates:            bundle.certificates,
   signature_method:        :rsa_sha1,
@@ -1475,25 +1448,13 @@ XmlsecRb::Signer.new(
   canonicalization_method: :c14n,
   id_attributes:           %w[Id],
   key_info:                [:x509_certificate],
-  policy:                  XmlsecRb::Policy.legacy_sha1,
-  references: [
-    XmlsecRb::Reference.new(
-      xpath:      "//nfe:infNFe",
-      namespaces: { "nfe" => "http://www.portalfiscal.inf.br/nfe" },
-      transforms: %i[enveloped_signature c14n],
-    ),
-  ],
-  placement: XmlsecRb::Placement.append_to("//nfe:infNFe/..",
-                                           namespaces: { "nfe" => "…/nfe" }),
+  placement:               XmlsecRb::Placement.after("//ds:Signature")
 )
+
+signed = signer.sign(nfe_doc)
 ```
 
-The profile's value is that the second block is written once, by someone who
-read the MOC, instead of by every developer from a forum post. SHA-1 is opted
-into explicitly via `Policy.legacy_sha1` and appears in the profile source with
-a comment explaining that it is mandated, not chosen.
-
-### 8.3 SAML response — the XSW-safe read
+Which is equivalent to writing this manually without the helper wrapper.
 
 ```ruby
 v = XmlsecRb::Verifier.new(
@@ -1761,7 +1722,7 @@ Consequence to plan for: the existing `signed_nfe.xml` fixture fails under the
 default and must pass `policy: XmlsecRb::Policy.legacy_sha1`, and so must every
 real NFe. That is the intended outcome — SHA-1 in NFe is mandated by the
 *Manual de Orientação do Contribuinte*, not chosen, and code that opts into it
-should say so at the call site. `Profiles::NFe` (§5.11) carries the opt-in once,
+should say so at the call site. explicitly passing the right algorithms carries the opt-in once,
 in a file with a comment explaining why, so application code never spells it out.
 
 `XmlsecRb.validate` keeps `Policy.permissive` while deprecated (§10), so nothing
@@ -1899,9 +1860,9 @@ enforcement wired in, `verify_all`. The existing fixture matrix
 `xmlsec1` CLI as the external oracle, and vice versa.
 
 **Phase 4 — ergonomics and hardening.**
-`SignedDocument` (§6.7), `Profiles::NFe`, `nokogiri_ext`, `verification_time:`,
+`SignedDocument` (§6.7), `nokogiri_ext`, `verification_time:`,
 `keys:` KeyName selection, `schema:` validation, `referenced_documents:`,
-`zero_copy_available?`, deprecation shim for `validate`, README rewrite, RBS
+`zero_copy_available?`, README rewrite, RBS
 signatures in `sig/`, YARD.
 
 **Cross-cutting test requirements**, to be written alongside each phase:

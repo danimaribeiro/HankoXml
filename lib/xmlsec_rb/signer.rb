@@ -92,8 +92,7 @@ module XmlsecRb
       # Deep clone the document to avoid mutating the input if it's already a document.
       cloned = doc.dup
       sign!(cloned, force: force, signature: signature)
-      # In Phase 3, we just return the document. SignedDocument will be added in Phase 4.
-      cloned
+      XmlsecRb::SignedDocument.new(cloned)
     end
 
     def sign!(doc_or_xml, force: false, signature: nil)
@@ -214,13 +213,26 @@ module XmlsecRb
       end
 
       # Copy KeyInfo//X509Certificate (and KeyValue leaves if applicable, though for now we just copy X509Certificate)
-      caller_certs = caller_sig_node.xpath(".//ds:KeyInfo//X509Certificate", ds: NS["ds"])
-      signed_certs = signed_sig_node.xpath(".//ds:KeyInfo//X509Certificate", ds: NS["ds"])
+      caller_certs = caller_sig_node.xpath(".//ds:KeyInfo//ds:X509Certificate", ds: NS["ds"])
+      signed_certs = signed_sig_node.xpath(".//ds:KeyInfo//ds:X509Certificate", ds: NS["ds"])
       
-      caller_certs.each_with_index do |caller_cert, i|
-        signed_cert = signed_certs[i]
-        if signed_cert
-          caller_cert.content = signed_cert.content
+      # If caller has no X509Certificate but signed does, append it to X509Data
+      if caller_certs.empty? && signed_certs.any?
+        x509_data = caller_sig_node.at_xpath(".//ds:KeyInfo/ds:X509Data", ds: NS["ds"])
+        if x509_data
+          signed_certs.each do |signed_cert|
+            new_cert = doc.create_element("X509Certificate")
+            new_cert.namespace = x509_data.namespace
+            x509_data.add_child(new_cert)
+            new_cert.content = signed_cert.content
+          end
+        end
+      else
+        caller_certs.each_with_index do |caller_cert, i|
+          signed_cert = signed_certs[i]
+          if signed_cert
+            caller_cert.content = signed_cert.content
+          end
         end
       end
     end

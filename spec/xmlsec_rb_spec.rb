@@ -75,8 +75,11 @@ RSpec.describe XmlsecRb do
         it "validates a #{description} signature" do
           xml = fixtures.join(filename).read
 
-          expect(described_class.verify(xml, certificate: signer_cert_pem).valid?).to be true
-          expect(described_class.verify(xml, certificate: other_cert_pem).valid?).to be false
+          # NFe uses SHA-1, which strict policy rejects
+          policy = filename == "signed_nfe.xml" ? XmlsecRb::Policy.legacy_sha1 : XmlsecRb::Policy.strict
+
+          expect(described_class.verify(xml, certificate: signer_cert_pem, policy: policy).valid?).to be true
+          expect(described_class.verify(xml, certificate: other_cert_pem, policy: policy).valid?).to be false
         end
       end
     end

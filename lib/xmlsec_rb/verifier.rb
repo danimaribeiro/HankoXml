@@ -113,6 +113,27 @@ module XmlsecRb
     end
 
     def verify_single(doc, sig_node, index)
+      # Schema validation before any crypto
+      if @schema
+        xsd = if @schema == :default
+                ::Nokogiri::XML::Schema(File.read(File.expand_path("xmldsig-core-schema.xsd", __dir__)))
+              else
+                @schema
+              end
+        tmp_doc = Nokogiri::XML::Document.new
+        tmp_doc.add_child(sig_node.dup)
+        xsd_errors = xsd.validate(tmp_doc)
+        if xsd_errors.any?
+          return XmlsecRb::Verification.new(
+            valid: false,
+            errors: [XmlsecRb::SchemaError.new(xsd_errors.map(&:message).join(", "))],
+            signature_info: nil,
+            signature_node: sig_node,
+            document: doc
+          )
+        end
+      end
+
       # 1. Serialize document to bytes
       xml_bytes = XmlsecRb.serialize(doc)
 
@@ -132,21 +153,54 @@ module XmlsecRb
       sig_info = XmlsecRb::SignatureInfo.from_native(inspect_result)
 
       # 3. Call Native.verify
-      # We pass trusted and untrusted certificates.
       trusted = []
       untrusted = []
+      
+      # Select key from `keys:` if `keys` is provided
+      if @keys
+        key_name = sig_info.key_names.first
+        if key_name && @keys.key?(key_name)
+          cert_or_key = XmlsecRb::Key.coerce(@keys[key_name])
+          if cert_or_key.certificate?
+            trusted << cert_or_key.to_pem
+          end
+        else
+          return XmlsecRb::Verification.new(
+            valid: false,
+            errors: [XmlsecRb::UntrustedCertificate.new("KeyName #{key_name.inspect} not found in keys: map")],
+            signature_info: sig_info,
+            signature_node: sig_node,
+            document: doc
+          )
+        end
+      end
 
-      # If certificate: is set, it's trusted.
       trusted << @certificate.to_pem if @certificate
       
-      # If certificates: is set, they are trusted.
       if @certificates
         trusted.concat(@certificates.map(&:to_pem))
       end
-      
-      # If key: is set? Native.verify doesn't currently take a bare public key, but we can pass it as untrusted or trusted?
-      # Wait, Native.verify expects certificates for trusted/untrusted. For a bare key, xmlsec1 handles it differently?
-      # In Phase 3, we focus on certificates since `xmlsec_rb_spec.rb` tests `validate(xml, cert)`.
+
+      # Check certificate expiration in Ruby if verification_time is set
+      # (Ideally, we pass time to native store, but for now we do it here if possible)
+      if @verification_time
+        # For each trusted cert, check if verification_time is within bounds
+        # If any is out of bounds, we could fail early or let xmlsec fail.
+        # But xmlsec1 doesn't accept a time parameter in our API yet.
+        # So we validate the parsed certs here.
+        trusted.each do |pem|
+          cert = OpenSSL::X509::Certificate.new(pem)
+          if @verification_time < cert.not_before || @verification_time > cert.not_after
+            return XmlsecRb::Verification.new(
+              valid: false,
+              errors: [XmlsecRb::CertificateExpired.new("Certificate expired at #{@verification_time}")],
+              signature_info: sig_info,
+              signature_node: sig_node,
+              document: doc
+            )
+          end
+        end
+      end
 
       begin
         verify_result = Native.verify(xml_bytes, trusted, untrusted, @id_attributes, index)
@@ -164,13 +218,17 @@ module XmlsecRb
       errors = []
 
       if !valid
-        # Extract native errors, map to VerificationError / SignatureInvalid / UntrustedCertificate
-        # For Phase 3, we just use the first error message or generic.
         msg = verify_result[:errors].first || "Signature verification failed"
         errors << XmlsecRb::VerificationError.new(msg, xmlsec_errors: verify_result[:errors], signature_node: sig_node)
       end
 
       # TODO: Policy enforcement
+      begin
+        @policy.enforce!(sig_info)
+      rescue XmlsecRb::PolicyError => e
+        valid = false
+        errors << e
+      end
 
       XmlsecRb::Verification.new(
         valid: valid,

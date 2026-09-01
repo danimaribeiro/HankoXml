@@ -17,6 +17,7 @@ require_relative "xmlsec_rb/template"
 require_relative "xmlsec_rb/signer"
 require_relative "xmlsec_rb/verification"
 require_relative "xmlsec_rb/verifier"
+require_relative "xmlsec_rb/signed_document"
 
 # XML digital signature verification backed by libxmlsec1.
 module XmlsecRb
@@ -59,6 +60,10 @@ module XmlsecRb
 
 
 
+
+    def zero_copy_available?
+      false
+    end
 
     private
 
