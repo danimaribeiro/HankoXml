@@ -1,0 +1,50 @@
+module XmlsecRb
+  class SignatureInfo
+    attr_reader signature_method: Symbol
+    attr_reader canonicalization_method: Symbol
+    attr_reader references: Array[ReferenceInfo]
+    attr_reader key_names: Array[String]
+
+    def self.from_native: (Hash[Symbol, untyped] result) -> instance
+
+    def initialize: (
+      signature_method: Symbol,
+      canonicalization_method: Symbol,
+      references: Array[ReferenceInfo],
+      key_names: Array[String]
+    ) -> void
+  end
+
+  class ReferenceInfo
+    attr_reader uri: String
+    attr_reader digest_method: Symbol
+    attr_reader transforms: Array[Symbol]
+
+    def initialize: (uri: String, digest_method: Symbol, transforms: Array[Symbol]) -> void
+    def external?: () -> bool
+    def fragment?: () -> bool
+    def target_id: () -> String?
+  end
+
+  class Verification
+    attr_reader valid: bool
+    attr_reader errors: Array[Error]
+    attr_reader signature_info: SignatureInfo?
+    attr_reader signature_node: Nokogiri::XML::Node?
+    attr_reader document: Nokogiri::XML::Document
+
+    def initialize: (
+      valid: bool,
+      errors: Array[Error],
+      signature_info: SignatureInfo?,
+      signature_node: Nokogiri::XML::Node?,
+      document: Nokogiri::XML::Document
+    ) -> void
+
+    def valid?: () -> bool
+    def signed?: (Nokogiri::XML::Node target_node) -> bool
+    def at_signed: (String xpath) -> Nokogiri::XML::Node?
+    def signed_nodes: (String xpath) -> Nokogiri::XML::NodeSet
+    def partial?: () -> bool
+  end
+end

@@ -1,0 +1,40 @@
+module XmlsecRb
+  class Key
+    @material: OpenSSL::PKey::PKey | OpenSSL::X509::Certificate
+    @disposed: bool
+
+    def self.from_pem: (String pem, ?password: String?) -> instance
+    def self.from_der: (String der) -> instance
+    def self.from_file: (String | _ToPath path, ?password: String?) -> instance
+    def self.from_pkcs12: (String | _ToPath path, password: String) -> Bundle
+    def self.coerce: (untyped input, ?password: String?) -> instance
+
+    def initialize: (OpenSSL::PKey::PKey | OpenSSL::X509::Certificate material) -> void
+    def certificate?: () -> bool
+    def private_key?: () -> bool
+    def to_pem: () -> String
+    def to_openssl: () -> (OpenSSL::PKey::PKey | OpenSSL::X509::Certificate)
+    def dispose!: () -> void
+    def disposed?: () -> bool
+
+    class Bundle
+      attr_reader key: Key
+      attr_reader certificate: Key
+      attr_reader certificates: Array[Key]
+
+      def initialize: (key: Key, certificate: Key, certificates: Array[Key]) -> void
+      def to_h: () -> { key: Key, certificate: Key, certificates: Array[Key] }
+    end
+  end
+
+  module KeyInfo
+    def self.coerce: (Symbol | Array[Symbol] info) -> Array[Symbol]
+
+    class Parsed
+      attr_reader key_names: Array[String]
+      attr_reader certificates: Array[OpenSSL::X509::Certificate]
+
+      def initialize: (key_names: Array[String], certificates: Array[OpenSSL::X509::Certificate]) -> void
+    end
+  end
+end

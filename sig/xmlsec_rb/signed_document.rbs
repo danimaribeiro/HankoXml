@@ -1,0 +1,17 @@
+module XmlsecRb
+  class SignedDocument
+    attr_reader document: Nokogiri::XML::Document
+
+    def initialize: (Nokogiri::XML::Document document) -> void
+    def to_xml: (?declaration: bool) -> String
+    def to_s: () -> String
+    def bytes: () -> String
+    def write_to: (IO io, ?declaration: bool) -> void
+    def signatures: () -> Nokogiri::XML::NodeSet
+    def valid?: (?certificate: (Key | OpenSSL::X509::Certificate | String | _ToPath)?,
+                 ?certificates: Array[Key | OpenSSL::X509::Certificate | String | _ToPath]?,
+                 ?store: OpenSSL::X509::Store?,
+                 ?key: (Key | OpenSSL::PKey::PKey | String | _ToPath)?,
+                 ?keys: Hash[String, Key | OpenSSL::X509::Certificate | String | _ToPath]?) -> bool
+  end
+end

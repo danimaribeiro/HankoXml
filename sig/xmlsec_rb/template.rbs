@@ -1,0 +1,19 @@
+module XmlsecRb
+  class Template
+    def self.build: (
+      signature_method: Symbol,
+      digest_method: Symbol,
+      canonicalization_method: Symbol,
+      references: Array[Reference],
+      key_info: Array[Symbol],
+      ?signature_id: String?
+    ) -> Nokogiri::XML::Node
+  end
+
+  module Algorithms
+    def self.uri_for: (Symbol name, Symbol category) -> String?
+    def self.name_for: (String uri, Symbol category) -> Symbol?
+    def self.secure?: (Symbol name) -> bool
+    def self.register: (Symbol name, Symbol category, String uri, ?secure: bool) -> void
+  end
+end

@@ -1,4 +1,53 @@
 module XmlsecRb
   VERSION: String
-  # See the writing guide of rbs: https://github.com/ruby/rbs#guides
+  NS: Hash[String, String]
+
+  class Error < StandardError end
+  class ConfigurationError < Error end
+  class KeyLoadError < Error end
+  class ParseError < Error end
+  class NativeError < Error
+    attr_reader xmlsec_errors: Array[String]
+  end
+  class PlacementError < Error end
+  class VerificationError < Error
+    attr_reader signature_node: Nokogiri::XML::Node?
+    attr_reader xmlsec_errors: Array[String]?
+  end
+  class SignatureMissing < VerificationError end
+  class UntrustedCertificate < VerificationError end
+  class CertificateExpired < VerificationError end
+  class SchemaError < ConfigurationError end
+  class PolicyError < VerificationError end
+  class MultipleSignatures < VerificationError end
+
+  def self.nokogiri?: () -> bool
+  def self.capabilities: () -> Hash[Symbol, bool]
+  def self.sign: (String | Nokogiri::XML::Node | Nokogiri::XML::Document doc_or_xml, **untyped kwargs) -> XmlsecRb::SignedDocument
+  def self.sign!: (Nokogiri::XML::Node | Nokogiri::XML::Document doc, **untyped kwargs) -> (Nokogiri::XML::Node | Nokogiri::XML::Document)
+  def self.verify: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml, **untyped kwargs) -> XmlsecRb::Verification
+  def self.verify!: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml, **untyped kwargs) -> XmlsecRb::Verification
+  def self.signed?: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml) -> bool
+  def self.zero_copy_available?: () -> bool
+  def self.parse: (String | IO | _ToPath source) -> Nokogiri::XML::Document
+  def self.serialize: (Nokogiri::XML::Document | Nokogiri::XML::Node doc) -> String
+  def self.coerce_document: (untyped input) -> Nokogiri::XML::Document
+end
+
+# Alias
+Xmlsec: singleton(XmlsecRb)
+
+module Nokogiri
+  module XML
+    class Node
+      def sign: (**untyped kwargs) -> XmlsecRb::SignedDocument
+      def sign!: (**untyped kwargs) -> self
+      def signature_valid?: (**untyped kwargs) -> bool
+      def signatures: () -> Nokogiri::XML::NodeSet
+      def signed?: () -> bool
+    end
+
+    class Document < Node
+    end
+  end
 end
