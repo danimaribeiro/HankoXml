@@ -2,12 +2,34 @@
 
 require_relative "xmlsec_rb/version"
 require_relative "xmlsec_rb/xmlsec_rb"
+require_relative "xmlsec_rb/dom"
+require_relative "xmlsec_rb/errors"
+require_relative "xmlsec_rb/algorithms"
+require_relative "xmlsec_rb/xml"
+require_relative "xmlsec_rb/key"
+require_relative "xmlsec_rb/transform"
+require_relative "xmlsec_rb/reference"
+require_relative "xmlsec_rb/key_info"
+require_relative "xmlsec_rb/placement"
+require_relative "xmlsec_rb/signature_info"
+require_relative "xmlsec_rb/policy"
+require_relative "xmlsec_rb/template"
+require_relative "xmlsec_rb/signer"
 
 # XML digital signature verification backed by libxmlsec1.
 module XmlsecRb
-  class Error < StandardError; end
-
   class << self
+    # True when Nokogiri is loaded. See §6.1.
+    def nokogiri?
+      Dom.available?
+    end
+
+    # Which capabilities are available given whether Nokogiri is loaded.
+    # See §6.1.
+    def capabilities
+      Dom.capabilities
+    end
+
     # Verifies the XML-DSig <Signature> in +xml+ against +certificate+, a
     # trusted certificate. Returns true only when libxmlsec1 confirms the
     # signature is cryptographically valid and chains to that certificate;

@@ -10,3 +10,26 @@ Style/StringLiteralsInInterpolation:
 Metrics/BlockLength:
   Exclude:
     - "spec/**/*"
+
+# The API contract (API_CONTRACT.md §5.2, §5.3) deliberately favours wide
+# keyword-argument constructors (C# SignedXml ergonomics) and case-based
+# input coercion (§6.2) over builder objects, so the corresponding
+# complexity/length/parameter-count cops are relaxed rather than fought.
+Metrics/AbcSize:
+  Max: 55
+
+Metrics/MethodLength:
+  Max: 36
+
+Metrics/CyclomaticComplexity:
+  Max: 12
+
+Metrics/PerceivedComplexity:
+  Max: 12
+
+Metrics/ParameterLists:
+  Max: 15
+  CountKeywordArgs: true
+
+Metrics/ClassLength:
+  Max: 160
