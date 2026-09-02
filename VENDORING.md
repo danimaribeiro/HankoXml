@@ -243,6 +243,59 @@ before Phase 3 builds macOS gems:
 Not urgent — Linux is where the install-UX win is — but it must be settled
 before a macOS platform gem is published.
 
+## Status of the Linux cross-compile (measured, not predicted)
+
+| Platform | Result |
+|---|---|
+| `x86_64-linux` | **builds** — 4.0 MB platform gem, vendored libxml2 2.14.6 + xmlsec1 1.3.12, four Ruby ABIs |
+| `aarch64-linux` | **blocked** on target OpenSSL — see below |
+
+Four rounds of CI, each failing further along, and every failure was worth
+having:
+
+1. `HANKO_XML_VENDOR=1` never reached the build script. No released
+   `oxidize-rb/actions` tag implements the `pre-script` input — `v1`, `v1.4.2`
+   and `v1.4.4` all set `INPUT_PRE_SCRIPT` and then never reference it; only
+   `main` has the conditional that passes it through. The value was accepted
+   and silently ignored. Fixed by keying vendoring off `RUBY_TARGET` in
+   `build.rs`, which is both more robust and more correct.
+2. `curl 403` fetching xmlsec1: `www.aleksey.com` is behind Cloudflare, which
+   blocks Actions runners. Switched to the byte-identical GitHub release asset,
+   with the original as a fallback mirror.
+3. bindgen could not find `openssl/opensslconf.h`. On Debian that header is
+   architecture-specific, under `/usr/include/<multiarch triple>`; GCC adds
+   that directory implicitly, clang does not — so the C libraries built and
+   only binding generation failed.
+4. **aarch64 only:** the same header, but now from GCC during xmlsec1's own
+   build. The rb-sys-dock image has **no aarch64 OpenSSL at all** — the build
+   sees the host's arch-independent `/usr/include/openssl` and no aarch64
+   `opensslconf.h` behind it.
+
+### The decision this forces
+
+Decision 2 ("link the system libcrypto, do not vendor OpenSSL") holds cleanly
+**only where the build is native**. It has now broken on two targets for the
+same underlying reason — the build environment has no OpenSSL for the target:
+
+- **macOS**: no system libcrypto at all; a vendored build bakes in an absolute
+  Homebrew path.
+- **aarch64-linux**: cross-compiling, and the container carries only x86_64
+  OpenSSL.
+
+Three ways forward, to choose before aarch64 ships:
+
+1. **Provision the target's OpenSSL in the build container** (`dpkg
+   --add-architecture arm64` + `libssl-dev:arm64`). Keeps decision 2 intact.
+   Requires running commands inside the container, so the workflow has to call
+   `rb-sys-dock` directly instead of via the action — no released action tag
+   supports `pre-script`. Also assumes the image's apt sources carry arm64.
+2. **Vendor OpenSSL for cross-compiled targets only.** Self-contained, and
+   consistent with what macOS will likely need anyway; costs the OpenSSL CVE
+   treadmill on those platforms and puts a second libcrypto in-process beside
+   Ruby's.
+3. **Ship `x86_64-linux` only.** It works today and covers most Docker images,
+   CI and cloud hosts. aarch64 users fall back to the source gem.
+
 ## Phase 3 — Cross-compilation
 
 - Configure `RbSys::ExtensionTask` in the `Rakefile` with the four platforms and
