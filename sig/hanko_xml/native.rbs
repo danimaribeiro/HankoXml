@@ -1,6 +1,7 @@
 module HankoXml
   module Native
     def self.check_version: () -> bool
+    def self.abi_compatible?: () -> bool
     def self.versions: () -> Hash[Symbol, String]
     def self.inspect_sig: (String xml_bytes, Integer index) -> Hash[Symbol, untyped]
     def self.verify: (String xml_bytes, Array[String] trusted, Array[String] untrusted, Array[String] id_attributes, Integer index) -> Hash[Symbol, untyped]

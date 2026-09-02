@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "English"
 require "hanko_xml"
 
 RSpec.configure do |config|

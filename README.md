@@ -22,13 +22,35 @@ It tightly integrates with Nokogiri, allowing you to sign and verify documents d
 
 ## Requirements
 
-- Ruby 3.0+
+HankoXml compiles its Rust extension against the libxmlsec1 on your machine at
+install time, so the build toolchain has to be present:
+
+- Ruby 3.1+
 - Rust toolchain (stable)
-- `libxmlsec1` development headers:
-  - **macOS:** `brew install xmlsec1`
-  - **Debian/Ubuntu:** `apt install libxmlsec1-dev pkg-config`
+- `libxmlsec1` and `libxml2` development headers, `pkg-config`, and libclang
+  (bindgen generates the FFI bindings during the build):
+  - **macOS:** `brew install libxmlsec1 libxml2 pkg-config`
+  - **Debian/Ubuntu:** `apt install libxmlsec1-dev libxml2-dev pkg-config libclang-dev`
+
+Supported libxmlsec1: `>= 1.2.30, < 1.4`.
 
 *(Note for macOS: Homebrew's `libxml2` is keg-only. HankoXml's `build.rs` automatically works around this by resolving absolute library paths during compilation.)*
+
+### Version safety
+
+bindgen bakes xmlsec's and libxml2's struct layouts into the compiled
+extension, and a later mismatch is invisible to the dynamic linker — every
+symbol still resolves, and a field is then read at the wrong offset. HankoXml
+checks for this when it loads and raises `HankoXml::NativeVersionMismatch`
+rather than returning a wrong answer from `verify!`:
+
+```ruby
+HankoXml::NativeVersion.build_versions
+# => { xmlsec: "1.3.12", libxml2: "2.15.3", crypto: "openssl" }
+```
+
+If you upgrade libxmlsec1 through your OS package manager after installing the
+gem, rebuild the extension with `gem pristine hanko_xml`.
 
 ## Installation
 

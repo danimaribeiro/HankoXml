@@ -15,6 +15,12 @@ RSpec.describe "HankoXml::Native" do
     end
   end
 
+  describe ".abi_compatible?" do
+    it "returns true when the loaded xmlsec is ABI compatible with the bindings" do
+      expect(HankoXml::Native.abi_compatible?).to be true
+    end
+  end
+
   describe ".versions" do
     it "returns a Hash with xmlsec, libxml2, and crypto versions" do
       versions = HankoXml::Native.versions

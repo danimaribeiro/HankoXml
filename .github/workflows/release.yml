@@ -1,0 +1,146 @@
+name: Release
+
+# Nothing here runs on an ordinary push. A release happens when a `v*` tag is
+# pushed, and only after the full test matrix has passed on that exact commit.
+#
+# Publishing uses RubyGems trusted publishing (OIDC), so there is no API key in
+# this repository's secrets. Before the first real release, register this
+# workflow as a trusted publisher for the `hanko_xml` gem at
+# https://rubygems.org/gems/hanko_xml/trusted_publishers -- until then, the
+# push step will fail the exchange, which is why `workflow_dispatch` defaults
+# to a dry run.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build and verify only; do not push to RubyGems or cut a GitHub Release'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/main.yml
+
+  release:
+    needs: test
+    runs-on: ubuntu-latest
+    environment: rubygems
+    permissions:
+      contents: write   # create the GitHub Release
+      id-token: write   # OIDC exchange for RubyGems trusted publishing
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libxmlsec1
+        run: sudo apt-get update && sudo apt-get install -y libxmlsec1-dev libxml2-dev pkg-config libclang-dev
+
+      - name: Set up Ruby & Rust
+        uses: oxidize-rb/actions/setup-ruby-and-rust@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          cargo-cache: true
+          rubygems: latest
+
+      - name: Resolve the version being released
+        id: version
+        run: |
+          version="$(ruby -Ilib -rhanko_xml/version -e 'print HankoXml::VERSION')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Gem version: $version"
+
+      # A tag that disagrees with lib/hanko_xml/version.rb would publish a gem
+      # whose number nobody can trace back to a commit. Cheaper to catch here
+      # than to yank afterwards -- RubyGems will not let the number be reused.
+      - name: Check the tag matches HankoXml::VERSION
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          version="${{ steps.version.outputs.version }}"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match HankoXml::VERSION ($version)"
+            exit 1
+          fi
+
+      - name: Extract the CHANGELOG entry
+        id: changelog
+        run: |
+          ruby -e '
+            version = ENV.fetch("VERSION")
+            changelog = File.read("CHANGELOG.md")
+            section = changelog[/^## \[#{Regexp.escape(version)}\].*?\n(.*?)(?=^## |\z)/m, 1]
+            abort("::error::no CHANGELOG.md section for [#{version}]") if section.nil? || section.strip.empty?
+            File.write("release-notes.md", section.strip + "\n")
+          '
+          echo "--- release notes ---"
+          cat release-notes.md
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+
+      - name: Build the gem
+        run: bundle exec rake build
+
+      # The gemspec builds spec.files from an allowlist, so the failure mode is
+      # a missing file rather than a bloated gem. Installing the built artifact
+      # into a clean GEM_HOME compiles the Rust extension from only what was
+      # packaged and then requires it, which is the one check that actually
+      # proves the allowlist is complete.
+      - name: Install the built gem from scratch and require it
+        run: |
+          export GEM_HOME="$RUNNER_TEMP/install-smoke"
+          export GEM_PATH="$GEM_HOME"
+          gem install --no-document "pkg/hanko_xml-${{ steps.version.outputs.version }}.gem"
+          ruby -e '
+            gem "hanko_xml"
+            require "hanko_xml"
+            puts "loaded hanko_xml #{HankoXml::VERSION}"
+            puts "built against #{HankoXml::NativeVersion.build_versions.inspect}"
+            raise "version guard did not pass" unless HankoXml::NativeVersion.check! == :ok
+          '
+
+      # Deliberately the two-step form rather than rubygems/release-gem, which
+      # wraps `rake release` and would try to create and push the git tag that
+      # triggered this run. The gem is already built above; this only needs to
+      # exchange the OIDC token for a scoped API key and push that artifact.
+      - name: Configure RubyGems trusted publishing credentials
+        if: inputs.dry_run != true
+        uses: rubygems/configure-rubygems-credentials@v1
+
+      - name: Push the gem
+        if: inputs.dry_run != true
+        run: gem push "pkg/hanko_xml-${{ steps.version.outputs.version }}.gem"
+
+      - name: Create the GitHub Release
+        if: inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.version.outputs.version }}" \
+            --title "v${{ steps.version.outputs.version }}" \
+            --notes-file release-notes.md \
+            "pkg/hanko_xml-${{ steps.version.outputs.version }}.gem"
+
+      - name: Dry run summary
+        if: inputs.dry_run == true
+        run: |
+          {
+            echo "### Dry run — nothing was published"
+            echo
+            echo "Built and installed \`hanko_xml-${{ steps.version.outputs.version }}.gem\` successfully."
+            echo
+            echo "Release notes that *would* have been used:"
+            echo
+            cat release-notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hanko_xml-${{ steps.version.outputs.version }}.gem
+          path: pkg/*.gem

@@ -317,8 +317,20 @@ fn native_versions(ruby: &Ruby) -> Result<RHash, Error> {
 }
 
 /// `HankoXml::Native.check_version` — kept from the POC.
+///
+/// Exact-match check: true only when the loaded libxmlsec1 is the same
+/// major.minor.patch these bindings were generated against.
 fn native_check_version() -> bool {
     dsig::check_version()
+}
+
+/// `HankoXml::Native.abi_compatible?`
+///
+/// True when the loaded libxmlsec1 is ABI compatible with the headers this
+/// extension was compiled against. `HankoXml::NativeVersion` calls this at
+/// require time; see [`dsig::abi_compatible`] for why it has to be fatal.
+fn native_abi_compatible() -> bool {
+    dsig::abi_compatible()
 }
 
 #[magnus::init]
@@ -327,6 +339,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     let native: RModule = module.define_module("Native")?;
 
     native.define_singleton_method("check_version", function!(native_check_version, 0))?;
+    native.define_singleton_method("abi_compatible?", function!(native_abi_compatible, 0))?;
     native.define_singleton_method("versions", function!(native_versions, 0))?;
     native.define_singleton_method("sign", function!(native_sign, 5))?;
     native.define_singleton_method("verify", function!(native_verify, 5))?;
