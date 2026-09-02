@@ -6,7 +6,7 @@ RSpec.describe HankoXml::SignedDocument do
   let(:fixtures) { Pathname.new(__dir__).join("..", "fixtures") }
   let(:signed_xml) { fixtures.join("signed_exc_c14n.xml").read }
   let(:signer_cert_pem) { fixtures.join("signer.crt").read }
-  
+
   it "preserves bytes exactly when serialized via #to_xml" do
     doc = Nokogiri::XML(signed_xml)
     # Nokogiri's standard serialization can be safe or unsafe depending on
@@ -22,7 +22,7 @@ RSpec.describe HankoXml::SignedDocument do
     signed_doc = HankoXml::SignedDocument.new(doc)
     expect(signed_doc.signatures.size).to eq(1)
   end
-  
+
   it "delegates #valid?" do
     doc = Nokogiri::XML(signed_xml)
     signed_doc = HankoXml::SignedDocument.new(doc)

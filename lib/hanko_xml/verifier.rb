@@ -4,9 +4,9 @@ module HankoXml
   # Orchestrates XML Digital Signature verification.
   # Handles fetching signatures, validating against a schema, verifying cryptographic integrity,
   # and enforcing security policies.
-  class Verifier
+  class Verifier # rubocop:disable Metrics/ClassLength
     attr_reader :policy, :id_attributes, :namespaces, :signature, :verification_time, :schema, :referenced_documents
-    
+
     # Creates a new Verifier with the given trust anchors and configuration.
     # Note: You must specify exactly one trust source.
     #
@@ -18,9 +18,11 @@ module HankoXml
     # @param policy [Policy] The security policy to enforce (defaults to {Policy.strict}).
     # @param id_attributes [Array<String>] Attributes to consider as IDs for `#foo` references.
     # @param namespaces [Hash<String, String>] Namespaces for XPath signature selection.
-    # @param signature [Symbol, Integer, String] Which signature to verify: `:first`, `:only`, `:all`, an integer index, or an XPath.
+    # @param signature [Symbol, Integer, String] Which signature to verify:
+    #   `:first`, `:only`, `:all`, an integer index, or an XPath.
     # @param verification_time [Time, nil] The time to use for checking certificate expiration bounds.
-    # @param schema [Symbol, String, Nokogiri::XML::Schema, nil] An XSD schema to pre-validate the signature node (e.g. `:default`).
+    # @param schema [Symbol, String, Nokogiri::XML::Schema, nil] An XSD schema to
+    #   pre-validate the signature node (e.g. `:default`).
     # @param referenced_documents [Hash<String, Nokogiri::XML::Document>] Documents to resolve external references.
     def initialize(certificate: nil, certificates: nil, store: nil, key: nil, keys: nil,
                    policy: HankoXml::Policy.strict, id_attributes: %w[Id ID id],
@@ -28,15 +30,16 @@ module HankoXml
                    schema: nil, referenced_documents: {})
       supplied_trusts = [certificate, certificates, store, key, keys].compact
       if supplied_trusts.size > 1
-        raise HankoXml::ConfigurationError, "Specify exactly one trust source: certificate, certificates, store, key, or keys"
+        raise HankoXml::ConfigurationError,
+              "Specify exactly one trust source: certificate, certificates, store, key, or keys"
       end
-      
+
       @certificate = certificate && HankoXml::Key.coerce(certificate)
-      @certificates = certificates && certificates.map { |c| HankoXml::Key.coerce(c) }
+      @certificates = certificates&.map { |c| HankoXml::Key.coerce(c) }
       @store = store
       @key = key && HankoXml::Key.coerce(key)
       @keys = keys
-      
+
       @policy = policy
       @id_attributes = id_attributes
       @namespaces = namespaces
@@ -44,7 +47,7 @@ module HankoXml
       @verification_time = verification_time
       @schema = schema
       @referenced_documents = referenced_documents
-      
+
       freeze
     end
 
@@ -57,11 +60,12 @@ module HankoXml
       doc = HankoXml.coerce_document(xml)
       # Find signatures
       sigs = doc.xpath(".//ds:Signature", ds: NS["ds"])
-      
+
       if sigs.empty?
         # Verification requires a signature, but verify() is supposed to return a failed Verification.
         # Wait, if there are no signatures, what does Verification hold?
-        # A missing signature is an error state, we can return a Verification with valid=false and a SignatureMissing error.
+        # A missing signature is an error state: return a Verification with
+        # valid=false and a SignatureMissing error.
         return HankoXml::Verification.new(
           valid: false,
           errors: [HankoXml::SignatureMissing.new("No <Signature> element found")],
@@ -101,7 +105,7 @@ module HankoXml
       end
       result
     end
-    
+
     # Returns true if the document signature is valid.
     #
     # @param xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The signed XML.
@@ -117,7 +121,7 @@ module HankoXml
     def verify_all(xml)
       doc = HankoXml.coerce_document(xml)
       sigs = doc.xpath(".//ds:Signature", ds: NS["ds"])
-      
+
       return [] if sigs.empty?
 
       sigs.map.with_index do |sig, index|
@@ -132,9 +136,8 @@ module HankoXml
       when :first
         [sigs.first, 0]
       when :only
-        if sigs.size > 1
-          raise HankoXml::MultipleSignatures, "Expected exactly 1 signature, found #{sigs.size}"
-        end
+        raise HankoXml::MultipleSignatures, "Expected exactly 1 signature, found #{sigs.size}" if sigs.size > 1
+
         [sigs.first, 0]
       when Integer
         [sigs[signature_option], signature_option]
@@ -148,6 +151,13 @@ module HankoXml
       end
     end
 
+    # One linear sequence of interdependent checks -- schema, digest, signature,
+    # certificate chain, time bounds, policy -- accumulating shared state as it
+    # goes. Splitting it would thread that state through helpers rather than
+    # genuinely simplify it, so the metrics cops are waived here pending a
+    # deliberate refactor.
+    # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity
+    # rubocop:disable Metrics/MethodLength, Metrics/PerceivedComplexity
     def verify_single(doc, sig_node, index)
       # Schema validation before any crypto
       if @schema
@@ -176,7 +186,7 @@ module HankoXml
       # 2. Call Native.inspect_sig
       begin
         inspect_result = Native.inspect_sig(xml_bytes, index)
-      rescue => e
+      rescue StandardError => e
         return HankoXml::Verification.new(
           valid: false,
           errors: [HankoXml::ParseError.new(e.message)],
@@ -191,15 +201,13 @@ module HankoXml
       # 3. Call Native.verify
       trusted = []
       untrusted = []
-      
+
       # Select key from `keys:` if `keys` is provided
       if @keys
         key_name = sig_info.key_names.first
         if key_name && @keys.key?(key_name)
           cert_or_key = HankoXml::Key.coerce(@keys[key_name])
-          if cert_or_key.certificate?
-            trusted << cert_or_key.to_pem
-          end
+          trusted << cert_or_key.to_pem if cert_or_key.certificate?
         else
           return HankoXml::Verification.new(
             valid: false,
@@ -212,10 +220,8 @@ module HankoXml
       end
 
       trusted << @certificate.to_pem if @certificate
-      
-      if @certificates
-        trusted.concat(@certificates.map(&:to_pem))
-      end
+
+      trusted.concat(@certificates.map(&:to_pem)) if @certificates
 
       # Check certificate expiration in Ruby if verification_time is set
       # (Ideally, we pass time to native store, but for now we do it here if possible)
@@ -240,7 +246,7 @@ module HankoXml
 
       begin
         verify_result = Native.verify(xml_bytes, trusted, untrusted, @id_attributes, index)
-      rescue => e
+      rescue StandardError => e
         return HankoXml::Verification.new(
           valid: false,
           errors: [HankoXml::NativeError.new(e.message)],
@@ -253,7 +259,7 @@ module HankoXml
       valid = (verify_result[:status] == :succeeded)
       errors = []
 
-      if !valid
+      unless valid
         msg = verify_result[:errors].first || "Signature verification failed"
         errors << HankoXml::VerificationError.new(msg, xmlsec_errors: verify_result[:errors], signature_node: sig_node)
       end
@@ -274,5 +280,7 @@ module HankoXml
         document: doc
       )
     end
+    # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
+    # rubocop:enable Metrics/MethodLength, Metrics/PerceivedComplexity
   end
 end

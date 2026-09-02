@@ -48,11 +48,11 @@ module HankoXml
       @references ||= signature_info.references.map do |ref|
         # Resolve the node
         target_node = resolve_reference(ref)
-        
+
         # For now, we assume if the overall signature is valid, the reference is valid.
         # xmlsec1 doesn't tell us which reference failed in the struct yet, but we can look at the errors array.
         ref_valid = valid? # Approximation for Phase 3
-        
+
         Reference.new(
           uri: ref.uri,
           node: target_node,
@@ -69,6 +69,7 @@ module HankoXml
       nodes = []
       references.each do |ref|
         next unless ref.node
+
         # A reference covers the node and all its descendants.
         # But if it's enveloped, it excludes the signature itself.
         nodes << ref.node
@@ -81,7 +82,7 @@ module HankoXml
       # EXCEPT if it is equal to or a descendant of the signature_node (and the reference is enveloped).
       references.any? do |ref|
         next false unless ref.node
-        
+
         is_covered = node.ancestors.include?(ref.node) || node == ref.node
         if is_covered && ref.enveloped?
           is_excluded = node.ancestors.include?(signature_node) || node == signature_node
@@ -104,26 +105,27 @@ module HankoXml
       node = document.at_xpath(xpath, ns)
       raise HankoXml::NotSignedError, "No node found" unless node
       raise HankoXml::NotSignedError, "Node is not signed" unless signed?(node)
+
       node
     end
 
     def signed(xpath, ns = {})
       nodes = document.xpath(xpath, ns).to_a
       raise HankoXml::NotSignedError, "Some nodes are not signed" unless nodes.all? { |n| signed?(n) }
+
       nodes
     end
 
     private
 
+    # External references fall through to nil: they are not resolved by default.
     def resolve_reference(ref)
       if ref.uri.nil? || ref.uri.empty?
         document.root
       elsif ref.uri.start_with?("#")
-        id = ref.uri[1..-1]
+        id = ref.uri[1..]
         # In Nokogiri, we can find by ID if registered, or we can just search by our known ID attributes
         document.at_xpath("//*[@Id='#{id}' or @ID='#{id}' or @id='#{id}']")
-      else
-        nil # external references are not resolved by default
       end
     end
   end

@@ -18,5 +18,5 @@ end
 # the top bar links work from any nesting depth and under any GitHub Pages
 # base path.
 def site_root_url
-  File.join(File.dirname(url_for_main), '..') + '/'
+  "#{File.join(File.dirname(url_for_main), "..")}/"
 end

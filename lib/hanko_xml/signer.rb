@@ -15,14 +15,18 @@ module HankoXml
 
     attr_accessor :key, :certificate, :certificates, :signature_method, :canonicalization_method,
                   :digest_method, :references, :placement, :id_attributes, :namespaces,
-                  :signature_id, :policy, :key_info
+                  :signature_id, :policy
     attr_reader :template_mode
+    # Reader only: #key_info below is a dual getter/setter (API_CONTRACT.md
+    # §5.2), so an attr_accessor reader here would be dead code shadowed by it.
+    attr_writer :key_info
 
     # Creates a new Signer with the given configuration.
     # Yields +self+ to a block if provided, allowing block-based configuration before freezing.
     #
     # @param key [Key, OpenSSL::PKey::PKey, String, Pathname] The private key used to sign the document.
-    # @param certificate [Key, OpenSSL::X509::Certificate, String, Pathname, nil] The certificate corresponding to the key.
+    # @param certificate [Key, OpenSSL::X509::Certificate, String, Pathname, nil]
+    #   The certificate corresponding to the key.
     # @param certificates [Array<Key, OpenSSL::X509::Certificate, String, Pathname>] Extra certificates for the chain.
     # @param signature_method [Symbol] The signature algorithm (e.g., :rsa_sha256).
     # @param digest_method [Symbol] The digest algorithm for references (e.g., :sha256).
@@ -140,9 +144,7 @@ module HankoXml
                            end
 
       # Filter out already signed if not forced
-      unless force
-        signatures_to_sign.reject! { |node| node_signed?(node) }
-      end
+      signatures_to_sign.reject! { |node| node_signed?(node) } unless force
 
       # If there's nothing to sign, return the doc as-is
       return doc if signatures_to_sign.empty?
@@ -164,7 +166,7 @@ module HankoXml
         # To find its index, we can search the Nokogiri document since we haven't changed the DOM structure.
         all_sigs_in_order = doc.xpath(".//ds:Signature", ds: NS["ds"])
         index = all_sigs_in_order.index(sig_node)
-        
+
         cert_pems = @certificates.map(&:to_pem)
         cert_pems.unshift(@certificate.to_pem) if @certificate
 
@@ -193,17 +195,20 @@ module HankoXml
 
     def find_or_build_signatures(doc)
       existing = doc.xpath(".//ds:Signature", ds: NS["ds"]).to_a
-      
+
       if existing.empty?
         raise HankoXml::ConfigurationError, "template: :require but no <Signature> found" if @template_mode == :require
-        
+
         # Build one
         template_node = template(doc)
         @placement.insert(doc, template_node)
         [template_node]
       else
-        raise HankoXml::ConfigurationError, "template: :build but <Signature> already exists" if @template_mode == :build
-        
+        if @template_mode == :build
+          raise HankoXml::ConfigurationError,
+                "template: :build but <Signature> already exists"
+        end
+
         existing
       end
     end
@@ -213,6 +218,7 @@ module HankoXml
       val && !val.content.strip.empty?
     end
 
+    # rubocop:disable Metrics/PerceivedComplexity
     def write_back_signature(doc, signed_bytes, index, caller_sig_node)
       # Parse the signed bytes
       signed_doc = HankoXml.parse(signed_bytes)
@@ -222,28 +228,24 @@ module HankoXml
       # Copy ds:Reference/ds:DigestValue
       caller_refs = caller_sig_node.xpath(".//ds:Reference", ds: NS["ds"])
       signed_refs = signed_sig_node.xpath(".//ds:Reference", ds: NS["ds"])
-      
+
       caller_refs.each_with_index do |caller_ref, i|
         signed_ref = signed_refs[i]
         caller_dv = caller_ref.at_xpath("./ds:DigestValue", ds: NS["ds"])
         signed_dv = signed_ref.at_xpath("./ds:DigestValue", ds: NS["ds"])
-        
-        if caller_dv && signed_dv
-          caller_dv.content = signed_dv.content
-        end
+
+        caller_dv.content = signed_dv.content if caller_dv && signed_dv
       end
 
       # Copy ds:SignatureValue
       caller_sv = caller_sig_node.at_xpath("./ds:SignatureValue", ds: NS["ds"])
       signed_sv = signed_sig_node.at_xpath("./ds:SignatureValue", ds: NS["ds"])
-      if caller_sv && signed_sv
-        caller_sv.content = signed_sv.content
-      end
+      caller_sv.content = signed_sv.content if caller_sv && signed_sv
 
       # Copy KeyInfo//X509Certificate (and KeyValue leaves if applicable, though for now we just copy X509Certificate)
       caller_certs = caller_sig_node.xpath(".//ds:KeyInfo//ds:X509Certificate", ds: NS["ds"])
       signed_certs = signed_sig_node.xpath(".//ds:KeyInfo//ds:X509Certificate", ds: NS["ds"])
-      
+
       # If caller has no X509Certificate but signed does, append it to X509Data
       if caller_certs.empty? && signed_certs.any?
         x509_data = caller_sig_node.at_xpath(".//ds:KeyInfo/ds:X509Data", ds: NS["ds"])
@@ -258,11 +260,10 @@ module HankoXml
       else
         caller_certs.each_with_index do |caller_cert, i|
           signed_cert = signed_certs[i]
-          if signed_cert
-            caller_cert.content = signed_cert.content
-          end
+          caller_cert.content = signed_cert.content if signed_cert
         end
       end
     end
+    # rubocop:enable Metrics/PerceivedComplexity
   end
 end

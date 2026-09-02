@@ -6,6 +6,8 @@ require_relative "../hanko_xml"
 # support direct #sign, #sign!, #signature_valid?, #signatures, and #signed?
 # See API_CONTRACT.md §6.6.
 module HankoXml
+  # Mixed into Nokogiri::XML::Document and Nokogiri::XML::Node to provide the
+  # signing and verification shorthands described in API_CONTRACT.md §6.6.
   module NokogiriExt
     def sign(**kwargs)
       HankoXml.sign(self, **kwargs)

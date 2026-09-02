@@ -1,6 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/danimaribeiro/HankoXml/main/assets/hanko-mark.png"
-       alt="HankoXml" width="120" height="120">
+  <img src="assets/hanko-mark.png" alt="HankoXml" width="120" height="120">
 </p>
 
 <h1 align="center">HankoXml</h1>

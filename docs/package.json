@@ -10,7 +10,7 @@
     "build": "npm run docs:api && astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "docs:api": "cd .. && bundle exec yard doc --output-dir docs/public/api"
+    "docs:api": "cd .. && bundle exec yard doc --output-dir docs/public/api && mkdir -p docs/public/api/assets && cp assets/hanko-mark.png docs/public/api/assets/"
   },
   "dependencies": {
     "@tailwindcss/typography": "^0.5.20",

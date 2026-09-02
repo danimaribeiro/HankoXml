@@ -9,9 +9,8 @@ Gem::Specification.new do |spec|
   spec.email = ["danimaribeiro@gmail.com"]
 
   spec.summary = "XML digital signature signing and verification for Ruby via a Rust extension calling libxmlsec1."
-  spec.description = "hanko_xml signs and verifies XML-DSig signatures by binding to libxmlsec1 " \
-                      "through a Rust extension built with Magnus and rb-sys. It integrates directly " \
-                      "with Nokogiri and defends against XML Signature Wrapping attacks."
+  spec.description = "hanko_xml signs and verifies XML-DSig signatures by binding to libxmlsec1 through " \
+                      "a Rust extension built with Magnus and rb-sys, integrating directly with Nokogiri."
   spec.homepage = "https://github.com/danimaribeiro/HankoXml"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.0.0"

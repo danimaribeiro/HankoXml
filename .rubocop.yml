@@ -33,3 +33,25 @@ Metrics/ParameterLists:
 
 Metrics/ClassLength:
   Max: 160
+
+# `ns` is what Nokogiri itself calls the namespaces hash in #xpath/#at_xpath,
+# so the public helpers that forward to it use the same name.
+Naming/MethodParameterName:
+  # RuboCop's defaults, which this key replaces rather than extends, plus `ns`.
+  AllowedNames:
+    - as
+    - at
+    - by
+    - cc
+    - db
+    - id
+    - if
+    - in
+    - io
+    - ip
+    - of
+    - on
+    - os
+    - pp
+    - to
+    - ns

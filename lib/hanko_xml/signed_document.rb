@@ -24,9 +24,7 @@ module HankoXml
     # @return [String] The serialized XML.
     def to_xml(declaration: true)
       options = ::Nokogiri::XML::Node::SaveOptions::AS_XML
-      unless declaration
-        options |= ::Nokogiri::XML::Node::SaveOptions::NO_DECL
-      end
+      options |= ::Nokogiri::XML::Node::SaveOptions::NO_DECL unless declaration
       @document.to_xml(save_with: options)
     end
 
@@ -49,13 +47,13 @@ module HankoXml
     def write_to(io, declaration: true)
       io.write(to_xml(declaration: declaration))
     end
-    
+
     # Returns all `<ds:Signature>` nodes in the document.
     # @return [Nokogiri::XML::NodeSet]
     def signatures
       @document.xpath(".//ds:Signature", ds: NS["ds"])
     end
-    
+
     # Verifies the signatures against a given trust source.
     #
     # @param certificate [Key, String, Pathname] The trusted certificate.
@@ -65,7 +63,8 @@ module HankoXml
     # @param keys [Hash] Key lookup hash.
     # @return [Boolean] True if the signature is valid.
     def valid?(certificate: nil, certificates: nil, store: nil, key: nil, keys: nil)
-      HankoXml.verify(@document, certificate: certificate, certificates: certificates, store: store, key: key, keys: keys).valid?
+      HankoXml.verify(@document, certificate: certificate, certificates: certificates, store: store, key: key,
+                                 keys: keys).valid?
     end
 
     def inspect

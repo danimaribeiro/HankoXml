@@ -29,7 +29,7 @@ RSpec.describe "Nokogiri Core Extensions" do
     signed_doc = doc.sign(key: signer_key_pem, certificate: signer_cert_pem)
     expect(signed_doc).to be_a(HankoXml::SignedDocument)
     expect(signed_doc.valid?(certificate: signer_cert_pem)).to be true
-    
+
     # Original is untouched
     expect(doc.signed?).to be false
   end
