@@ -89,6 +89,7 @@ fn link_homebrew_libxml2_by_absolute_path(libxml2: &pkg_config::Library) {
 
 fn main() {
     println!("cargo:rerun-if-env-changed=HANKO_XML_VENDOR");
+    println!("cargo:rerun-if-env-changed=RUBY_TARGET");
     println!("cargo:rerun-if-env-changed=HANKO_XML_OPENSSL_PREFIX");
     println!("cargo:rerun-if-changed=../../dependencies.yml");
 
@@ -105,13 +106,36 @@ fn main() {
     //
     // Everything downstream (the bindgen allowlist, the generated bindings) is
     // shared; only the include and link paths differ.
-    let headers = if env::var_os("HANKO_XML_VENDOR").is_some_and(|v| v != "0" && !v.is_empty()) {
+    let headers = if should_vendor() {
         vendor::build()
     } else {
         system_libraries()
     };
 
     generate_bindings(&headers);
+}
+
+/// Whether to build libxml2 and xmlsec1 from the pinned source rather than
+/// probing the system for them.
+///
+/// `HANKO_XML_VENDOR` decides it explicitly when set (`0` or empty forces the
+/// system path). Otherwise it follows `RUBY_TARGET`, which rake-compiler and
+/// rb-sys set when building a precompiled platform gem.
+///
+/// Keying off `RUBY_TARGET` rather than requiring the variable to be threaded
+/// in is both more robust and more correct. More correct because a precompiled
+/// gem ships to machines we know nothing about, so it has to carry its own
+/// libxml2 and xmlsec1 — there is no system copy to rely on, and the build
+/// host's copy is usually the wrong architecture anyway. More robust because
+/// passing an environment variable into the rb-sys-dock container depends on
+/// the `pre-script` input, which older releases of
+/// `oxidize-rb/actions/cross-gem` do not have; when it is missing the build
+/// silently falls back to the system path instead of failing loudly.
+fn should_vendor() -> bool {
+    if let Ok(value) = env::var("HANKO_XML_VENDOR") {
+        return !(value.is_empty() || value == "0");
+    }
+    env::var_os("RUBY_TARGET").is_some()
 }
 
 /// Probes the system libxmlsec1/libxml2 and emits their link metadata.

@@ -282,6 +282,21 @@ fn build_libxml2(src: &Path, prefix: &Path) {
 fn build_xmlsec1(src: &Path, prefix: &Path) {
     let openssl_prefix = openssl_prefix();
 
+    // We link libcrypto rather than vendoring OpenSSL, so xmlsec's configure
+    // needs OpenSSL headers for the *target*. That is trivially true for a
+    // native build and an open question when cross-compiling, so say out loud
+    // what was found -- cargo surfaces build-script stderr when the build
+    // fails, which is exactly when this matters.
+    eprintln!(
+        "hanko_xml: target={} cross={} openssl_prefix={}",
+        target_triple(),
+        is_cross_compiling(),
+        openssl_prefix
+            .as_ref()
+            .map(|p| p.display().to_string())
+            .unwrap_or_else(|| "<default search path>".into())
+    );
+
     let mut args = vec![
         format!("--prefix={}", prefix.display()),
         format!("--with-libxml={}", prefix.display()),
