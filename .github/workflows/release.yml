@@ -36,7 +36,7 @@ jobs:
       id-token: write   # OIDC exchange for RubyGems trusted publishing
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install libxmlsec1
         run: sudo apt-get update && sudo apt-get install -y libxmlsec1-dev libxml2-dev pkg-config libclang-dev

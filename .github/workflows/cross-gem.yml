@@ -64,7 +64,7 @@ jobs:
         platform: ${{ fromJSON(needs.platforms.outputs.list) }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Ruby & Rust
         uses: oxidize-rb/actions/setup-ruby-and-rust@v1

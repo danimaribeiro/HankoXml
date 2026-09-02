@@ -28,7 +28,7 @@ jobs:
           - '3.4'
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v7
 
     # libclang is not optional: ext/hanko_xml/build.rs runs bindgen against the
     # xmlsec1 headers on every build. The GitHub runners happen to ship clang
