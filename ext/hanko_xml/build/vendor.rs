@@ -87,6 +87,10 @@ fn probe_vendored_headers(prefix: &Path) -> crate::Headers {
     if let Some(openssl) = openssl_prefix() {
         include_paths.push(openssl.join("include"));
     }
+    if let Some(multiarch) = multiarch_include_dir() {
+        eprintln!("hanko_xml: multiarch include dir {}", multiarch.display());
+        include_paths.push(multiarch);
+    }
 
     crate::Headers {
         include_paths,
@@ -479,6 +483,47 @@ fn configure_make_install(src: &Path, args: &[String], name: &str, extra_env: &[
         install.env(key, value);
     }
     run(&mut install, &format!("installing {name}"));
+}
+
+/// Debian and Ubuntu put architecture-specific headers under
+/// `/usr/include/<multiarch triple>`, and OpenSSL's `opensslconf.h` is one of
+/// them: `e_os2.h` does `#include <openssl/opensslconf.h>` and relies on that
+/// directory being on the include path.
+///
+/// GCC adds it automatically, which is why libxml2 and xmlsec1 compile fine.
+/// The clang instance bindgen runs does not, so without this the C libraries
+/// build and then binding generation fails on a header GCC found without
+/// being asked. Returns nothing on systems that do not use multiarch.
+fn multiarch_include_dir() -> Option<PathBuf> {
+    fn ask(cc: &str) -> Option<String> {
+        Command::new(cc)
+            .arg("-print-multiarch")
+            .output()
+            .ok()
+            .filter(|out| out.status.success())
+            .and_then(|out| String::from_utf8(out.stdout).ok())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+    }
+
+    // Only ask a compiler that speaks for the *target*. Falling back to the
+    // host `cc` while cross-compiling would confidently return the build
+    // machine's triple — x86_64-linux-gnu while building for aarch64 — and
+    // point bindgen at headers for the wrong architecture. When there is no
+    // target compiler to ask, derive it instead.
+    let probed = match (cross_tool("CC", "gcc"), is_cross_compiling()) {
+        (Some(target_cc), _) => ask(&target_cc),
+        (None, true) => None,
+        (None, false) => ask("cc"),
+    };
+
+    // Fall back to deriving it from the Rust target, whose triples map onto
+    // Debian's by dropping the vendor field: x86_64-unknown-linux-gnu becomes
+    // x86_64-linux-gnu.
+    let triple = probed.unwrap_or_else(|| target_triple().replacen("-unknown-", "-", 1));
+
+    let dir = PathBuf::from("/usr/include").join(triple);
+    dir.is_dir().then_some(dir)
 }
 
 /// Where to find the OpenSSL we link *dynamically*. Deliberately not vendored
