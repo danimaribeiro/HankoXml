@@ -16,28 +16,52 @@ on:
   # Ruby ABIs.
   pull_request:
   workflow_dispatch:
+    inputs:
+      include_aarch64:
+        description: 'Also build aarch64-linux (known-blocked; see VENDORING.md)'
+        type: boolean
+        default: false
 
 jobs:
+  # aarch64-linux is kept but held back rather than deleted. The vendored build
+  # cross-compiles both libraries for it correctly; what is missing is in the
+  # build environment: the rb-sys-dock image carries no aarch64 OpenSSL, so
+  # xmlsec1's build finds the host's arch-independent /usr/include/openssl and
+  # then no aarch64 opensslconf.h behind it. Unblocking it means provisioning
+  # libssl-dev:arm64 inside the container (which needs a pre-script -- no
+  # released oxidize-rb/actions tag implements one, so the workflow would have
+  # to call rb-sys-dock directly) or vendoring OpenSSL for cross-compiled
+  # targets. VENDORING.md has the analysis and the three options.
+  #
+  # Until then it stays out of ordinary PR runs, so a known-blocked platform
+  # does not mask a regression in a working one. Two ways to exercise it:
+  # run this workflow manually with `include_aarch64`, or push to a branch
+  # named aarch64*.
+  platforms:
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.pick.outputs.list }}
+    steps:
+      - id: pick
+        run: |
+          if [ "${{ inputs.include_aarch64 }}" = "true" ] || \
+             [ "${{ startsWith(github.head_ref || github.ref_name, 'aarch64') }}" = "true" ]; then
+            echo 'list=["x86_64-linux","aarch64-linux"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'list=["x86_64-linux"]' >> "$GITHUB_OUTPUT"
+          fi
+      - run: echo "Building ${{ steps.pick.outputs.list }}"
+
   cross-gem:
     name: ${{ matrix.platform }}
+    needs: platforms
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        platform:
-          # Native inside the x86_64 dock container -- no C cross-compilation.
-          - x86_64-linux
-          # Genuinely cross-compiled: needs an aarch64 toolchain and, for
-          # xmlsec's configure probes, aarch64 OpenSSL headers.
-          - aarch64-linux
-    # aarch64 is known-blocked and must not hold back the x86_64 gem. The
-    # rb-sys-dock image ships no aarch64 OpenSSL, so xmlsec1's build finds the
-    # host's arch-independent /usr/include/openssl and then no aarch64
-    # opensslconf.h. Fixing it means either provisioning libssl-dev:arm64 in
-    # the container (which needs a pre-script -- no released
-    # oxidize-rb/actions tag supports one) or vendoring OpenSSL for this
-    # target. See VENDORING.md.
-    continue-on-error: ${{ matrix.platform == 'aarch64-linux' }}
+        # Native inside the x86_64 dock container -- no C cross-compilation.
+        # aarch64-linux joins this list only when opted into; see above.
+        platform: ${{ fromJSON(needs.platforms.outputs.list) }}
 
     steps:
       - uses: actions/checkout@v4
@@ -68,9 +92,8 @@ jobs:
   smoke-test:
     name: install ${{ matrix.platform }} on a bare container
     needs: cross-gem
-    # Runs on whatever platforms did build. This is the check that actually
-    # matters -- a precompiled gem installing with no toolchain present -- so a
-    # platform that is still being worked on must not suppress it.
+    # x86_64 is the only platform whose gem is smoke-tested today, and an
+    # opted-in aarch64 failure must not suppress it.
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     strategy:

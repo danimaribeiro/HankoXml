@@ -248,7 +248,9 @@ before a macOS platform gem is published.
 | Platform | Result |
 |---|---|
 | `x86_64-linux` | **builds** — 4.0 MB platform gem, vendored libxml2 2.14.6 + xmlsec1 1.3.12, four Ruby ABIs |
-| `aarch64-linux` | **blocked** on target OpenSSL — see below |
+| `aarch64-linux` | **held back** — kept in the workflow but out of ordinary PR runs. Opt in with the `include_aarch64` dispatch input, or a branch named `aarch64*` |
+| `x86_64-darwin`, `arm64-darwin` | not started — blocked on the same decision |
+| `x64-mingw-ucrt` | not started |
 
 Four rounds of CI, each failing further along, and every failure was worth
 having:
