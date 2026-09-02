@@ -22,7 +22,17 @@ require "pathname"
 RSpec.describe "exported symbols" do
   let(:artifact) do
     root = Pathname.new(__dir__).join("..").expand_path
-    %w[hanko_xml.bundle hanko_xml.so].map { |f| root.join("lib/hanko_xml", f) }.find(&:exist?)
+    # Two layouts: a source build puts the extension at
+    # lib/hanko_xml/hanko_xml.<so|bundle>, while a precompiled platform gem
+    # ships one per ABI under lib/hanko_xml/<major.minor>/. Check both, or this
+    # spec silently skips on exactly the artifact it exists to police.
+    abi = RUBY_VERSION[/\d+\.\d+/]
+    %W[
+      lib/hanko_xml/hanko_xml.bundle
+      lib/hanko_xml/hanko_xml.so
+      lib/hanko_xml/#{abi}/hanko_xml.bundle
+      lib/hanko_xml/#{abi}/hanko_xml.so
+    ].map { |f| root.join(f) }.find(&:exist?)
   end
 
   # Linux: only the dynamic symbol table can interpose. macOS: -U hides
