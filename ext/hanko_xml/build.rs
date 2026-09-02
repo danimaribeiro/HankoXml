@@ -2,6 +2,19 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
+#[path = "build/vendor.rs"]
+mod vendor;
+
+/// Everything bindgen needs to parse the xmlsec/libxml2 headers, produced by
+/// whichever of the two paths below ran. The defines matter as much as the
+/// include paths: xmlsec's headers refuse to compile without a crypto backend
+/// selected (`XMLSEC_CRYPTO_OPENSSL`), and the rest of the `-D` set records
+/// which algorithms the library was actually built with.
+pub struct Headers {
+    pub include_paths: Vec<PathBuf>,
+    pub defines: Vec<(String, Option<String>)>,
+}
+
 /// Homebrew installs several of our dependencies keg-only (not symlinked
 /// into the default prefix), so their .pc files aren't on the default
 /// pkg-config search path. Add every keg-only formula we depend on
@@ -75,6 +88,58 @@ fn link_homebrew_libxml2_by_absolute_path(libxml2: &pkg_config::Library) {
 }
 
 fn main() {
+    println!("cargo:rerun-if-env-changed=HANKO_XML_VENDOR");
+    println!("cargo:rerun-if-env-changed=RUBY_TARGET");
+    println!("cargo:rerun-if-env-changed=HANKO_XML_OPENSSL_PREFIX");
+    println!("cargo:rerun-if-changed=../../dependencies.yml");
+
+    // Two mutually exclusive ways to find libxmlsec1 and libxml2:
+    //
+    //   vendored (HANKO_XML_VENDOR=1) -- build both from the pinned source in
+    //     dependencies.yml and link them statically. Used by CI to produce the
+    //     precompiled platform gems. Headers and archives then come from one
+    //     source and cannot disagree.
+    //
+    //   system (default) -- probe pkg-config, as below. This is what an
+    //     ordinary `gem install` does, so the vendored path never runs on a
+    //     user's machine unless they opt in.
+    //
+    // Everything downstream (the bindgen allowlist, the generated bindings) is
+    // shared; only the include and link paths differ.
+    let headers = if should_vendor() {
+        vendor::build()
+    } else {
+        system_libraries()
+    };
+
+    generate_bindings(&headers);
+}
+
+/// Whether to build libxml2 and xmlsec1 from the pinned source rather than
+/// probing the system for them.
+///
+/// `HANKO_XML_VENDOR` decides it explicitly when set (`0` or empty forces the
+/// system path). Otherwise it follows `RUBY_TARGET`, which rake-compiler and
+/// rb-sys set when building a precompiled platform gem.
+///
+/// Keying off `RUBY_TARGET` rather than requiring the variable to be threaded
+/// in is both more robust and more correct. More correct because a precompiled
+/// gem ships to machines we know nothing about, so it has to carry its own
+/// libxml2 and xmlsec1 — there is no system copy to rely on, and the build
+/// host's copy is usually the wrong architecture anyway. More robust because
+/// passing an environment variable into the rb-sys-dock container depends on
+/// the `pre-script` input, which older releases of
+/// `oxidize-rb/actions/cross-gem` do not have; when it is missing the build
+/// silently falls back to the system path instead of failing loudly.
+fn should_vendor() -> bool {
+    if let Ok(value) = env::var("HANKO_XML_VENDOR") {
+        return !(value.is_empty() || value == "0");
+    }
+    env::var_os("RUBY_TARGET").is_some()
+}
+
+/// Probes the system libxmlsec1/libxml2 and emits their link metadata.
+fn system_libraries() -> Headers {
     add_homebrew_pkgconfig_paths(&["libxmlsec1", "libxml2"]);
 
     // We emit link metadata ourselves below instead of letting pkg-config
@@ -110,6 +175,30 @@ fn main() {
         link_homebrew_libxml2_by_absolute_path(&libxml2);
     }
 
+    // libxml2's include path goes first so its headers win over whatever
+    // libxml2 copy the system's default clang search path would otherwise
+    // find, keeping bindgen's struct layout in lockstep with the dylib we
+    // actually link.
+    Headers {
+        include_paths: libxml2
+            .include_paths
+            .iter()
+            .chain(&xmlsec.include_paths)
+            .cloned()
+            .collect(),
+        defines: libxml2
+            .defines
+            .iter()
+            .chain(&xmlsec.defines)
+            .map(|(name, value)| (name.clone(), value.clone()))
+            .collect(),
+    }
+}
+
+/// Runs bindgen over the xmlsec/libxml2 headers found at `include_paths` and
+/// writes the result to OUT_DIR. Shared by both the vendored and system paths:
+/// the allowlist and the generated surface must not depend on which one ran.
+fn generate_bindings(headers: &Headers) {
     let mut builder = bindgen::Builder::default()
         .header_contents(
             "hanko_xml_wrapper.h",
@@ -154,14 +243,10 @@ fn main() {
         .generate_comments(false)
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()));
 
-    // libxml2's own include path goes first so its headers win over
-    // whatever libxml2 copy the system's default clang search path would
-    // otherwise find, keeping bindgen's struct layout in lockstep with the
-    // dylib we actually link.
-    for include_path in libxml2.include_paths.iter().chain(&xmlsec.include_paths) {
+    for include_path in &headers.include_paths {
         builder = builder.clang_arg(format!("-I{}", include_path.display()));
     }
-    for (name, value) in libxml2.defines.iter().chain(&xmlsec.defines) {
+    for (name, value) in &headers.defines {
         builder = builder.clang_arg(match value {
             Some(v) => format!("-D{name}={v}"),
             None => format!("-D{name}"),

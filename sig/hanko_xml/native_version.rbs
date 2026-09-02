@@ -1,0 +1,13 @@
+module HankoXml
+  module NativeVersion
+    SKIP_ENV: String
+
+    def self.check!: () -> (:ok | :abi_compatible | :skipped)
+    def self.build_versions: () -> Hash[Symbol, String]
+
+    private
+
+    def self.skip: () -> String?
+    def self.mismatch_message: () -> String
+  end
+end

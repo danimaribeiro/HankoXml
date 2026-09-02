@@ -97,4 +97,9 @@ module HankoXml
 
   # libxmlsec1 failed in an unexpected way.
   class NativeError < Error; end
+
+  # The loaded libxmlsec1 is not ABI compatible with the headers this
+  # extension was compiled against. Raised at require time by
+  # {HankoXml::NativeVersion}; see that file for why this cannot be a warning.
+  class NativeVersionMismatch < NativeError; end
 end

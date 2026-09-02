@@ -2,8 +2,9 @@
 
 require_relative "hanko_xml/version"
 require_relative "hanko_xml/hanko_xml"
-require_relative "hanko_xml/dom"
 require_relative "hanko_xml/errors"
+require_relative "hanko_xml/native_version"
+require_relative "hanko_xml/dom"
 require_relative "hanko_xml/algorithms"
 require_relative "hanko_xml/xml"
 require_relative "hanko_xml/key"
@@ -18,6 +19,11 @@ require_relative "hanko_xml/signer"
 require_relative "hanko_xml/verification"
 require_relative "hanko_xml/verifier"
 require_relative "hanko_xml/signed_document"
+
+# Refuse to run against a libxmlsec1 the extension was not built for, before
+# any signing or verification can produce a wrong answer. See
+# HankoXml::NativeVersion.
+HankoXml::NativeVersion.check!
 
 # XML digital signature verification backed by libxmlsec1.
 module HankoXml

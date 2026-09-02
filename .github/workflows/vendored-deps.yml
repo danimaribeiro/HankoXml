@@ -1,0 +1,77 @@
+name: Vendored deps
+
+# Watches the C libraries pinned in dependencies.yml. Dependabot cannot: it
+# reads bundler/cargo/github-actions manifests, and dependencies.yml is a
+# hand-rolled list of tarball URLs and checksums. Vendoring makes us the
+# distributor of libxml2 and xmlsec1, so reacting to their security fixes is
+# our job rather than the OS vendor's -- this is the tripwire for that.
+#
+# Opens (or updates) a single issue when something is actionable, and stays
+# silent otherwise. Silence is the point: a check that fires every week gets
+# ignored, which is why the script compares each advisory's recorded fix
+# version against our pin rather than trusting OSV's distro-proxy matching.
+
+on:
+  schedule:
+    # Mondays, 06:00 UTC.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+  # Also on changes to the pins themselves, so a bump is checked immediately.
+  pull_request:
+    paths:
+      - 'dependencies.yml'
+      - '.github/scripts/check_vendored_deps.rb'
+      - '.github/workflows/vendored-deps.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+
+      - name: Check the pinned libxml2 and xmlsec1
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          FINDINGS_FILE: ${{ runner.temp }}/findings.md
+        run: |
+          if ruby .github/scripts/check_vendored_deps.rb; then
+            echo "actionable=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "actionable=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Only on the scheduled/manual runs -- a PR touching the pins gets the
+      # result from the step above and its own red X, and does not need an issue.
+      - name: Open or update the tracking issue
+        if: steps.check.outputs.actionable == 'true' && github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FINDINGS_FILE: ${{ runner.temp }}/findings.md
+        run: |
+          set -euo pipefail
+          title="Vendored dependencies need attention"
+          existing=$(gh issue list --state open --search "$title in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file "$FINDINGS_FILE"
+            echo "commented on #$existing"
+          else
+            gh issue create --title "$title" --body-file "$FINDINGS_FILE" --label dependencies || \
+              gh issue create --title "$title" --body-file "$FINDINGS_FILE"
+          fi
+
+      - name: Fail the run when action is needed
+        if: steps.check.outputs.actionable == 'true'
+        run: |
+          echo "::error::dependencies.yml needs attention — see the job log or the tracking issue"
+          exit 1

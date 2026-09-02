@@ -1,0 +1,52 @@
+# Pinned upstream C libraries.
+#
+# These are the versions statically vendored into the precompiled platform gems
+# (see RELEASING.md). The source gem does not use them: it builds against the
+# system libraries unless HANKO_XML_VENDOR=1 is set, which only CI does.
+#
+# The gem version does NOT track these. hanko_xml's version is SemVer over its
+# Ruby API; what is vendored is data, reported at runtime by
+# HankoXml::NativeVersion.build_versions. Bumping a version here is at minimum a
+# patch release, and an upstream *security* fix is a patch release with the CVE
+# named in CHANGELOG.md -- vendoring makes us the distributor, so that response
+# is our obligation.
+#
+# The checksums are not decoration. We redistribute cryptographic code, so the
+# build verifies SHA256 before extracting and fails hard on a mismatch.
+#
+# Tarballs are cached in tmp/vendor-cache/ (gitignored); override with
+# HANKO_XML_VENDOR_CACHE to build offline or from a mirror.
+#
+# To bump: change version + sha256 together, run
+# `HANKO_XML_VENDOR=1 bundle exec rake compile spec`, and confirm
+# `rake symbols:check` still reports no leaked xml*/xmlSec* exports.
+
+libxml2:
+  version: "2.14.6"
+  url: "https://download.gnome.org/sources/libxml2/2.14/libxml2-2.14.6.tar.xz"
+  sha256: "7ce458a0affeb83f0b55f1f4f9e0e55735dbfc1a9de124ee86fb4a66b597203a"
+  license: "MIT"
+
+xmlsec1:
+  version: "1.3.12"
+  # The project's own site (www.aleksey.com, the `mirror` below) sits behind
+  # Cloudflare and answers 403 to GitHub Actions runners, so the primary source
+  # is the identical tarball from the upstream GitHub release -- verified
+  # byte-for-byte against aleksey.com, same SHA256. Which host serves it does
+  # not affect trust: the checksum below is what is actually trusted.
+  url: "https://github.com/lsh123/xmlsec/releases/download/1.3.12/xmlsec1-1.3.12.tar.gz"
+  mirror: "https://www.aleksey.com/xmlsec/download/xmlsec1-1.3.12.tar.gz"
+  sha256: "24045199af12d93fe5fdbbbf7e386e823e4842071e9432e2b90ac108b889a923"
+  license: "MIT"
+
+# Deliberately NOT vendored: OpenSSL. The precompiled gems link the system
+# libcrypto (3.x) dynamically.
+#
+# libxml2 has to be vendored because xmlDoc/xmlNode/xmlAttr are *public* structs
+# dereferenced by field offset -- that is its ABI -- and the same xmlDocPtr is
+# shared between our Rust code and xmlsec. OpenSSL is the opposite on both
+# counts: its 3.x structs are opaque behind accessors, and its pointers never
+# enter our code at all (the only contact is the xmlSecOpenSSLApp* wrappers,
+# which take PEM bytes). Vendoring it would also put a second libcrypto in the
+# process beside Ruby's own openssl stdlib -- two provider registries, two error
+# queues -- and would hand us the OpenSSL CVE treadmill for no safety gain.

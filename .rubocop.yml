@@ -1,5 +1,21 @@
+# Without this, the AllCops/Exclude below *replaces* RuboCop's defaults
+# (node_modules, tmp, vendor, .git) rather than adding to them. That silently
+# un-excludes vendor/, which is where CI puts every installed gem
+# (`bundler-cache: true` sets BUNDLE_PATH=vendor/bundle) -- so RuboCop would
+# lint the whole bundle. It passes locally, where gems live outside the repo,
+# and fails on every CI job.
+inherit_mode:
+  merge:
+    - Exclude
+
 AllCops:
-  TargetRubyVersion: 3.0
+  TargetRubyVersion: 3.1
+  Exclude:
+    # Cargo's build output. The vendored build (HANKO_XML_VENDOR=1) extracts
+    # the libxml2 and xmlsec1 sources in here, and xmlsec1 ships an RPM
+    # `xmlsec1.spec` that RuboCop otherwise tries to parse as Ruby.
+    - "target/**/*"
+    - "tmp/**/*"
 
 Style/StringLiterals:
   EnforcedStyle: double_quotes
@@ -10,6 +26,9 @@ Style/StringLiteralsInInterpolation:
 Metrics/BlockLength:
   Exclude:
     - "spec/**/*"
+    # A gemspec is one long declaration; splitting it to satisfy a block-length
+    # cop would only hide the file allowlist behind an indirection.
+    - "*.gemspec"
 
 # The API contract (API_CONTRACT.md §5.2, §5.3) deliberately favours wide
 # keyword-argument constructors (C# SignedXml ergonomics) and case-based

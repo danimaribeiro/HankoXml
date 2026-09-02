@@ -9,6 +9,7 @@ module HankoXml
   class NativeError < Error
     attr_reader xmlsec_errors: Array[String]
   end
+  class NativeVersionMismatch < NativeError end
   class PlacementError < Error end
   class VerificationError < Error
     attr_reader signature_node: Nokogiri::XML::Node?

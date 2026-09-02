@@ -15,3 +15,6 @@ magnus = { version = "0.6.2" }
 [build-dependencies]
 bindgen = "0.69"
 pkg-config = "0.3"
+# Verifies the pinned upstream tarballs in dependencies.yml before they are
+# extracted. Build-time only, and only exercised on the vendored path.
+sha2 = "0.10"

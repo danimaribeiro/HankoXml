@@ -438,6 +438,16 @@ impl<'mngr> DsigCtx<'mngr> {
         }
         // SAFETY: setting signKey transfers ownership of the key to the context.
         // xmlSecDSigCtxDestroy will call xmlSecKeyDestroy on it.
+        //
+        // This is the most ABI-fragile line in the crate: a direct field write
+        // into xmlSecDSigCtx, at an offset bindgen computed from whichever
+        // xmlsec headers were present at build time. If xmlsec ever moves
+        // signKey, bindgen regenerates a different-but-still-valid Rust struct
+        // and nothing fails to compile — the write simply lands somewhere else.
+        // That is why the vendored builds pin xmlsec (dependencies.yml) rather
+        // than binding against whatever the OS ships: headers and archive then
+        // come from one source and cannot disagree. For system builds,
+        // HankoXml::NativeVersion is the runtime backstop.
         unsafe {
             (*ptr).signKey = key.into_raw();
         }
@@ -762,8 +772,31 @@ pub fn init_xmlsec() -> Result<(), &'static str> {
 }
 
 /// True when the linked libxmlsec1 matches the version these bindings were
-/// generated against.
+/// generated against, down to the patch level.
+///
+/// Stricter than [`abi_compatible`] and used only for reporting: an exact
+/// mismatch is worth telling the user about, but on its own it is not a
+/// reason to refuse to load.
 pub fn check_version() -> bool {
+    check_version_mode(sys::xmlSecCheckVersionMode_xmlSecCheckVersionExactMatch)
+}
+
+/// True when the linked libxmlsec1 is ABI compatible with the headers these
+/// bindings were generated from — same major version, and a minor version no
+/// older than ours.
+///
+/// This is the check that actually matters. bindgen bakes xmlsec's and
+/// libxml2's struct layouts into this extension at build time, and nothing
+/// about a layout change is visible to the dynamic linker: every symbol still
+/// resolves, the library still loads, and then a field gets read at the offset
+/// our headers claimed rather than the one the loaded library used. Refusing
+/// to load is the only safe response in a library whose job is deciding
+/// whether a signature can be trusted.
+pub fn abi_compatible() -> bool {
+    check_version_mode(sys::xmlSecCheckVersionMode_xmlSecCheckVersionABICompatible)
+}
+
+fn check_version_mode(mode: sys::xmlSecCheckVersionMode) -> bool {
     // SAFETY: takes only plain integers — no pointers, no preconditions
     // beyond the xmlsec headers/library being loaded.
     unsafe {
@@ -771,7 +804,7 @@ pub fn check_version() -> bool {
             sys::XMLSEC_VERSION_MAJOR as i32,
             sys::XMLSEC_VERSION_MINOR as i32,
             sys::XMLSEC_VERSION_SUBMINOR as i32,
-            sys::xmlSecCheckVersionMode_xmlSecCheckVersionExactMatch,
+            mode,
         ) == 1
     }
 }

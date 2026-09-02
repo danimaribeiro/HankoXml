@@ -1,0 +1,35 @@
+# Dependabot covers the three ecosystems it actually understands. It cannot
+# watch dependencies.yml -- that is a hand-rolled manifest of tarball URLs and
+# checksums, not a format Dependabot parses -- so libxml2 and xmlsec1 are
+# handled by .github/workflows/vendored-deps.yml instead.
+version: 2
+
+updates:
+  - package-ecosystem: bundler
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      rust-dependencies:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  # The one that would have caught a real bug in this repo: the cross-compile
+  # workflow pinned oxidize-rb/actions/cross-gem@v1, a tag old enough to lack
+  # the `pre-script` input the docs described, and the mismatch failed silently.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
