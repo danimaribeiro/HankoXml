@@ -1,3 +1,13 @@
+# Without this, the AllCops/Exclude below *replaces* RuboCop's defaults
+# (node_modules, tmp, vendor, .git) rather than adding to them. That silently
+# un-excludes vendor/, which is where CI puts every installed gem
+# (`bundler-cache: true` sets BUNDLE_PATH=vendor/bundle) -- so RuboCop would
+# lint the whole bundle. It passes locally, where gems live outside the repo,
+# and fails on every CI job.
+inherit_mode:
+  merge:
+    - Exclude
+
 AllCops:
   TargetRubyVersion: 3.1
   Exclude:

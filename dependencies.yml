@@ -29,7 +29,13 @@ libxml2:
 
 xmlsec1:
   version: "1.3.12"
-  url: "https://www.aleksey.com/xmlsec/download/xmlsec1-1.3.12.tar.gz"
+  # The project's own site (www.aleksey.com, the `mirror` below) sits behind
+  # Cloudflare and answers 403 to GitHub Actions runners, so the primary source
+  # is the identical tarball from the upstream GitHub release -- verified
+  # byte-for-byte against aleksey.com, same SHA256. Which host serves it does
+  # not affect trust: the checksum below is what is actually trusted.
+  url: "https://github.com/lsh123/xmlsec/releases/download/1.3.12/xmlsec1-1.3.12.tar.gz"
+  mirror: "https://www.aleksey.com/xmlsec/download/xmlsec1-1.3.12.tar.gz"
   sha256: "24045199af12d93fe5fdbbbf7e386e823e4842071e9432e2b90ac108b889a923"
   license: "MIT"
 

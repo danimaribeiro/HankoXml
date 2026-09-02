@@ -24,6 +24,12 @@ use sha2::{Digest, Sha256};
 struct Dependency {
     version: String,
     url: String,
+    /// An alternate host serving the identical tarball. Upstream sites go down,
+    /// rate-limit, or (in xmlsec's case) sit behind a CDN that blocks CI
+    /// runners; a failed download should not fail the build when the same bytes
+    /// are one hop away. Trust does not depend on which host answers -- the
+    /// SHA256 is verified either way.
+    mirror: Option<String>,
     sha256: String,
 }
 
@@ -131,11 +137,13 @@ fn read_dependencies() -> BTreeMap<String, Dependency> {
             let version = fields.get("version")?.clone();
             let url = fields.get("url")?.clone();
             let sha256 = fields.get("sha256")?.clone();
+            let mirror = fields.get("mirror").cloned();
             Some((
                 name,
                 Dependency {
                     version,
                     url,
+                    mirror,
                     sha256,
                 },
             ))
@@ -167,7 +175,7 @@ fn fetch_and_extract(dep: &Dependency, name: &str, cache: &Path, out_dir: &Path)
     let tarball = cache.join(filename);
 
     if !tarball.exists() {
-        download(&dep.url, &tarball);
+        download_with_fallback(dep, &tarball, name);
     }
 
     // Verified before extraction, every time -- including for a cached file,
@@ -207,16 +215,54 @@ fn fetch_and_extract(dep: &Dependency, name: &str, cache: &Path, out_dir: &Path)
     src
 }
 
-fn download(url: &str, dest: &Path) {
-    let partial = dest.with_extension("partial");
-    run(
-        Command::new("curl")
-            .args(["-sSfL", "--retry", "3", "--max-time", "300", "-o"])
-            .arg(&partial)
-            .arg(url),
-        &format!("downloading {url}"),
+fn download_with_fallback(dep: &Dependency, dest: &Path, name: &str) {
+    let mut sources = vec![dep.url.as_str()];
+    sources.extend(dep.mirror.as_deref());
+
+    let mut failures = Vec::new();
+    for url in &sources {
+        match download(url, dest) {
+            Ok(()) => return,
+            Err(err) => {
+                eprintln!("hanko_xml: {name}: {url} failed ({err})");
+                failures.push(format!("  {url}: {err}"));
+            }
+        }
+    }
+    panic!(
+        "could not download {name} {} from any known source:\n{}",
+        dep.version,
+        failures.join("\n")
     );
-    fs::rename(&partial, dest).expect("could not move the downloaded tarball into the cache");
+}
+
+fn download(url: &str, dest: &Path) -> Result<(), String> {
+    let partial = dest.with_extension("partial");
+    let _ = fs::remove_file(&partial);
+
+    // An explicit User-Agent because some upstream hosts sit behind a CDN that
+    // rejects curl's default one outright.
+    let status = Command::new("curl")
+        .args([
+            "-sSfL",
+            "--retry",
+            "3",
+            "--max-time",
+            "300",
+            "-A",
+            "hanko_xml-build/1.0",
+            "-o",
+        ])
+        .arg(&partial)
+        .arg(url)
+        .status()
+        .map_err(|e| format!("could not start curl: {e}"))?;
+
+    if !status.success() {
+        let _ = fs::remove_file(&partial);
+        return Err(format!("curl exited with {status}"));
+    }
+    fs::rename(&partial, dest).map_err(|e| format!("could not move into the cache: {e}"))
 }
 
 fn sha256_file(path: &Path) -> String {

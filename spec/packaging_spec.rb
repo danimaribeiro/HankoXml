@@ -43,6 +43,10 @@ RSpec.describe "gem packaging" do
       expect(dep["version"]).to match(/\A\d+\.\d+\.\d+\z/)
       expect(dep["sha256"]).to match(/\A[0-9a-f]{64}\z/)
       expect(dep["url"]).to start_with("https://")
+      # Optional, but if a fallback host is named it has to be https too: the
+      # checksum is what establishes trust, not the transport, but there is no
+      # reason to fetch over plaintext.
+      expect(dep["mirror"]).to start_with("https://") if dep["mirror"]
     end
   end
 
