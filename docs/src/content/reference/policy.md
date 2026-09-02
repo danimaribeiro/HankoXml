@@ -1,0 +1,96 @@
+---
+title: Policy
+description: HankoXml::Policy — the frozen allowlist enforced before any cryptography runs.
+order: 5
+---
+
+# `HankoXml::Policy`
+
+A frozen allowlist, enforced **in Ruby, before anything reaches libxmlsec1**, on both signing and
+verification.
+
+```ruby
+HankoXml::Policy.strict        # default everywhere
+HankoXml::Policy.fragment      # strict, minus require_signed_root — for protocols
+                               # that sign a fragment (SAML assertions)
+HankoXml::Policy.legacy_sha1   # strict + SHA-1 digest and RSA-SHA1 signature
+HankoXml::Policy.permissive    # everything libxmlsec1 supports. Documented as unsafe.
+
+policy = HankoXml::Policy.strict.with(
+  digest_methods:    %i[sha1 sha256],
+  max_references:    4,
+  max_document_size: 8 * 1024 * 1024,
+)
+```
+
+## Full field list, with `strict` defaults
+
+```ruby
+HankoXml::Policy.new(
+  # --- algorithm allowlists (Symbols or URI Strings) ---------------------
+  signature_methods:        %i[rsa_sha256 rsa_sha384 rsa_sha512
+                               ecdsa_sha256 ecdsa_sha384 ecdsa_sha512],
+  digest_methods:           %i[sha256 sha384 sha512],
+  canonicalization_methods: %i[c14n exc_c14n c14n11
+                               c14n_with_comments exc_c14n_with_comments],
+  transforms:               %i[enveloped_signature base64
+                               c14n exc_c14n c14n11
+                               c14n_with_comments exc_c14n_with_comments],
+
+  # --- reference resolution ----------------------------------------------
+  allow_external_references: false,  # URI="http://…", "file:…", or any non-#fragment
+  allow_retrieval_method:    false,  # <ds:RetrievalMethod> in KeyInfo → network/file fetch
+  allow_same_document_xpointer: false, # URI="#xpointer(…)"
+  max_references:            8,
+  require_references:        true,   # a <SignedInfo> with zero <Reference> is rejected
+
+  # --- structural hardening ----------------------------------------------
+  require_signed_root:       true,   # the document element must be inside signed material
+  reject_duplicate_ids:      true,   # two elements with the same Id → reject
+  max_document_size:         16 * 1024 * 1024,
+  max_transforms_per_reference: 4,
+
+  # --- keys ---------------------------------------------------------------
+  min_rsa_key_bits:          2048,
+  min_ec_key_bits:           256,
+  allow_hmac:                false,
+  check_certificate_validity: true,  # notBefore / notAfter against Time.now
+  clock_skew:                60,     # seconds of tolerance for the above
+)
+```
+
+## Notes on the non-obvious fields
+
+- **`allow_hmac: false`** — An HMAC `SignatureMethod` combined with certificate-based trust is a
+  classic confusion attack: the attacker replaces an RSA signature with an HMAC one keyed on public
+  data. Enabling HMAC requires `allow_hmac: true` *and* a `key:` (never `certificate:`/`store:`) on
+  the verifier; the combination `allow_hmac: true` + `certificate:` raises `PolicyError` at
+  `Verifier.new` time.
+- **`require_signed_root: true`** is the structural half of the XSW defence — see
+  [XSW Defense](/guide/xsw-defense).
+- **`reject_duplicate_ids: true`** is enforced by a Nokogiri scan before serialization. Duplicate IDs
+  make `URI="#x"` resolution ambiguous, and "which `x` did xmlsec pick" is the mechanism behind
+  several XSW variants.
+- **`allow_external_references: false`** blocks the SSRF/file-read surface of XML-DSig outright. Any
+  reference whose URI is not `""` or `#fragment` is rejected in Ruby before xmlsec sees it.
+
+Violations raise `HankoXml::PolicyError` from `verify!`/`sign`, and appear in
+`Verification#errors` with `#valid?` false from `#verify` / `#valid?`. Error messages always name the
+offending value and field, and the escape hatch to use if the document genuinely requires it (for
+example `HankoXml::Policy.legacy_sha1`).
+
+## Why `require_signed_root` defaults to `true`
+
+`true` means the document element must be inside signed material. It kills signature-wrapping
+outright, but breaks SAML, where the signature legitimately covers an `<Assertion>` inside an
+unsigned `<Response>`. The opt-out is made safe, not just available, by three things:
+
+1. **A named preset, not a boolean** — `policy: HankoXml::Policy.fragment` reads as a deliberate
+   protocol decision, not a flag someone flipped to silence an error.
+2. **`Verification#partial?`** is `true` for every such verification, so the condition is
+   inspectable, loggable, and assertable in tests.
+3. **`Verification#at_signed`** makes the safe read shorter than the unsafe one, so under a fragment
+   policy the path of least resistance is the correct one.
+
+See [Trust Anchors & Verification](/guide/trust-anchors) for how `Policy` interacts with certificate
+trust, and [Errors](/guide/errors) for `HankoXml::PolicyError`.

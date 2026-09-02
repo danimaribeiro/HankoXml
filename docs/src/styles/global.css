@@ -1,0 +1,44 @@
+@import "tailwindcss";
+/* Registers Preline's `hs-*` custom variants (hs-dropdown-open, hs-collapse-open,
+   ...). Without this the variants silently compile to nothing and Preline
+   widgets unhide but never become visible. */
+@import "../../node_modules/preline/variants.css";
+@plugin "@tailwindcss/typography";
+@source "../../node_modules/preline/dist/*.js";
+
+/* Class-based theme switching: `.dark` and `.glass` are toggled on <html> by
+   ThemeSwitcher's inline script. `.glass` always implies `.dark` is also set. */
+@custom-variant dark (&:where(.dark, .dark *));
+@custom-variant glass (&:where(.glass, .glass *));
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+}
+
+/* Diagonal crosshatch texture used behind glass panels (droid glass theme). */
+.glass-crosshatch {
+  background-image:
+    repeating-linear-gradient(135deg, transparent, transparent 48px, rgba(255, 255, 255, 0.07) 48px, rgba(255, 255, 255, 0.07) 49px),
+    repeating-linear-gradient(45deg, transparent, transparent 48px, rgba(255, 255, 255, 0.05) 48px, rgba(255, 255, 255, 0.05) 49px);
+}
+
+.glass-gradient {
+  background: linear-gradient(135deg, #3d1f5c 0%, #2a1445 25%, #1a0e30 50%, #1a1030 75%, #2d1248 100%);
+}
+
+.glass-orb-1 {
+  background: radial-gradient(circle, rgba(230, 100, 140, 0.25) 0%, transparent 55%);
+}
+
+.glass-orb-2 {
+  background: radial-gradient(circle, rgba(240, 170, 110, 0.18) 0%, transparent 55%);
+}
+
+.glass-orb-3 {
+  background: radial-gradient(circle, rgba(140, 80, 220, 0.2) 0%, transparent 55%);
+}

@@ -1,0 +1,51 @@
+---
+import Layout from '../layouts/Layout.astro';
+
+const features = [
+  {
+    title: 'Full XML-DSig Support',
+    body: 'Sign and verify Enveloped, Enveloping, and Detached signatures.',
+  },
+  {
+    title: 'Nokogiri Native',
+    body: 'Directly patches Nokogiri::XML::Document for seamless .sign! and .verify! calls.',
+  },
+  {
+    title: 'XSW Defense',
+    body: 'A robust Policy engine and structural signed?(node) checks defeat XML Signature Wrapping attacks.',
+  },
+  {
+    title: 'Rust-Backed',
+    body: 'Memory-safe FFI boundaries, zero shell-outs, and massive performance gains over pure-Ruby cryptography.',
+  },
+];
+---
+
+<Layout title="HankoXml — Ruby XML Digital Signatures">
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section class="py-16 sm:py-24 text-center">
+      <h1 class="text-4xl sm:text-6xl font-bold text-slate-800 dark:text-white glass:bg-gradient-to-r glass:from-blue-500 glass:to-purple-500 glass:bg-clip-text glass:text-transparent">HankoXml</h1>
+      <p class="mt-4 max-w-2xl mx-auto text-lg text-slate-600 dark:text-slate-400 glass:text-gray-300">
+        A high-performance, strictly secure XML Digital Signature (XML-DSig) library for Ruby,
+        backed by a native Rust extension binding directly to <code>libxmlsec1</code>.
+      </p>
+      <div class="mt-8 flex justify-center gap-4">
+        <a href="/guide/getting-started" class="py-3 px-6 inline-flex items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:bg-blue-700">
+          Get Started
+        </a>
+        <a href="https://github.com/danimaribeiro/HankoXml" target="_blank" rel="noopener noreferrer" class="py-3 px-6 inline-flex items-center gap-x-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-800 hover:bg-gray-100 dark:border-gray-700 dark:text-white dark:hover:bg-white/10 glass:border-white/[0.15] glass:bg-white/[0.08] glass:text-white glass:hover:bg-white/[0.12]">
+          View on GitHub
+        </a>
+      </div>
+    </section>
+
+    <section class="grid sm:grid-cols-2 gap-6 pb-16 sm:pb-24">
+      {features.map((f) => (
+        <div class="p-6 rounded-lg border border-gray-200 bg-white dark:bg-slate-800 dark:border-gray-700 glass:rounded-xl glass:bg-white/[0.08] glass:backdrop-blur-xl glass:border-white/[0.12] glass:shadow-[inset_0_1px_1px_rgba(255,255,255,0.06)]">
+          <h3 class="font-semibold text-slate-800 dark:text-white glass:text-white">{f.title}</h3>
+          <p class="mt-2 text-sm text-slate-600 dark:text-slate-400 glass:text-gray-300">{f.body}</p>
+        </div>
+      ))}
+    </section>
+  </main>
+</Layout>

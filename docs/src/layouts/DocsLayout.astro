@@ -1,0 +1,73 @@
+---
+import Layout from './Layout.astro';
+
+interface NavItem {
+  slug: string;
+  title: string;
+  yard?: string;
+}
+
+interface Props {
+  title: string;
+  section: 'guide' | 'reference' | 'examples';
+  slug: string;
+  nav: NavItem[];
+  sectionTitle: string;
+  sectionYardUrl?: string;
+}
+
+const { title, section, slug, nav, sectionTitle, sectionYardUrl } = Astro.props;
+const current = nav.find((item) => item.slug === slug);
+---
+
+<Layout title={`${title} — HankoXml Docs`}>
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 flex gap-8">
+    <aside class="hidden lg:block w-64 shrink-0">
+      <nav class="sticky top-10 glass:bg-white/[0.10] glass:backdrop-blur-xl glass:rounded-xl glass:border glass:border-white/[0.12] glass:shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] glass:p-4">
+        <div class="flex items-center justify-between mb-3">
+          <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 glass:text-gray-400">{sectionTitle}</p>
+          {sectionYardUrl && (
+            <a
+              href={sectionYardUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="text-xs font-medium text-gray-400 hover:text-blue-600 dark:text-gray-500 dark:hover:text-blue-400 glass:text-gray-400 glass:hover:text-blue-300"
+              title="Full generated Ruby API docs"
+            >
+              Ruby ↗
+            </a>
+          )}
+        </div>
+        <ul class="space-y-1">
+          {nav.map((item) => (
+            <li>
+              <a
+                href={`/${section}/${item.slug}`}
+                class:list={[
+                  'block px-3 py-1.5 rounded-lg text-sm',
+                  item.slug === slug
+                    ? 'bg-blue-50 text-blue-700 font-medium dark:bg-blue-800/20 dark:text-blue-400 glass:bg-white/[0.12] glass:text-white'
+                    : 'text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/10 glass:text-gray-300 glass:hover:bg-white/[0.06] glass:hover:text-white',
+                ]}
+              >
+                {item.title}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+    </aside>
+
+    <main class="min-w-0 flex-1 prose dark:prose-invert glass:prose-invert max-w-none glass:prose-p:text-gray-200 glass:prose-headings:text-white glass:prose-strong:text-white glass:prose-code:text-purple-300 glass:prose-a:text-blue-300 glass:prose-li:text-gray-200 glass:prose-blockquote:border-white/[0.15] glass:prose-pre:bg-gray-950 glass:prose-pre:border glass:prose-pre:border-white/[0.10] glass:prose-th:text-white glass:prose-td:text-gray-200">
+      {current?.yard && (
+        <div class="not-prose mb-6 flex items-center justify-between gap-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-900 dark:bg-blue-800/10 dark:text-blue-400 glass:border-white/[0.15] glass:bg-white/[0.08] glass:text-blue-200">
+          <span>Looking for every method, parameter, and inline example?</span>
+          <a href={current.yard} target="_blank" rel="noopener noreferrer" class="font-semibold whitespace-nowrap hover:underline">
+            Full Ruby reference ↗
+          </a>
+        </div>
+      )}
+      <slot />
+    </main>
+  </div>
+</Layout>

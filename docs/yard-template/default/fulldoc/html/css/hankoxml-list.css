@@ -1,0 +1,155 @@
+/*
+ * HankoXml skin for the class/method/file lists rendered inside YARD's
+ * sidebar <iframe>. Shares the token names with hankoxml.css but must
+ * redeclare them: the iframe is a separate document.
+ */
+
+:root {
+  --hx-bg: #f1f5f9;
+  --hx-panel: #ffffff;
+  --hx-border: #e2e8f0;
+  --hx-text: #1e293b;
+  --hx-heading: #0f172a;
+  --hx-muted: #64748b;
+  --hx-link: #7c3aed;
+  --hx-hover: rgba(124, 58, 237, 0.1);
+  --hx-active: rgba(124, 58, 237, 0.16);
+
+  --hx-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --hx-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+}
+
+html.hx-dark {
+  --hx-bg: #172033;
+  --hx-panel: #1e293b;
+  --hx-border: #334155;
+  --hx-text: #e2e8f0;
+  --hx-heading: #f8fafc;
+  --hx-muted: #94a3b8;
+  --hx-link: #a78bfa;
+  --hx-hover: rgba(167, 139, 250, 0.14);
+  --hx-active: rgba(167, 139, 250, 0.24);
+}
+
+html.hx-glass {
+  --hx-bg: transparent;
+  --hx-panel: rgba(255, 255, 255, 0.06);
+  --hx-border: rgba(255, 255, 255, 0.14);
+  --hx-text: #e5e7eb;
+  --hx-heading: #ffffff;
+  --hx-muted: #cbd5e1;
+  --hx-link: #d8b4fe;
+  --hx-hover: rgba(255, 255, 255, 0.1);
+  --hx-active: rgba(230, 100, 140, 0.24);
+}
+
+body {
+  font-family: var(--hx-font);
+  font-size: 13px;
+  color: var(--hx-text);
+  background: var(--hx-bg);
+}
+
+.fixed_header {
+  background: var(--hx-bg);
+  border-bottom: 1px solid var(--hx-border);
+}
+
+html.hx-glass .fixed_header {
+  background: rgba(20, 12, 36, 0.55);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+}
+
+#content h1,
+#full_list_header {
+  color: var(--hx-heading);
+  font-size: 15px;
+  font-weight: 650;
+}
+
+#full_list_nav {
+  color: var(--hx-muted);
+}
+
+#full_list_nav a,
+#full_list_nav a:visited,
+a,
+a:visited {
+  color: var(--hx-link);
+  text-decoration: none;
+}
+
+#full_list_nav a:hover {
+  color: var(--hx-link);
+  background: transparent;
+  text-decoration: underline;
+}
+
+#search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 9px;
+  border: 1px solid var(--hx-border);
+  border-radius: 8px;
+  background: var(--hx-panel);
+  color: var(--hx-text);
+  font: inherit;
+  outline: none;
+}
+
+#search input:focus {
+  border-color: var(--hx-link);
+}
+
+#full_list {
+  font-family: var(--hx-mono);
+}
+
+#full_list li {
+  border-bottom: 1px solid var(--hx-border);
+}
+
+#full_list li.odd,
+#full_list li.even {
+  background: transparent;
+}
+
+#full_list .item:hover {
+  background: var(--hx-hover);
+}
+
+#full_list li.clicked > .item {
+  background: var(--hx-active);
+  color: var(--hx-heading);
+  text-shadow: none;
+}
+
+#full_list li.clicked > .item a,
+#full_list li.clicked > .item a:visited {
+  color: var(--hx-heading);
+}
+
+#full_list li a.toggle {
+  filter: none;
+  opacity: 0.55;
+}
+
+#full_list li a.toggle:hover {
+  opacity: 1;
+}
+
+#full_list li small {
+  color: var(--hx-muted);
+}
+
+#full_list li.deprecated .item a {
+  text-decoration: line-through;
+  color: var(--hx-muted);
+}
+
+#noresults {
+  color: var(--hx-muted);
+}

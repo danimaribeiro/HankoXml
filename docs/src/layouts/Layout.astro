@@ -1,0 +1,80 @@
+---
+import '../styles/global.css';
+import GlassBackdrop from '../components/GlassBackdrop.astro';
+import ThemeSwitcher from '../components/ThemeSwitcher.astro';
+
+interface Props {
+  title?: string;
+}
+
+const { title = 'HankoXml Docs' } = Astro.props;
+---
+
+<!DOCTYPE html>
+<html lang="en" class="dark glass">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>{title}</title>
+    <script is:inline>
+      // Anti-FOUC: apply the persisted theme before first paint. <html> ships
+      // with `dark glass` (the default theme) so first paint is correct for
+      // new visitors; this script corrects it for anyone who picked another
+      // theme. Kept in sync with ThemeSwitcher.astro, which owns the dropdown
+      // UI and the persistence logic after the page has loaded.
+      (function () {
+        try {
+          var theme = localStorage.getItem('hankoxml_theme') || 'glass';
+          var isGlass = theme === 'glass';
+          var isDark =
+            isGlass ||
+            theme === 'dark' ||
+            (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var root = document.documentElement;
+          root.classList.toggle('dark', isDark);
+          root.classList.toggle('glass', isGlass);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="bg-slate-50 dark:bg-slate-900 glass:bg-transparent text-slate-800 dark:text-slate-200 glass:text-gray-200">
+    <GlassBackdrop />
+
+    <header class="relative flex flex-wrap sm:justify-start sm:flex-nowrap z-50 w-full bg-white border-b border-gray-200 text-sm py-3 sm:py-0 dark:bg-slate-900 dark:border-gray-700 glass:bg-white/[0.14] glass:backdrop-blur-2xl glass:border-white/[0.12] glass:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]">
+      <nav class="relative max-w-7xl w-full mx-auto px-4 sm:flex sm:items-center sm:justify-between sm:px-6 lg:px-8" aria-label="Global">
+        <div class="flex items-center justify-between">
+          <a class="flex-none text-xl font-semibold dark:text-white glass:text-white" href="/" aria-label="Brand">HankoXml</a>
+          <button type="button" class="sm:hidden hs-collapse-toggle relative size-9 flex justify-center items-center text-sm font-semibold rounded-lg border border-gray-200 text-gray-800 hover:bg-gray-100 dark:border-gray-700 dark:text-white dark:hover:bg-white/10 glass:border-white/[0.15] glass:text-white glass:hover:bg-white/[0.10]" data-hs-collapse="#navbar-collapse-with-animation" aria-controls="navbar-collapse-with-animation" aria-label="Toggle navigation">
+            <svg class="hs-collapse-open:hidden shrink-0 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" x2="21" y1="6" y2="6"/><line x1="3" x2="21" y1="12" y2="12"/><line x1="3" x2="21" y1="18" y2="18"/></svg>
+            <svg class="hs-collapse-open:block hidden shrink-0 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+        <div id="navbar-collapse-with-animation" class="hs-collapse hidden overflow-hidden transition-all duration-300 basis-full grow sm:block">
+          <div class="flex flex-col gap-y-4 gap-x-0 mt-5 sm:flex-row sm:items-center sm:justify-end sm:gap-y-0 sm:gap-x-7 sm:mt-0 sm:pl-7">
+            <a class="font-medium text-gray-500 hover:text-gray-400 sm:py-6 dark:text-gray-400 dark:hover:text-gray-500 glass:text-gray-300 glass:hover:text-white" href="/guide/getting-started">Guide</a>
+            <a class="font-medium text-gray-500 hover:text-gray-400 sm:py-6 dark:text-gray-400 dark:hover:text-gray-500 glass:text-gray-300 glass:hover:text-white" href="/reference/signer">API Reference</a>
+            <a class="font-medium text-gray-500 hover:text-gray-400 sm:py-6 dark:text-gray-400 dark:hover:text-gray-500 glass:text-gray-300 glass:hover:text-white" href="/examples/simplest">Examples</a>
+            <a class="font-medium text-gray-500 hover:text-gray-400 sm:py-6 dark:text-gray-400 dark:hover:text-gray-500 glass:text-gray-300 glass:hover:text-white" href="/api/index.html">API (YARD)</a>
+            <a class="font-medium text-gray-500 hover:text-gray-400 sm:py-6 dark:text-gray-400 dark:hover:text-gray-500 glass:text-gray-300 glass:hover:text-white" href="https://github.com/danimaribeiro/HankoXml" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <ThemeSwitcher />
+          </div>
+        </div>
+      </nav>
+    </header>
+
+    <slot />
+
+    <script>
+      // Preline v4's ESM entry (dist/index.mjs) does NOT self-initialize on
+      // DOMContentLoaded the way the UMD build does, so widgets (theme
+      // dropdown, mobile nav collapse) must be booted explicitly.
+      import { HSStaticMethods } from 'preline';
+
+      const init = () => HSStaticMethods.autoInit();
+
+      init();
+      // Re-init after client-side navigation (Astro view transitions).
+      document.addEventListener('astro:page-load', init);
+    </script>
+  </body>
+</html>

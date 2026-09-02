@@ -1,0 +1,18 @@
+---
+/**
+ * The only place the glass gradient, light orbs, and crosshatch texture
+ * exist (droid glass theme). Rendered on every page but only visible when
+ * `.glass` is set on <html> — see ThemeSwitcher.astro. Non-glass themes fall
+ * back to the plain `bg-slate-50 dark:bg-slate-900` on <body>.
+ */
+---
+
+<div class="hidden glass:block fixed inset-0 -z-20 glass-gradient" aria-hidden="true"></div>
+
+<div class="hidden glass:block fixed inset-0 -z-20 overflow-hidden pointer-events-none" aria-hidden="true">
+  <div class="absolute top-[-20%] left-[-15%] w-[65%] h-[75%] rounded-full glass-orb-1"></div>
+  <div class="absolute top-[-15%] right-[-10%] w-[50%] h-[55%] rounded-full glass-orb-2"></div>
+  <div class="absolute bottom-[-15%] right-[10%] w-[55%] h-[60%] rounded-full glass-orb-3"></div>
+</div>
+
+<div class="hidden glass:block fixed inset-0 -z-10 pointer-events-none glass-crosshatch" aria-hidden="true"></div>

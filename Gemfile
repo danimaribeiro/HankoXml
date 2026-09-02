@@ -15,3 +15,5 @@ gem "rspec", "~> 3.0"
 gem "nokogiri", "~> 1.18"
 
 gem "rubocop", "~> 1.21"
+
+gem "yard", "~> 0.9.45"

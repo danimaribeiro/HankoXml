@@ -1,0 +1,5 @@
+--template-path docs/yard-template
+--markup markdown
+--no-private
+--readme README.md
+lib/**/*.rb

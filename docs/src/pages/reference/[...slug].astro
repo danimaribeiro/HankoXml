@@ -1,0 +1,27 @@
+---
+import { getCollection, render } from 'astro:content';
+import DocsLayout from '../../layouts/DocsLayout.astro';
+import { referenceNav, yardIndexUrl } from '../../nav';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('reference');
+  return entries.map((entry) => ({
+    params: { slug: entry.id },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const { Content } = await render(entry);
+---
+
+<DocsLayout
+  title={entry.data.title}
+  section="reference"
+  slug={entry.id}
+  nav={referenceNav}
+  sectionTitle="API Reference"
+  sectionYardUrl={yardIndexUrl}
+>
+  <Content />
+</DocsLayout>
