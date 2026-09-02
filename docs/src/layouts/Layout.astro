@@ -5,9 +5,20 @@ import ThemeSwitcher from '../components/ThemeSwitcher.astro';
 
 interface Props {
   title?: string;
+  description?: string;
 }
 
-const { title = 'HankoXml Docs' } = Astro.props;
+const {
+  title = 'HankoXml Docs',
+  description =
+    'A high-performance, strictly secure XML Digital Signature (XML-DSig) library for Ruby, ' +
+    'backed by a native Rust extension binding directly to libxmlsec1.',
+} = Astro.props;
+
+// Social scrapers require an absolute URL. Astro.site comes from `site` in
+// astro.config.mjs; until that is set this falls back to the build host, so
+// the card resolves correctly in dev but needs `site` for production.
+const ogImage = new URL('/og.png', Astro.site ?? Astro.url).href;
 ---
 
 <!DOCTYPE html>
@@ -15,7 +26,20 @@ const { title = 'HankoXml Docs' } = Astro.props;
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>{title}</title>
+    <meta name="description" content={description} />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
     <script is:inline>
       // Anti-FOUC: apply the persisted theme before first paint. <html> ships
       // with `dark glass` (the default theme) so first paint is correct for
@@ -43,7 +67,10 @@ const { title = 'HankoXml Docs' } = Astro.props;
     <header class="relative flex flex-wrap sm:justify-start sm:flex-nowrap z-50 w-full bg-white border-b border-gray-200 text-sm py-3 sm:py-0 dark:bg-slate-900 dark:border-gray-700 glass:bg-white/[0.14] glass:backdrop-blur-2xl glass:border-white/[0.12] glass:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]">
       <nav class="relative max-w-7xl w-full mx-auto px-4 sm:flex sm:items-center sm:justify-between sm:px-6 lg:px-8" aria-label="Global">
         <div class="flex items-center justify-between">
-          <a class="flex-none text-xl font-semibold dark:text-white glass:text-white" href="/" aria-label="Brand">HankoXml</a>
+          <a class="flex-none inline-flex items-center gap-x-2.5 text-xl font-semibold dark:text-white glass:text-white" href="/" aria-label="Brand">
+            <img src="/hanko-mark-gem.svg" alt="" width="128" height="128" class="size-7 shrink-0" />
+            HankoXml
+          </a>
           <button type="button" class="sm:hidden hs-collapse-toggle relative size-9 flex justify-center items-center text-sm font-semibold rounded-lg border border-gray-200 text-gray-800 hover:bg-gray-100 dark:border-gray-700 dark:text-white dark:hover:bg-white/10 glass:border-white/[0.15] glass:text-white glass:hover:bg-white/[0.10]" data-hs-collapse="#navbar-collapse-with-animation" aria-controls="navbar-collapse-with-animation" aria-label="Toggle navigation">
             <svg class="hs-collapse-open:hidden shrink-0 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" x2="21" y1="6" y2="6"/><line x1="3" x2="21" y1="12" y2="12"/><line x1="3" x2="21" y1="18" y2="18"/></svg>
             <svg class="hs-collapse-open:block hidden shrink-0 size-4" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>

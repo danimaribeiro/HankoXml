@@ -179,10 +179,19 @@ html.hx-glass .hx-topbar {
 }
 
 .hx-topbar .hx-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
   font-size: 18px;
   font-weight: 600;
   color: var(--hx-heading);
   text-decoration: none;
+}
+
+.hx-topbar .hx-brand-mark {
+  width: 24px;
+  height: 24px;
+  flex: none;
 }
 
 .hx-topbar-nav {

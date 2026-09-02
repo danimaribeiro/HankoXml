@@ -2,6 +2,8 @@
 <html>
   <head>
     <%= erb(:headers) %>
+    <link rel="icon" type="image/svg+xml" href="<%= site_root_url %>favicon.svg">
+    <link rel="icon" href="<%= site_root_url %>favicon.ico" sizes="32x32">
   </head>
   <body>
     <div id="main_progress" aria-hidden="true"></div>
@@ -15,7 +17,10 @@
     </div>
 
     <header class="hx-topbar">
-      <a class="hx-brand" href="<%= site_root_url %>">HankoXml</a>
+      <a class="hx-brand" href="<%= site_root_url %>">
+        <img class="hx-brand-mark" src="<%= site_root_url %>hanko-mark-gem.svg" alt="" width="128" height="128">
+        HankoXml
+      </a>
       <nav class="hx-topbar-nav">
         <a href="<%= site_root_url %>guide/getting-started">Guide</a>
         <a href="<%= site_root_url %>reference/signer">Reference</a>
