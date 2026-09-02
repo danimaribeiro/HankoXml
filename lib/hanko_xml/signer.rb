@@ -8,9 +8,8 @@ module HankoXml
   # A Signer is frozen after construction: immutable, reusable, safe to
   # share across threads.
   #
-  # Phase 1 implements everything needed to inspect what a Signer would
-  # produce (#template, #to_h). Actually signing (#sign / #sign!) needs the
-  # native rewrite (§14 Phase 2/3) and is not implemented yet.
+  # #template and #to_h inspect what a Signer would produce without signing;
+  # #sign and #sign! perform the signature through the native extension.
   class Signer
     TEMPLATE_MODES = %i[adopt build require].freeze
 
