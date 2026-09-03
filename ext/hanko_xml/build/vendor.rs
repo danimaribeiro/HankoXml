@@ -361,9 +361,19 @@ fn build_openssl(src: &Path, prefix: &Path) {
     args.push("no-shared".into());
     args.push("no-tests".into());
     args.push("no-docs".into());
-    // Deliberately not no-legacy: xmlsec selects algorithms at runtime, and
-    // trimming providers here would fail as a signature error much later
-    // rather than as a build error now.
+    // no-shared disables shared *libraries*; providers are *modules*, which is
+    // a separate switch. Without this, OpenSSL still tries to link
+    // providers/legacy.dylib and fails on Darwin -- the legacy provider's
+    // symbols are not available to a module when nothing is being built
+    // shared. Modules are useless to us regardless: xmlsec is configured
+    // --disable-crypto-dl precisely so nothing is loaded at runtime.
+    args.push("no-module".into());
+    // We link libcrypto; the `openssl` command-line tool is dead weight, and
+    // cross-linking it for Darwin fails on s_client/s_server symbols that have
+    // nothing to do with what we use.
+    args.push("no-apps".into());
+    // Deliberately not no-legacy. The algorithms stay compiled into libcrypto;
+    // this only stops them being packaged as a separately loadable file.
 
     let mut configure = Command::new(script);
     configure.current_dir(src).args(&args);
@@ -517,28 +527,37 @@ fn target_is_macos() -> bool {
 /// The cross toolchain to hand autotools, resolved from the environment the
 /// way the `cc` crate does: `CC_<triple>` (underscored), then `TARGET_CC`, then
 /// the conventional `<triple>-gcc` prefix that rake-compiler-dock provides.
-fn cross_tool(var: &str, suffix: &str) -> Option<String> {
+fn cross_tool(var: &str, suffixes: &[&str]) -> Option<String> {
     let triple = target_triple();
     let underscored = triple.replace('-', "_");
-    if let Ok(tool) = env::var(format!("{var}_{underscored}")).or_else(|_| env::var(format!("TARGET_{var}"))) {
+    if let Ok(tool) =
+        env::var(format!("{var}_{underscored}")).or_else(|_| env::var(format!("TARGET_{var}")))
+    {
         return Some(tool);
     }
 
-    // Two prefixes to try, because Rust and the GNU toolchains disagree on
-    // triple spelling. rake-compiler-dock installs the Debian-style name --
-    // rb-sys passes `-C linker=aarch64-linux-gnu-gcc` -- while cargo's TARGET
-    // carries the vendor field, `aarch64-unknown-linux-gnu`. Probing only the
-    // Rust spelling finds nothing, which would leave CC unset and build the C
-    // libraries with the *host* compiler while configured for the target.
+    // Two prefixes and several suffixes, because the toolchains disagree on
+    // both halves of the name. rake-compiler-dock installs
+    // `aarch64-linux-gnu-gcc` for Linux but `aarch64-apple-darwin-clang` for
+    // macOS, while cargo's TARGET carries the vendor field for Linux
+    // (`aarch64-unknown-linux-gnu`) and not for Darwin (`aarch64-apple-darwin`).
+    // Probing one spelling finds nothing on the other platform, which would
+    // leave CC unset and build the C libraries with the *host* compiler while
+    // configured for the target.
     let gnu_triple = triple.replacen("-unknown-", "-", 1);
-    [triple.as_str(), gnu_triple.as_str()]
+    let prefixes = [triple.as_str(), gnu_triple.as_str()];
+
+    prefixes
         .iter()
-        .map(|prefix| format!("{prefix}-{suffix}"))
+        .flat_map(|prefix| suffixes.iter().map(move |suffix| format!("{prefix}-{suffix}")))
         .find(|candidate| {
-            Command::new(candidate)
-                .arg("--version")
-                .output()
-                .is_ok_and(|out| out.status.success())
+            // Existence, not exit status. The osxcross ar and ranlib wrappers
+            // reject --version outright ("error: ...", or a usage dump), so a
+            // success check silently rejects tools that are present and
+            // correct. That is how RANLIB ended up unset for Darwin, leaving
+            // OpenSSL to call the host GNU ranlib with Apple's -c flag.
+            // Command::output errors only when the binary cannot be spawned.
+            Command::new(candidate).arg("--version").output().is_ok()
         })
 }
 
@@ -558,8 +577,14 @@ fn cross_config() -> (Vec<String>, Vec<(String, String)>) {
     args.push("--disable-dependency-tracking".into());
 
     let mut env_vars = Vec::new();
-    for (var, suffix) in [("CC", "gcc"), ("AR", "ar"), ("RANLIB", "ranlib")] {
-        if let Some(tool) = cross_tool(var, suffix) {
+    // clang before gcc: the Darwin cross toolchain is clang-based, and the
+    // Linux one has no `-clang` binary to shadow it.
+    for (var, suffixes) in [
+        ("CC", &["clang", "gcc"][..]),
+        ("AR", &["ar"][..]),
+        ("RANLIB", &["ranlib"][..]),
+    ] {
+        if let Some(tool) = cross_tool(var, suffixes) {
             env_vars.push((var.to_string(), tool));
         }
     }
@@ -620,7 +645,7 @@ fn multiarch_include_dir() -> Option<PathBuf> {
     // machine's triple — x86_64-linux-gnu while building for aarch64 — and
     // point bindgen at headers for the wrong architecture. When there is no
     // target compiler to ask, derive it instead.
-    let probed = match (cross_tool("CC", "gcc"), is_cross_compiling()) {
+    let probed = match (cross_tool("CC", &["clang", "gcc"]), is_cross_compiling()) {
         (Some(target_cc), _) => ask(&target_cc),
         (None, true) => None,
         (None, false) => ask("cc"),
