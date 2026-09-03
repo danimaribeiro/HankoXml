@@ -520,17 +520,25 @@ fn target_is_macos() -> bool {
 fn cross_tool(var: &str, suffix: &str) -> Option<String> {
     let triple = target_triple();
     let underscored = triple.replace('-', "_");
-    env::var(format!("{var}_{underscored}"))
-        .or_else(|_| env::var(format!("TARGET_{var}")))
-        .ok()
-        .or_else(|| {
-            let candidate = format!("{triple}-{suffix}");
-            Command::new(&candidate)
+    if let Ok(tool) = env::var(format!("{var}_{underscored}")).or_else(|_| env::var(format!("TARGET_{var}"))) {
+        return Some(tool);
+    }
+
+    // Two prefixes to try, because Rust and the GNU toolchains disagree on
+    // triple spelling. rake-compiler-dock installs the Debian-style name --
+    // rb-sys passes `-C linker=aarch64-linux-gnu-gcc` -- while cargo's TARGET
+    // carries the vendor field, `aarch64-unknown-linux-gnu`. Probing only the
+    // Rust spelling finds nothing, which would leave CC unset and build the C
+    // libraries with the *host* compiler while configured for the target.
+    let gnu_triple = triple.replacen("-unknown-", "-", 1);
+    [triple.as_str(), gnu_triple.as_str()]
+        .iter()
+        .map(|prefix| format!("{prefix}-{suffix}"))
+        .find(|candidate| {
+            Command::new(candidate)
                 .arg("--version")
                 .output()
-                .ok()
-                .filter(|out| out.status.success())
-                .map(|_| candidate)
+                .is_ok_and(|out| out.status.success())
         })
 }
 
