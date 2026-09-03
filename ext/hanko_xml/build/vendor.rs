@@ -301,7 +301,14 @@ fn sha256_file(path: &Path) -> String {
     let bytes = fs::read(path).unwrap_or_else(|e| panic!("could not read {}: {e}", path.display()));
     let mut hasher = Sha256::new();
     hasher.update(&bytes);
-    format!("{:x}", hasher.finalize())
+    // Formatted byte-by-byte rather than with `{:x}`: sha2 0.11 returns
+    // hybrid-array's `Array` instead of `GenericArray`, and that type does not
+    // implement LowerHex. Doing it here keeps the build working across both.
+    hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 // --- the builds ---------------------------------------------------------

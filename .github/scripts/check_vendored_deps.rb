@@ -78,6 +78,10 @@ def upstream_versions(name)
   when "libxml2"
     data = get_json("https://gitlab.gnome.org/api/v4/projects/1665/repository/tags?per_page=100")
     Array(data).map { |t| t["name"] }
+  when "openssl"
+    data = get_json("https://api.github.com/repos/openssl/openssl/releases?per_page=100")
+    Array(data).reject { |r| r["prerelease"] || r["draft"] }
+               .map { |r| r["tag_name"].to_s.sub(/\Aopenssl-/, "") }
   else
     []
   end.map { |v| v.sub(/\Av/, "") }.select { |v| v.match?(/\A\d+\.\d+\.\d+\z/) }
