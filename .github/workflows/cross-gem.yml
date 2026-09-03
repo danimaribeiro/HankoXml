@@ -60,14 +60,21 @@ jobs:
   smoke-test:
     name: install ${{ matrix.platform }} on a bare container
     needs: cross-gem
-    runs-on: ubuntu-latest
+    # Each platform on its own architecture. aarch64 was briefly verified under
+    # QEMU, which worked, but emulation is not the same machine: OpenSSL probes
+    # for NEON and the ARM crypto extensions at runtime, and an emulated CPU can
+    # advertise a different feature set than real silicon. For a signing library
+    # the code path users actually execute is the one worth testing.
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: x86_64-linux
+            runner: ubuntu-latest
             docker_platform: linux/amd64
           - platform: aarch64-linux
+            runner: ubuntu-24.04-arm
             docker_platform: linux/arm64
     steps:
       - uses: actions/checkout@v7
@@ -77,14 +84,17 @@ jobs:
           name: gem-${{ matrix.platform }}
           path: pkg
 
-      # GitHub's hosted arm64 runners are public-repo only, so aarch64 is
-      # verified under emulation instead. Slower, but it genuinely executes
-      # aarch64 code rather than merely inspecting the binary.
-      - name: Set up QEMU
-        if: matrix.platform == 'aarch64-linux'
-        uses: docker/setup-qemu-action@v3
-        with:
-          platforms: arm64
+      - name: Confirm the runner is the architecture we mean to test on
+        run: |
+          echo "runner arch: $(uname -m)"
+          case "${{ matrix.platform }}" in
+            x86_64-linux)  expected=x86_64 ;;
+            aarch64-linux) expected=aarch64 ;;
+          esac
+          if [ "$(uname -m)" != "$expected" ]; then
+            echo "::error::expected a $expected runner, got $(uname -m) -- the gem would be tested under emulation or not at all"
+            exit 1
+          fi
 
       - name: Install and exercise the gem with no build toolchain present
         run: |
