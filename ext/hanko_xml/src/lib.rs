@@ -9,7 +9,7 @@ mod errors;
 mod sys;
 
 use magnus::{
-    exception, function, prelude::*, Error, ExceptionClass, RArray, RHash, RModule, RString,
+    function, prelude::*, Error, ExceptionClass, RArray, RHash, RModule, RString,
     Ruby, TryConvert,
 };
 use std::sync::Once;
@@ -29,7 +29,7 @@ fn ensure_initialized() -> Result<(), &'static str> {
 
 fn error_class(ruby: &Ruby, class_name: &str) -> ExceptionClass {
     ruby.eval::<ExceptionClass>(class_name)
-        .unwrap_or_else(|_| exception::runtime_error())
+        .unwrap_or_else(|_| ruby.exception_runtime_error())
 }
 
 fn signing_error(ruby: &Ruby, message: String, xmlsec_errors: Vec<String>) -> Error {
@@ -93,8 +93,7 @@ fn string_slice_to_rarray(ruby: &Ruby, strings: &[String]) -> Result<RArray, Err
 /// Extracts an RArray of RString into a Vec<Vec<u8>>.
 fn rarray_to_byte_vecs(ruby: &Ruby, arr: RArray) -> Result<Vec<Vec<u8>>, Error> {
     let mut result = Vec::new();
-    for item in arr.each() {
-        let item = item.map_err(|e| native_error(ruby, format!("array iteration error: {e}")))?;
+    for item in arr.into_iter() {
         let s: RString = TryConvert::try_convert(item)
             .map_err(|_| native_error(ruby, "array element is not a String".into()))?;
         result.push(rstring_to_bytes(s));
@@ -105,8 +104,7 @@ fn rarray_to_byte_vecs(ruby: &Ruby, arr: RArray) -> Result<Vec<Vec<u8>>, Error> 
 /// Extracts an RArray of RString into a Vec<String>.
 fn rarray_to_strings(ruby: &Ruby, arr: RArray) -> Result<Vec<String>, Error> {
     let mut result = Vec::new();
-    for item in arr.each() {
-        let item = item.map_err(|e| native_error(ruby, format!("array iteration error: {e}")))?;
+    for item in arr.into_iter() {
         let s: RString = TryConvert::try_convert(item)
             .map_err(|_| native_error(ruby, "array element is not a String".into()))?;
         result.push(

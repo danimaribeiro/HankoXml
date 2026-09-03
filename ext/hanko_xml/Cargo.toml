@@ -17,4 +17,4 @@ bindgen = "0.72"
 pkg-config = "0.3"
 # Verifies the pinned upstream tarballs in dependencies.yml before they are
 # extracted. Build-time only, and only exercised on the vendored path.
-sha2 = "0.10"
+sha2 = "0.11"
