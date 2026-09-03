@@ -5,9 +5,9 @@ name: Cross-compile
 # job. Nothing here publishes -- release.yml owns that. This workflow exists to
 # prove the cross build works and to hand back installable .gem artifacts.
 #
-# Linux only for now. macOS is blocked on the OpenSSL question in VENDORING.md
-# (no system libcrypto, so the build bakes in an absolute Homebrew path) and
-# Windows has that plus a much larger toolchain lift.
+# Linux only so far. macOS is no longer blocked -- vendoring OpenSSL removed the
+# absolute-Homebrew-path problem that held it back -- it simply has not been
+# wired up yet. Windows remains a much larger toolchain lift. See VENDORING.md.
 
 on:
   # Pull requests only, plus manual runs. Deliberately not `push` as well: a
@@ -16,52 +16,21 @@ on:
   # Ruby ABIs.
   pull_request:
   workflow_dispatch:
-    inputs:
-      include_aarch64:
-        description: 'Also build aarch64-linux (known-blocked; see VENDORING.md)'
-        type: boolean
-        default: false
 
 jobs:
-  # aarch64-linux is kept but held back rather than deleted. The vendored build
-  # cross-compiles both libraries for it correctly; what is missing is in the
-  # build environment: the rb-sys-dock image carries no aarch64 OpenSSL, so
-  # xmlsec1's build finds the host's arch-independent /usr/include/openssl and
-  # then no aarch64 opensslconf.h behind it. Unblocking it means provisioning
-  # libssl-dev:arm64 inside the container (which needs a pre-script -- no
-  # released oxidize-rb/actions tag implements one, so the workflow would have
-  # to call rb-sys-dock directly) or vendoring OpenSSL for cross-compiled
-  # targets. VENDORING.md has the analysis and the three options.
-  #
-  # Until then it stays out of ordinary PR runs, so a known-blocked platform
-  # does not mask a regression in a working one. Two ways to exercise it:
-  # run this workflow manually with `include_aarch64`, or push to a branch
-  # named aarch64*.
-  platforms:
-    runs-on: ubuntu-latest
-    outputs:
-      list: ${{ steps.pick.outputs.list }}
-    steps:
-      - id: pick
-        run: |
-          if [ "${{ inputs.include_aarch64 }}" = "true" ] || \
-             [ "${{ startsWith(github.head_ref || github.ref_name, 'aarch64') }}" = "true" ]; then
-            echo 'list=["x86_64-linux","aarch64-linux"]' >> "$GITHUB_OUTPUT"
-          else
-            echo 'list=["x86_64-linux"]' >> "$GITHUB_OUTPUT"
-          fi
-      - run: echo "Building ${{ steps.pick.outputs.list }}"
-
   cross-gem:
     name: ${{ matrix.platform }}
-    needs: platforms
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        # Native inside the x86_64 dock container -- no C cross-compilation.
-        # aarch64-linux joins this list only when opted into; see above.
-        platform: ${{ fromJSON(needs.platforms.outputs.list) }}
+        platform:
+          # Native inside the x86_64 dock container -- no C cross-compilation.
+          - x86_64-linux
+          # Genuinely cross-compiled. Unblocked once OpenSSL was vendored: its
+          # failure was never our build, it was that the container had no
+          # OpenSSL for the target.
+          - aarch64-linux
 
     steps:
       - uses: actions/checkout@v7
@@ -76,7 +45,6 @@ jobs:
 
       - name: Build the platform gem
         uses: oxidize-rb/actions/cross-gem@v1
-        id: cross-gem
         with:
           platform: ${{ matrix.platform }}
           ruby-versions: '3.1,3.2,3.3,3.4'
@@ -92,44 +60,36 @@ jobs:
   smoke-test:
     name: install ${{ matrix.platform }} on a bare container
     needs: cross-gem
-    # x86_64 is the only platform whose gem is smoke-tested today, and an
-    # opted-in aarch64 failure must not suppress it.
-    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        platform:
-          - x86_64-linux
-    container: ruby:3.3-slim
+        include:
+          - platform: x86_64-linux
+            docker_platform: linux/amd64
+          - platform: aarch64-linux
+            docker_platform: linux/arm64
     steps:
+      - uses: actions/checkout@v7
+
       - uses: actions/download-artifact@v8
         with:
           name: gem-${{ matrix.platform }}
           path: pkg
 
-      - name: Install the precompiled gem with no build dependencies
-        run: |
-          set -eux
-          ls -la pkg
-          gem install --no-document --local pkg/*.gem
-          ruby -e '
-            require "hanko_xml"
-            puts "loaded hanko_xml #{HankoXml::VERSION}"
-            versions = HankoXml::NativeVersion.build_versions
-            puts "vendored: #{versions.inspect}"
-            raise "expected the pinned vendored libxml2" unless versions[:libxml2] == "2.14.6"
-            raise "expected the pinned vendored xmlsec1" unless versions[:xmlsec] == "1.3.12"
-            raise "version guard failed" unless HankoXml::NativeVersion.check! == :ok
-            puts "OK"
-          '
+      # GitHub's hosted arm64 runners are public-repo only, so aarch64 is
+      # verified under emulation instead. Slower, but it genuinely executes
+      # aarch64 code rather than merely inspecting the binary.
+      - name: Set up QEMU
+        if: matrix.platform == 'aarch64-linux'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
 
-      - name: Confirm no libxml2 or xmlsec symbols are exported
+      - name: Install and exercise the gem with no build toolchain present
         run: |
-          set -eux
-          apt-get update && apt-get install -y --no-install-recommends binutils
-          so=$(ruby -e 'print Gem.find_files("hanko_xml/hanko_xml.so").first')
-          echo "artifact: $so"
-          leaked=$(nm -D --defined-only "$so" | awk '{print $3}' | grep -cE '^(xml|xmlSec)' || true)
-          echo "leaked xml*/xmlSec* exports: $leaked"
-          test "$leaked" -eq 0
+          docker run --rm --platform ${{ matrix.docker_platform }} \
+            -v "$PWD/pkg:/pkg:ro" \
+            -v "$PWD/spec/fixtures:/fixtures:ro" \
+            -v "$PWD/.github/scripts/smoke_test.sh:/smoke_test.sh:ro" \
+            ruby:3.3-slim /smoke_test.sh
