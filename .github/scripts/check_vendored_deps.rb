@@ -17,6 +17,7 @@
 #
 # Exits 1 when anything actionable is found, so the workflow can open an issue.
 
+require "fileutils"
 require "yaml"
 require "json"
 require "net/http"
@@ -172,7 +173,14 @@ if findings.empty?
 end
 
 puts "\n#{findings.size} finding(s)."
-File.write(ENV.fetch("FINDINGS_FILE", File.join(ROOT, "vendored-deps-findings.md")), <<~MD)
+# Defaults under tmp/ rather than the repo root: running this locally should
+# not drop an untracked report into the working tree.
+findings_file = ENV.fetch("FINDINGS_FILE") do
+  FileUtils.mkdir_p(File.join(ROOT, "tmp"))
+  File.join(ROOT, "tmp", "vendored-deps-findings.md")
+end
+
+File.write(findings_file, <<~MD)
   The pinned C libraries in `dependencies.yml` need a look.
 
   #{findings.join("\n")}
