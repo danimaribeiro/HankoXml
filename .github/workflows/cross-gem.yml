@@ -17,6 +17,11 @@ on:
   pull_request:
   workflow_dispatch:
 
+# The most expensive workflow here, so cancelling superseded runs matters most.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   cross-gem:
     name: ${{ matrix.platform }}

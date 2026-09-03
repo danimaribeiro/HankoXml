@@ -23,6 +23,11 @@ on:
       - '.github/scripts/check_vendored_deps.rb'
       - '.github/workflows/vendored-deps.yml'
 
+# Cheap, but there is no value in two concurrent upstream checks.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 

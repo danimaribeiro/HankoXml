@@ -11,6 +11,11 @@ on:
   # guards main, rather than keeping a second copy of it in sync by hand.
   workflow_call:
 
+# Superseded runs are pointless: only the tip commit's result matters.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ${{ matrix.os }}

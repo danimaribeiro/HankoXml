@@ -20,6 +20,12 @@ on:
         type: boolean
         default: true
 
+# Never cancel a publish in flight -- a half-pushed release is far worse
+# than a few wasted minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
