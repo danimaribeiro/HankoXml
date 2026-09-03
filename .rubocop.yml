@@ -10,6 +10,14 @@ inherit_mode:
 
 AllCops:
   TargetRubyVersion: 3.1
+  # RuboCop skips dotted directories by default, so the CI scripts under
+  # .github/ were silently unlinted -- `rake` reported a clean tree while that
+  # file carried offences nobody saw.
+  Include:
+    - "**/*.rb"
+    - "**/*.gemspec"
+    - "**/Rakefile"
+    - ".github/**/*.rb"
   Exclude:
     # Cargo's build output. The vendored build (HANKO_XML_VENDOR=1) extracts
     # the libxml2 and xmlsec1 sources in here, and xmlsec1 ships an RPM

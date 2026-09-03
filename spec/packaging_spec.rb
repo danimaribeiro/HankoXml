@@ -72,7 +72,7 @@ RSpec.describe "gem packaging" do
   end
 
   it "excludes the long-form design documents" do
-    expect(files).not_to include("API_CONTRACT.md", "RUST_COMPARISON.md")
+    expect(files).not_to include("API_CONTRACT.md", "VENDORING.md")
   end
 
   it "excludes compiled artifacts, so the source gem is built on the target machine" do

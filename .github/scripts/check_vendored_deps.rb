@@ -69,23 +69,34 @@ def version_tuple(str)
   str.to_s.sub(/\Av/, "").split(".").map(&:to_i)
 end
 
-# Upstream releases: xmlsec publishes GitHub releases, libxml2 tags on GNOME
-# GitLab (project 1665).
+# Stable release tag names from a GitHub releases feed, with `prefix` stripped
+# (xmlsec tags as `xmlsec_1_3_12`, OpenSSL as `openssl-3.5.8`).
+def github_release_versions(repo, prefix)
+  data = get_json("https://api.github.com/repos/#{repo}/releases?per_page=100")
+  Array(data).reject { |r| r["prerelease"] || r["draft"] }
+             .map { |r| r["tag_name"].to_s.sub(prefix, "").tr("_", ".") }
+end
+
+# libxml2 releases as GitLab tags rather than GitHub releases; 1665 is its
+# project id on gitlab.gnome.org.
+def gnome_tag_versions(project_id)
+  data = get_json("https://gitlab.gnome.org/api/v4/projects/#{project_id}/repository/tags?per_page=100")
+  Array(data).map { |t| t["name"].to_s }
+end
+
+UPSTREAM = {
+  "xmlsec1" => -> { github_release_versions("lsh123/xmlsec", /\Axmlsec_/) },
+  "libxml2" => -> { gnome_tag_versions(1665) },
+  "openssl" => -> { github_release_versions("openssl/openssl", /\Aopenssl-/) }
+}.freeze
+
 def upstream_versions(name)
-  case name
-  when "xmlsec1"
-    data = get_json("https://api.github.com/repos/lsh123/xmlsec/releases")
-    Array(data).reject { |r| r["prerelease"] || r["draft"] }.map { |r| r["tag_name"].sub(/\Axmlsec_/, "").tr("_", ".") }
-  when "libxml2"
-    data = get_json("https://gitlab.gnome.org/api/v4/projects/1665/repository/tags?per_page=100")
-    Array(data).map { |t| t["name"] }
-  when "openssl"
-    data = get_json("https://api.github.com/repos/openssl/openssl/releases?per_page=100")
-    Array(data).reject { |r| r["prerelease"] || r["draft"] }
-               .map { |r| r["tag_name"].to_s.sub(/\Aopenssl-/, "") }
-  else
-    []
-  end.map { |v| v.sub(/\Av/, "") }.select { |v| v.match?(/\A\d+\.\d+\.\d+\z/) }
+  reader = UPSTREAM[name]
+  return [] unless reader
+
+  reader.call
+        .map { |v| v.sub(/\Av/, "") }
+        .select { |v| v.match?(/\A\d+\.\d+\.\d+\z/) }
 end
 
 # OSV has no generic ecosystem for C tarballs, so we query through a distro that
@@ -102,69 +113,92 @@ end
 #   :affected  -- a fix exists and is newer than our pin. Actionable.
 #   :unknown   -- no fix version recorded. Cannot be judged automatically;
 #                 reported as context, never as a reason to fire an alert.
+# Every version an advisory records as fixing it, with the distro revision
+# stripped ("2.14.5+dfsg-0.1" -> "2.14.5") so it can be compared with an
+# upstream tarball version.
+def fixed_versions(vuln)
+  events = vuln.fetch("affected", []).flat_map do |affected|
+    affected.fetch("ranges", []).flat_map { |range| range.fetch("events", []) }
+  end
+
+  events.filter_map { |event| event["fixed"] }
+        .map { |v| v.sub(/[+~-].*\z/, "") }
+        .select { |v| v.match?(/\A\d+(\.\d+)*\z/) }
+end
+
+def advisory_summary(vuln)
+  (vuln["summary"] || vuln["details"] || "").split("\n").first.to_s[0, 100]
+end
+
+def classify_advisory(vuln, pin)
+  fixes = fixed_versions(vuln)
+  return [:unknown, vuln["id"], advisory_summary(vuln)] if fixes.empty?
+
+  # Affected only if every recorded fix is newer than what we ship.
+  return unless fixes.all? { |f| (version_tuple(f) <=> pin) == 1 }
+
+  [:affected, vuln["id"], advisory_summary(vuln)]
+end
+
 def advisories(name, version)
   body = { "package" => { "name" => name, "ecosystem" => "Debian:12" }, "version" => version }
   data = post_json("https://api.osv.dev/v1/query", body)
   pin = version_tuple(version)
 
-  Array(data && data["vulns"]).filter_map do |vuln|
-    fixes = vuln.fetch("affected", []).flat_map do |aff|
-      aff.fetch("ranges", []).flat_map { |r| r.fetch("events", []) }
-    end.filter_map { |e| e["fixed"] }
-      .map { |v| v.sub(/[+~-].*\z/, "") }
-      .select { |v| v.match?(/\A\d+(\.\d+)*\z/) }
-
-    summary = (vuln["summary"] || vuln["details"] || "").split("\n").first.to_s[0, 100]
-
-    if fixes.empty?
-      [:unknown, vuln["id"], summary]
-    else
-      # Affected only if every recorded fix is newer than what we ship.
-      [:affected, vuln["id"], summary] if fixes.all? { |f| (version_tuple(f) <=> pin) == 1 }
-    end
-  end
+  Array(data && data["vulns"]).filter_map { |vuln| classify_advisory(vuln, pin) }
 end
 
-findings = []
-
-DEPS.each do |name, dep|
-  pinned = dep["version"]
-  puts "== #{name} #{pinned}"
-
+# A newer patch inside the pinned series is actionable -- that is the shape a
+# security fix almost always arrives in. A newer minor or major is reported as
+# context only: moving series is a deliberate decision, not a routine bump.
+def check_releases(name, pinned)
   available = upstream_versions(name)
   if available.empty?
     puts "  ? could not read upstream releases (network or API change) -- not treating as clean"
-    findings << "- **#{name}**: could not reach upstream to check for new releases."
-    next
+    return ["- **#{name}**: could not reach upstream to check for new releases."]
   end
 
   pin = version_tuple(pinned)
   newer = available.select { |v| (version_tuple(v) <=> pin) == 1 }
   same_series = newer.select { |v| version_tuple(v).first(2) == pin.first(2) }
 
-  if same_series.any?
-    latest = same_series.max_by { |v| version_tuple(v) }
-    puts "  ! patch update available in the pinned series: #{pinned} -> #{latest}"
-    findings << "- **#{name}**: patch update `#{pinned}` → `#{latest}` in the pinned " \
-                "#{pin.first(2).join(".")}.x series. Security fixes usually arrive this way."
-  end
-
   out_of_series = (newer - same_series).max_by { |v| version_tuple(v) }
   puts "  · newer series available: #{out_of_series} (pinned deliberately, not urgent)" if out_of_series
 
+  return [] if same_series.empty?
+
+  latest = same_series.max_by { |v| version_tuple(v) }
+  puts "  ! patch update available in the pinned series: #{pinned} -> #{latest}"
+  ["- **#{name}**: patch update `#{pinned}` → `#{latest}` in the pinned " \
+   "#{pin.first(2).join(".")}.x series. Security fixes usually arrive this way."]
+end
+
+def check_advisories(name, pinned)
   vulns = advisories(name, pinned)
   affected = vulns.select { |kind, _, _| kind == :affected }
-  unknown  = vulns.select { |kind, _, _| kind == :unknown }
 
-  unknown.each { |_, id, summary| puts "  · #{id} (no fix version recorded) #{summary}" }
+  vulns.select { |kind, _, _| kind == :unknown }
+       .each { |_, id, summary| puts "  · #{id} (no fix version recorded) #{summary}" }
 
-  next if affected.empty?
+  return [] if affected.empty?
 
   puts "  ! #{affected.size} advisory/advisories fixed in a release newer than #{pinned}"
   affected.each { |_, id, summary| puts "      #{id} #{summary}" }
-  findings << "- **#{name} #{pinned}**: #{affected.size} advisory/advisories fixed upstream after " \
-              "our pin — #{affected.map { |_, id, _| id }.join(", ")}. (OSV via the Debian " \
-              "ecosystem as a proxy, so confirm against upstream before acting.)"
+  ["- **#{name} #{pinned}**: #{affected.size} advisory/advisories fixed upstream after " \
+   "our pin — #{affected.map { |_, id, _| id }.join(", ")}. (OSV via the Debian " \
+   "ecosystem as a proxy, so confirm against upstream before acting.)"]
+end
+
+findings = DEPS.flat_map do |name, dep|
+  pinned = dep["version"]
+  puts "== #{name} #{pinned}"
+
+  release_findings = check_releases(name, pinned)
+  # An unreachable upstream already produced a finding; do not also report
+  # advisories we could not put in context.
+  next release_findings if release_findings.any? { |f| f.include?("could not reach upstream") }
+
+  release_findings + check_advisories(name, pinned)
 end
 
 if findings.empty?

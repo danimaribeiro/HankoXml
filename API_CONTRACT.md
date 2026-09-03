@@ -4,8 +4,9 @@ Status: **design contract, not yet implemented.** This document is the reference
 we implement against. Where it disagrees with the code in `lib/` or
 `ext/hanko_xml/`, this document wins and the code is behind.
 
-Companion documents: [`RUST_COMPARISON.md`](RUST_COMPARISON.md) (POC vs rewrite,
-Rust-side), [`README.md`](README.md) (current, pre-contract behaviour).
+Companion documents: [`README.md`](README.md) (current, pre-contract
+behaviour), [`VENDORING.md`](VENDORING.md) (how the native extension is built
+and why its dependencies are vendored).
 
 ---
 
@@ -1287,8 +1288,7 @@ That is five functions. Everything else in this document is Ruby.
 
 ### 7.2 Rust module layout
 
-Keeping the rewrite's split, with the POC's readability lessons from
-`RUST_COMPARISON.md` applied:
+Keeping the rewrite's split, with the POC's readability lessons applied:
 
 ```
 ext/hanko_xml/src/
@@ -1301,8 +1301,7 @@ ext/hanko_xml/src/
   lib.rs      magnus glue: 5 functions, argument coercion, error construction
 ```
 
-Simplifications adopted from the POC, per `RUST_COMPARISON.md` §"What the
-Original Does Better":
+Simplifications adopted from the POC:
 
 - **Drop `XmlDoc<'a>` and its `PhantomData` entirely.** With bytes-only I/O
   there is no borrowed document any more — every document is an `OwnedXmlDoc`.

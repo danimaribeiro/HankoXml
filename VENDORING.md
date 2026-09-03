@@ -32,16 +32,18 @@ documented at length in `ext/hanko_xml/build.rs`.
 1. **Vendor libxml2 2.14.6 + xmlsec1 1.3.12**, statically, pinned by SHA256:
    - `xmlsec1-1.3.12.tar.gz` — `24045199af12d93fe5fdbbbf7e386e823e4842071e9432e2b90ac108b889a923`
    - `libxml2-2.14.6.tar.xz` — `7ce458a0affeb83f0b55f1f4f9e0e55735dbfc1a9de124ee86fb4a66b597203a`
-2. **Dynamically link system OpenSSL 3.x; do not vendor it.** libxml2 is a
-   three-party share of *public* structs (`xmlDoc`/`xmlNode`/`xmlAttr` are
-   dereferenced by field offset — that *is* its ABI). OpenSSL is two-party,
-   its 3.x structs are opaque behind accessors, and its pointers never enter our
-   code — the only contact is six `xmlSecOpenSSLApp*` wrappers taking PEM bytes.
-   Vendoring it would also put a second libcrypto in-process beside Ruby's
-   `openssl` stdlib (two provider registries, two error queues).
-3. **Platforms:** `x86_64-linux`, `aarch64-linux`, `x86_64-darwin`,
-   `arm64-darwin`. Windows `x64-mingw-ucrt` is deferred to its own phase — it has
-   no system libcrypto, so it cannot follow decision 2.
+2. **Vendor OpenSSL 3.5.8 (LTS) statically too.** This started as the
+   opposite decision — link the system libcrypto — on the reasoning that
+   libxml2 *must* be vendored (`xmlDoc`/`xmlNode`/`xmlAttr` are public structs
+   we dereference by field offset, and the same `xmlDocPtr` is shared with
+   xmlsec) while OpenSSL is two-party, its 3.x structs opaque, its pointers
+   never entering our code. That reasoning was right about safety and wrong
+   about feasibility, and CI disproved it three times. See
+   [Resolved: OpenSSL is vendored](#resolved-openssl-is-vendored) for the
+   evidence and the accepted costs.
+3. **Platforms:** `x86_64-linux` ships today. `aarch64-linux`, `x86_64-darwin`
+   and `arm64-darwin` are next; Windows `x64-mingw-ucrt` is a much larger lift
+   and stays deferred.
 4. **Gem version is SemVer over the Ruby API only.** Vendored versions are data,
    never encoded in the gem version (mirroring xmlsec1's number would mean a
    breaking Ruby API change has to wait for xmlsec to bump minor).
@@ -153,49 +155,6 @@ Implementation notes worth keeping:
   sources there, and xmlsec1 ships an RPM `xmlsec1.spec` that RuboCop tries to
   parse as Ruby.
 
-### Original Phase 1 design (kept for reference)
-
-**New: `dependencies.yml`** at the repo root — pinned version, upstream URL, and
-SHA256 per library. One file, read by both the build script and CI. (Nokogiri
-ships the same thing; checksums matter because we become a redistributor of
-crypto code.)
-
-**New: `ext/hanko_xml/build/vendor.rs`**, called from `build.rs`, which:
-1. Resolves each tarball from a local cache dir (`ext/hanko_xml/vendor/`) or
-   downloads it. **Verifies SHA256 before extracting** — hard failure on mismatch.
-2. Extracts into `OUT_DIR`, runs `./configure && make && make install` into
-   `OUT_DIR/vendor`.
-3. Emits `cargo:rustc-link-search=native=` + `cargo:rustc-link-lib=static=` for
-   `xmlsec1`, `xmlsec1-openssl`, `xml2`, and `cargo:rustc-link-lib=dylib=crypto`.
-
-Configure flags:
-
-- **libxml2** — `--enable-static --disable-shared --with-pic --without-python
-  --without-lzma --without-http --without-html --without-icu --without-modules
-  --without-readline --without-history --without-debug`, keeping
-  `--with-xpath --with-xptr --with-c14n --with-schemas --with-output
-  --with-regexps --with-pattern --with-valid --with-iconv --with-threads`
-  (xmlsec needs xpath/xptr/c14n/schemas; iconv stays for non-UTF-8 documents).
-- **xmlsec1** — `--enable-static --disable-shared --with-pic --disable-apps
-  --disable-docs --disable-crypto-dl --disable-apps-crypto-dl
-  --with-default-crypto=openssl --with-openssl=<sysroot> --with-libxml=<our prefix>
-  --without-nss --without-nspr --without-gnutls --without-gcrypt --without-libxslt`.
-  `--disable-crypto-dl` is essential: otherwise xmlsec `dlopen`s its crypto
-  backend at runtime, defeating static linking.
-- **Both** — `CFLAGS=-fvisibility=hidden -fPIC`, and on Linux
-  `-Wl,--exclude-libs,ALL` on the final cdylib link.
-
-**Modify `ext/hanko_xml/build.rs`** — branch at the top of `main()`:
-`HANKO_XML_VENDOR=1` uses the vendored prefix; otherwise the existing
-pkg-config/Homebrew path runs completely unchanged. bindgen's `-I` flags and the
-allowlist are shared; only the include/link paths differ. The elaborate
-`link_homebrew_libxml2_by_absolute_path` workaround applies to the system path
-only — vendoring makes it moot, since there is exactly one libxml2.
-
-**Verify:** `HANKO_XML_VENDOR=1 bundle exec rake compile && bundle exec rake spec`
-on arm64-darwin; confirm `HankoXml::NativeVersion.build_versions` reports
-libxml2 **2.14.6** (not the Homebrew 2.15.3), proving the vendored headers won.
-
 ## Phase 2 — Symbol-leak enforcement — **DONE**
 
 `spec/symbols_spec.rb` asserts the built artifact exports no `xml*`/`xmlSec*`
@@ -207,41 +166,18 @@ skips cleanly where `nm` is unavailable. On a system build it passes trivially
 The rake task from the original design was folded into the spec so a plain
 `bundle exec rake` catches a leak with no extra step.
 
-### Original Phase 2 design (kept for reference)
+## Resolved: macOS no longer needs a system libcrypto
 
-This is the guard against the failure that would otherwise appear only on
-production Linux: two statically-linked libxml2 copies in one process, where ELF
-global symbol interposition binds our `xmlReadMemory` to Nokogiri's libxml2.
+This was an open question for a while. macOS has shipped no usable system
+OpenSSL since Apple deprecated it, so the vendored build linked
+`/opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib` **by absolute path** — fine
+locally, fatal for a distributed gem, since a user without Homebrew's
+`openssl@3` at that exact path could not load it.
 
-**New rake task `symbols:check`** — runs `nm -D --defined-only` (Linux) /
-`nm -gU` (macOS) over the built artifact and asserts **zero** exported `xml*` or
-`xmlSec*` symbols, allowing only `Init_hanko_xml`. Wire into `rake default` and CI.
-
-**New spec** in `spec/` asserting the task passes for the current build, so a
-local `rake` catches it too.
-
-## Open question surfaced by Phase 1: macOS has no system libcrypto
-
-The vendored macOS build links **`/opt/homebrew/opt/openssl@3/lib/libcrypto.3.dylib`
-by absolute path**. That is fine locally and fatal for a distributed gem: a user
-without Homebrew's `openssl@3` at that exact path cannot load it. Unlike Linux —
-where `libcrypto.so.3` resolves by soname from a real system library — macOS has
-shipped no usable system OpenSSL since Apple deprecated it.
-
-So decision 2 ("link system libcrypto") holds cleanly on Linux but **not on
-macOS**, which now looks more like Windows than like Linux. Options, to decide
-before Phase 3 builds macOS gems:
-
-1. **Vendor OpenSSL for macOS only.** Self-contained, at the cost of the CVE
-   treadmill on that platform and a second libcrypto beside Ruby's.
-2. **Link against the libcrypto Ruby itself already links**, discovered at build
-   time from `RbConfig`. No second copy, but couples the gem to how the user's
-   Ruby was built.
-3. **Ship no precompiled macOS gem**, letting Macs fall back to the source gem.
-   Developer machines are the least painful place to require Homebrew.
-
-Not urgent — Linux is where the install-UX win is — but it must be settled
-before a macOS platform gem is published.
+Vendoring OpenSSL removed it. `otool -L` on the built extension now reports only
+`libSystem` and `libiconv` — no libcrypto of any kind, absolute path or
+otherwise. The same change unblocks the aarch64 cross-compile, whose failure had
+the same root cause: no OpenSSL for the target in the build environment.
 
 ## Status of the Linux cross-compile (measured, not predicted)
 
@@ -315,31 +251,6 @@ links the system OpenSSL.
 *(Possible follow-up: cache `tmp/vendor-build` between CI runs keyed on
 `dependencies.yml`. Not done yet — restoring a container-built tree across UID
 boundaries can bite, and 1-2 minutes is not yet worth that risk.)*
-
-### The original decision, kept for the record
-
-Decision 2 ("link the system libcrypto, do not vendor OpenSSL") holds cleanly
-**only where the build is native**. It has now broken on two targets for the
-same underlying reason — the build environment has no OpenSSL for the target:
-
-- **macOS**: no system libcrypto at all; a vendored build bakes in an absolute
-  Homebrew path.
-- **aarch64-linux**: cross-compiling, and the container carries only x86_64
-  OpenSSL.
-
-Three ways forward, to choose before aarch64 ships:
-
-1. **Provision the target's OpenSSL in the build container** (`dpkg
-   --add-architecture arm64` + `libssl-dev:arm64`). Keeps decision 2 intact.
-   Requires running commands inside the container, so the workflow has to call
-   `rb-sys-dock` directly instead of via the action — no released action tag
-   supports `pre-script`. Also assumes the image's apt sources carry arm64.
-2. **Vendor OpenSSL for cross-compiled targets only.** Self-contained, and
-   consistent with what macOS will likely need anyway; costs the OpenSSL CVE
-   treadmill on those platforms and puts a second libcrypto in-process beside
-   Ruby's.
-3. **Ship `x86_64-linux` only.** It works today and covers most Docker images,
-   CI and cloud hosts. aarch64 users fall back to the source gem.
 
 ## Phase 3 — Cross-compilation
 
