@@ -1,7 +1,16 @@
 # frozen_string_literal: true
 
 require_relative "hanko_xml/version"
-require_relative "hanko_xml/hanko_xml"
+
+# A precompiled platform gem serves several Ruby versions at once, so
+# rake-compiler ships one extension per ABI under lib/hanko_xml/<major.minor>/.
+# A gem built from source has a single lib/hanko_xml/hanko_xml.<so|bundle>
+# instead. Try the versioned path first and fall back, so both layouts load.
+begin
+  require_relative "hanko_xml/#{RUBY_VERSION[/\d+\.\d+/]}/hanko_xml"
+rescue LoadError
+  require_relative "hanko_xml/hanko_xml"
+end
 require_relative "hanko_xml/errors"
 require_relative "hanko_xml/native_version"
 require_relative "hanko_xml/dom"
