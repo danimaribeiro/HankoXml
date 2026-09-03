@@ -24,6 +24,10 @@ AllCops:
     # `xmlsec1.spec` that RuboCop otherwise tries to parse as Ruby.
     - "target/**/*"
     - "tmp/**/*"
+    # rake-compiler stages an unpacked copy of lib/ here while building a
+    # platform gem. Linting it means linting the same files twice, and makes
+    # the inspected count depend on whether a gem happens to have been built.
+    - "pkg/**/*"
 
 Style/StringLiterals:
   EnforcedStyle: double_quotes
