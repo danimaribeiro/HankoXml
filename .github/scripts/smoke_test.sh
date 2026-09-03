@@ -93,7 +93,11 @@ for so in "${sos[@]}"; do
   # leading underscore is a Mach-O convention, hence the optional _ below.
   if [ "$(uname -s)" = "Darwin" ]; then
     symbols=$(nm -gU "$so" | awk '{print $3}')
-    needs=$(otool -L "$so" | tail -n +2 | awk '{printf " %s", $1}')
+    # Skip both the "path:" header and the object's own install name, which
+    # Mach-O records first and which rake-compiler leaves pointing at the build
+    # directory. Neither is a dependency, and reporting the install name as one
+    # makes the output read like a leak that is not there.
+    needs=$(otool -L "$so" | tail -n +2 | grep -v 'libhanko_xml' | awk '{printf " %s", $1}')
   else
     symbols=$(nm -D --defined-only "$so" | awk '{print $3}')
     needs=$(objdump -p "$so" | awk '/NEEDED/ {printf " %s", $2}')
