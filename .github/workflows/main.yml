@@ -20,12 +20,24 @@ jobs:
       matrix:
         os:
           - ubuntu-latest
-          - macos-latest
         ruby:
           - '3.1'
           - '3.2'
           - '3.3'
           - '3.4'
+        include:
+          # One macOS job, not four. GitHub bills macOS at roughly 10x Linux,
+          # and the macOS-specific code CI protects -- build.rs's Homebrew
+          # keg-only probing and its absolute-path libxml2 linking -- does not
+          # vary by Ruby version. Ruby-version risk (magnus, rb-sys, ABI drift)
+          # is platform-independent and already covered four times on Linux, so
+          # the other three macOS jobs were paying 10x to re-test that.
+          #
+          # 3.4 rather than the floor: newest Ruby on newest macOS is where
+          # toolchain drift surfaces first, and required_ruby_version's 3.1
+          # floor is exercised on Linux.
+          - os: macos-latest
+            ruby: '3.4'
 
     steps:
     - uses: actions/checkout@v7
