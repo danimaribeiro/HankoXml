@@ -38,7 +38,10 @@ RSpec.describe "gem packaging" do
   it "pins a version and a SHA256 for every vendored library" do
     deps = YAML.load_file(root.join("dependencies.yml"))
 
-    expect(deps.keys).to contain_exactly("libxml2", "xmlsec1")
+    # OpenSSL is vendored too, not linked from the system: the build
+    # container's libcrypto decides the soname a precompiled gem records, and
+    # it is never the user's. See dependencies.yml.
+    expect(deps.keys).to contain_exactly("libxml2", "xmlsec1", "openssl")
     deps.each_value do |dep|
       expect(dep["version"]).to match(/\A\d+\.\d+\.\d+\z/)
       expect(dep["sha256"]).to match(/\A[0-9a-f]{64}\z/)

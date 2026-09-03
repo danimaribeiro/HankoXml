@@ -36,25 +36,56 @@ struct Dependency {
 pub fn build() -> crate::Headers {
     let deps = read_dependencies();
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
-    let prefix = out_dir.join("vendor");
+    let prefix = shared_prefix(&deps);
     let cache = cache_dir();
     fs::create_dir_all(&cache).expect("could not create the vendor tarball cache");
 
-    let libxml2 = deps
-        .get("libxml2")
-        .expect("dependencies.yml has no libxml2 entry");
-    let xmlsec1 = deps
-        .get("xmlsec1")
-        .expect("dependencies.yml has no xmlsec1 entry");
+    let dep = |name: &str| {
+        deps.get(name)
+            .unwrap_or_else(|| panic!("dependencies.yml has no {name} entry"))
+    };
 
-    let libxml2_src = fetch_and_extract(libxml2, "libxml2", &cache, &out_dir);
-    build_libxml2(&libxml2_src, &prefix);
+    // The stamp is written only after all three installs succeed, so an
+    // interrupted build is never mistaken for a complete one.
+    let stamp = prefix.join(".stamp-complete");
+    if stamp.exists() {
+        eprintln!("hanko_xml: reusing vendored build at {}", prefix.display());
+    } else {
+        // OpenSSL first: xmlsec1 configures against it.
+        let openssl_src = fetch_and_extract(dep("openssl"), "openssl", &cache, &out_dir);
+        build_openssl(&openssl_src, &prefix);
 
-    let xmlsec1_src = fetch_and_extract(xmlsec1, "xmlsec1", &cache, &out_dir);
-    build_xmlsec1(&xmlsec1_src, &prefix);
+        let libxml2_src = fetch_and_extract(dep("libxml2"), "libxml2", &cache, &out_dir);
+        build_libxml2(&libxml2_src, &prefix);
+
+        let xmlsec1_src = fetch_and_extract(dep("xmlsec1"), "xmlsec1", &cache, &out_dir);
+        build_xmlsec1(&xmlsec1_src, &prefix);
+
+        fs::write(&stamp, "").expect("could not write the vendored build stamp");
+    }
 
     emit_link_flags(&prefix);
     probe_vendored_headers(&prefix)
+}
+
+/// Where the three C libraries get installed.
+///
+/// Deliberately outside `OUT_DIR`. A platform gem is compiled once per Ruby
+/// ABI, and `OUT_DIR` differs for each, so keeping the prefix there rebuilt
+/// OpenSSL, libxml2 and xmlsec1 four times per platform. None of them depend
+/// on the Ruby ABI in any way, so the build is keyed by target triple and the
+/// pinned versions instead and shared across ABIs. Bumping any version in
+/// dependencies.yml changes the key and forces a clean rebuild.
+fn shared_prefix(deps: &BTreeMap<String, Dependency>) -> PathBuf {
+    let key = deps
+        .iter()
+        .map(|(name, dep)| format!("{name}-{}", dep.version))
+        .collect::<Vec<_>>()
+        .join("_");
+    manifest_root()
+        .join("tmp/vendor-build")
+        .join(target_triple())
+        .join(key)
 }
 
 /// Harvests the include paths and `-D` defines from the `.pc` files the two
@@ -84,9 +115,6 @@ fn probe_vendored_headers(prefix: &Path) -> crate::Headers {
 
     let mut include_paths = vec![prefix.join("include"), prefix.join("include/libxml2")];
     include_paths.extend(xmlsec.include_paths.iter().cloned());
-    if let Some(openssl) = openssl_prefix() {
-        include_paths.push(openssl.join("include"));
-    }
     if let Some(multiarch) = multiarch_include_dir() {
         eprintln!("hanko_xml: multiarch include dir {}", multiarch.display());
         include_paths.push(multiarch);
@@ -288,6 +316,80 @@ fn sha256_file(path: &Path) -> String {
 /// flag is not overridden.
 const HIDDEN_VISIBILITY_CFLAGS: &str = "-fvisibility=hidden -fPIC -O2";
 
+/// OpenSSL's Configure wants its target as a positional argument and cannot
+/// auto-detect one when cross-compiling. Map the Rust triple onto OpenSSL's
+/// own naming; returning None falls back to `./config`, which auto-detects and
+/// is correct for a native build.
+fn openssl_target() -> Option<&'static str> {
+    match target_triple().as_str() {
+        "x86_64-unknown-linux-gnu" => Some("linux-x86_64"),
+        "aarch64-unknown-linux-gnu" => Some("linux-aarch64"),
+        "aarch64-apple-darwin" => Some("darwin64-arm64-cc"),
+        "x86_64-apple-darwin" => Some("darwin64-x86_64-cc"),
+        _ => None,
+    }
+}
+
+fn build_openssl(src: &Path, prefix: &Path) {
+    let (cross_args, cross_env) = cross_config();
+    let target = openssl_target();
+
+    // `./Configure` takes an explicit target; `./config` guesses. Use the
+    // explicit one wherever we know the mapping.
+    let script = if target.is_some() {
+        "./Configure"
+    } else {
+        "./config"
+    };
+
+    let mut args: Vec<String> = Vec::new();
+    if let Some(t) = target {
+        args.push(t.to_string());
+    }
+    args.push(format!("--prefix={}", prefix.display()));
+    args.push(format!("--openssldir={}", prefix.join("ssl").display()));
+    // Some platforms default to lib64/, which our single link-search path
+    // would then miss entirely.
+    args.push("--libdir=lib".into());
+    args.push("no-shared".into());
+    args.push("no-tests".into());
+    args.push("no-docs".into());
+    // Deliberately not no-legacy: xmlsec selects algorithms at runtime, and
+    // trimming providers here would fail as a signature error much later
+    // rather than as a build error now.
+
+    let mut configure = Command::new(script);
+    configure.current_dir(src).args(&args);
+    // OpenSSL's own build system handles --host-style flags itself, so only
+    // the toolchain environment carries over from cross_config().
+    let _ = &cross_args;
+    configure.env("CFLAGS", HIDDEN_VISIBILITY_CFLAGS);
+    for (key, value) in &cross_env {
+        configure.env(key, value);
+    }
+    run(
+        &mut configure,
+        &format!("configuring openssl for {}", target_triple()),
+    );
+
+    let jobs = env::var("NUM_JOBS").unwrap_or_else(|_| "4".into());
+    let mut build = Command::new("make");
+    build.current_dir(src).arg(format!("-j{jobs}"));
+    for (key, value) in &cross_env {
+        build.env(key, value);
+    }
+    run(&mut build, "building openssl");
+
+    // install_sw is the libraries and headers only; plain `install` also
+    // builds and installs man pages we do not ship.
+    let mut install = Command::new("make");
+    install.current_dir(src).arg("install_sw");
+    for (key, value) in &cross_env {
+        install.env(key, value);
+    }
+    run(&mut install, "installing openssl");
+}
+
 fn build_libxml2(src: &Path, prefix: &Path) {
     // Feature flags are load-bearing beyond linking: build.rs allowlists
     // `LIBXML_.*` for bindgen, which sweeps in the LIBXML_*_ENABLED macros, and
@@ -330,21 +432,15 @@ fn build_libxml2(src: &Path, prefix: &Path) {
 }
 
 fn build_xmlsec1(src: &Path, prefix: &Path) {
-    let openssl_prefix = openssl_prefix();
-
-    // We link libcrypto rather than vendoring OpenSSL, so xmlsec's configure
-    // needs OpenSSL headers for the *target*. That is trivially true for a
-    // native build and an open question when cross-compiling, so say out loud
-    // what was found -- cargo surfaces build-script stderr when the build
-    // fails, which is exactly when this matters.
+    // OpenSSL is vendored into the same prefix, so xmlsec configures against
+    // the exact build we just made rather than whatever the machine happens to
+    // have. That is what stops the gem recording a NEEDED entry for a
+    // libcrypto soname the user does not have.
     eprintln!(
-        "hanko_xml: target={} cross={} openssl_prefix={}",
+        "hanko_xml: target={} cross={} openssl=vendored at {}",
         target_triple(),
         is_cross_compiling(),
-        openssl_prefix
-            .as_ref()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|| "<default search path>".into())
+        prefix.display()
     );
 
     let mut args = vec![
@@ -366,26 +462,24 @@ fn build_xmlsec1(src: &Path, prefix: &Path) {
         "--without-gcrypt".into(),
         "--without-libxslt".into(),
     ];
-    if let Some(prefix) = &openssl_prefix {
-        args.push(format!("--with-openssl={}", prefix.display()));
-    }
+    args.push(format!("--with-openssl={}", prefix.display()));
 
-    // xmlsec's configure runs test compiles against libxml2 and OpenSSL, so it
-    // needs to find the libxml2 we just installed into the same prefix.
-    let mut extra_env = vec![(
-        "PKG_CONFIG_PATH".to_string(),
-        prefix.join("lib/pkgconfig").display().to_string(),
-    )];
-    if let Some(openssl) = &openssl_prefix {
-        extra_env.push((
+    // OpenSSL and libxml2 are both already installed into this prefix, so
+    // xmlsec's configure test-compiles resolve against exactly what we built.
+    let extra_env = vec![
+        (
+            "PKG_CONFIG_PATH".to_string(),
+            prefix.join("lib/pkgconfig").display().to_string(),
+        ),
+        (
             "LDFLAGS".to_string(),
-            format!("-L{}", openssl.join("lib").display()),
-        ));
-        extra_env.push((
+            format!("-L{}", prefix.join("lib").display()),
+        ),
+        (
             "CPPFLAGS".to_string(),
-            format!("-I{}", openssl.join("include").display()),
-        ));
-    }
+            format!("-I{}", prefix.join("include").display()),
+        ),
+    ];
 
     configure_make_install(src, &args, "xmlsec1", &extra_env);
 }
@@ -526,29 +620,6 @@ fn multiarch_include_dir() -> Option<PathBuf> {
     dir.is_dir().then_some(dir)
 }
 
-/// Where to find the OpenSSL we link *dynamically*. Deliberately not vendored
-/// -- see the module docs and dependencies.yml.
-fn openssl_prefix() -> Option<PathBuf> {
-    if let Some(dir) = env::var_os("HANKO_XML_OPENSSL_PREFIX") {
-        return Some(PathBuf::from(dir));
-    }
-    if target_is_macos() && !is_cross_compiling() {
-        // Homebrew keeps openssl@3 keg-only, so it is not on the default
-        // search path the way it is on Linux.
-        let output = Command::new("brew")
-            .args(["--prefix", "openssl@3"])
-            .output()
-            .ok()?;
-        if output.status.success() {
-            let prefix = PathBuf::from(String::from_utf8(output.stdout).ok()?.trim());
-            if prefix.is_dir() {
-                return Some(prefix);
-            }
-        }
-    }
-    None
-}
-
 // --- linking ------------------------------------------------------------
 
 fn emit_link_flags(prefix: &Path) {
@@ -561,21 +632,21 @@ fn emit_link_flags(prefix: &Path) {
     println!("cargo:rustc-link-lib=static=xmlsec1-openssl");
     println!("cargo:rustc-link-lib=static=xmlsec1");
     println!("cargo:rustc-link-lib=static=xml2");
-
-    if let Some(openssl) = openssl_prefix() {
-        println!(
-            "cargo:rustc-link-search=native={}",
-            openssl.join("lib").display()
-        );
-    }
-    println!("cargo:rustc-link-lib=dylib=crypto");
+    // Static, not dylib: linking the system libcrypto is what recorded a
+    // NEEDED entry for the build container's soname (libcrypto.so.1.1) and
+    // made the gem unloadable on any current distro.
+    println!("cargo:rustc-link-lib=static=crypto");
 
     if target_is_macos() {
         println!("cargo:rustc-link-lib=dylib=iconv");
     } else {
         // Keep the vendored archives' symbols out of this cdylib's dynamic
-        // symbol table so they cannot interpose with Nokogiri's libxml2.
+        // symbol table so they cannot interpose with Nokogiri's libxml2 -- or,
+        // now, with the libcrypto Ruby's own openssl extension already loaded.
         println!("cargo:rustc-link-arg=-Wl,--exclude-libs,ALL");
+        // A static libcrypto still needs these from the platform.
+        println!("cargo:rustc-link-lib=dylib=dl");
+        println!("cargo:rustc-link-lib=dylib=pthread");
     }
     println!("cargo:rustc-link-lib=dylib=m");
 }

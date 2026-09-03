@@ -32,6 +32,11 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   before extracting, and links them statically with hidden visibility. Groundwork
   for precompiled platform gems; the default build still uses system libraries,
   so this path does not run on an ordinary `gem install`. See `VENDORING.md`.
+- OpenSSL 3.5.8 (LTS) is vendored statically alongside libxml2 and xmlsec1.
+  Linking the system libcrypto could not work for precompiled gems: the build
+  container decides the soname the gem records, and it is never the user's --
+  a gem built against the container's OpenSSL 1.1 would not load anywhere
+  current. The vendored build now has no external crypto dependency at all.
 - `spec/symbols_spec.rb`, asserting the extension exports no `xml*`/`xmlSec*`
   symbols. Two statically-linked libxml2 copies in one process (ours and
   Nokogiri's) would otherwise be resolved by load order on Linux, binding our
