@@ -273,7 +273,50 @@ having:
    sees the host's arch-independent `/usr/include/openssl` and no aarch64
    `opensslconf.h` behind it.
 
-### The decision this forces
+### Resolved: OpenSSL is vendored
+
+Decision 2 is reversed. It was right about *safety* and wrong about
+*feasibility*, and CI proved it three times — macOS has no system libcrypto,
+cross-compiling found no target OpenSSL in the container, and x86_64 built fine
+then would not load because the container's OpenSSL is **1.1** while every
+current distro ships `libcrypto.so.3`.
+
+The general rule: **the soname a precompiled gem records is decided by whatever
+OpenSSL the build container has, which is never the user's.** Vendoring is the
+only way to make the two agree. Borrowing the container's `libcrypto.a` instead
+of compiling would embed EOL 1.1 crypto into a signing gem; a distro `.deb`
+would trade a checksummed upstream tarball for weaker provenance and symbols
+compiled without hidden visibility.
+
+Safety is preserved exactly as it is for libxml2: the FFI boundary is PEM
+strings, never `EVP_PKEY*`, and hidden visibility plus `--exclude-libs` keeps
+our copy private from the libcrypto Ruby's own `openssl` extension has loaded.
+
+Measured on arm64-darwin after the change:
+
+| | Before | After |
+|---|---|---|
+| Dynamic deps | libSystem, **libcrypto**, libiconv | libSystem, libiconv |
+| Exported symbols | 2 | 2 (0 `xml*`/`xmlSec*`/`EVP_*`/`OPENSSL_*`) |
+| Cold vendored build | ~50s | **1m13s** (all three libraries) |
+| Warm rebuild | — | **7s** |
+
+The build was also moved out of `OUT_DIR` into
+`tmp/vendor-build/<target>/<versions>` with a completion stamp. `OUT_DIR`
+differs per Ruby ABI, so the old layout rebuilt all three C libraries four
+times per platform; none of them depend on the Ruby ABI. A version bump in
+`dependencies.yml` changes the key and forces a clean rebuild.
+
+Accepted costs: OpenSSL advisories are now our release obligation, and a
+bundled libcrypto bypasses system crypto policy (FIPS and similar), which
+matters to regulated users — they should build the source gem, which still
+links the system OpenSSL.
+
+*(Possible follow-up: cache `tmp/vendor-build` between CI runs keyed on
+`dependencies.yml`. Not done yet — restoring a container-built tree across UID
+boundaries can bite, and 1-2 minutes is not yet worth that risk.)*
+
+### The original decision, kept for the record
 
 Decision 2 ("link the system libcrypto, do not vendor OpenSSL") holds cleanly
 **only where the build is native**. It has now broken on two targets for the

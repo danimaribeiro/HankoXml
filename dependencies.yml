@@ -39,14 +39,45 @@ xmlsec1:
   sha256: "24045199af12d93fe5fdbbbf7e386e823e4842071e9432e2b90ac108b889a923"
   license: "MIT"
 
-# Deliberately NOT vendored: OpenSSL. The precompiled gems link the system
-# libcrypto (3.x) dynamically.
+openssl:
+  # 3.5 is the LTS series (supported into 2030); a vendored dependency wants
+  # long support and few forced bumps. Checksum cross-checked against both the
+  # GitHub release and openssl.org's published .sha256 -- one source is not
+  # enough for the crypto we ship.
+  version: "3.5.8"
+  url: "https://github.com/openssl/openssl/releases/download/openssl-3.5.8/openssl-3.5.8.tar.gz"
+  mirror: "https://www.openssl.org/source/openssl-3.5.8.tar.gz"
+  sha256: "a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2"
+  license: "Apache-2.0"
+
+# Why OpenSSL is vendored after all.
 #
-# libxml2 has to be vendored because xmlDoc/xmlNode/xmlAttr are *public* structs
-# dereferenced by field offset -- that is its ABI -- and the same xmlDocPtr is
-# shared between our Rust code and xmlsec. OpenSSL is the opposite on both
-# counts: its 3.x structs are opaque behind accessors, and its pointers never
-# enter our code at all (the only contact is the xmlSecOpenSSLApp* wrappers,
-# which take PEM bytes). Vendoring it would also put a second libcrypto in the
-# process beside Ruby's own openssl stdlib -- two provider registries, two error
-# queues -- and would hand us the OpenSSL CVE treadmill for no safety gain.
+# The original plan linked the system libcrypto, on the reasoning that libxml2
+# must be vendored (xmlDoc/xmlNode/xmlAttr are *public* structs we dereference
+# by field offset -- that is its ABI -- and the same xmlDocPtr is shared with
+# xmlsec) while OpenSSL is the opposite: 3.x structs are opaque behind
+# accessors, and its pointers never enter our code at all, since the only
+# contact is the xmlSecOpenSSLApp* wrappers, which take PEM bytes.
+#
+# That reasoning is still correct about *safety*. It was wrong about
+# *feasibility* for precompiled gems, and CI proved it three times:
+#
+#   * macOS ships no usable system libcrypto, so a vendored build baked in an
+#     absolute Homebrew path.
+#   * Cross-compiling to aarch64 found no target OpenSSL in the build
+#     container at all.
+#   * x86_64 built fine and then would not load: the build container's OpenSSL
+#     is 1.1, so the gem recorded a NEEDED entry for libcrypto.so.1.1 while
+#     every current distro ships libcrypto.so.3. Different soname, so it failed
+#     at load on a bare ruby:3.3-slim.
+#
+# The soname a precompiled gem records is decided by whatever OpenSSL the build
+# container has, which is never the user's. Vendoring is the only way to make
+# the two agree. Safety is preserved the same way it is for libxml2: the FFI
+# boundary is PEM strings, never EVP_PKEY*, and -fvisibility=hidden plus
+# --exclude-libs keeps our copy private from Ruby's own openssl stdlib.
+#
+# The cost is real and accepted: OpenSSL advisories are now our release
+# obligation. Note also that a bundled libcrypto bypasses system crypto policy
+# (FIPS and similar), which matters to regulated users of a signing library --
+# they should build the source gem, which still links the system OpenSSL.
