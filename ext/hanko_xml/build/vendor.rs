@@ -508,6 +508,17 @@ fn build_xmlsec1(src: &Path, prefix: &Path) {
         "--without-gcrypt".into(),
         "--without-libxslt".into(),
     ];
+    if target_is_windows() {
+        // configure auto-detects the Windows-native CNG/CryptoAPI backends
+        // and builds them alongside OpenSSL unless told not to. We want
+        // exactly one crypto backend, chosen by --with-default-crypto=openssl
+        // above; the others aren't linked in regardless, but skipping their
+        // build avoids compiling code this crate never calls (and that has
+        // its own MSVC-flavored API assumptions --
+        // CryptExportPublicKeyInfoFromBCryptKeyHandle isn't declared for us).
+        args.push("--without-mscng".into());
+        args.push("--without-mscrypto".into());
+    }
     args.push(format!("--with-openssl={}", prefix.display()));
 
     // OpenSSL and libxml2 are both already installed into this prefix, so
