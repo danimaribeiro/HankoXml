@@ -41,9 +41,9 @@ documented at length in `ext/hanko_xml/build.rs`.
    about feasibility, and CI disproved it three times. See
    [Resolved: OpenSSL is vendored](#resolved-openssl-is-vendored) for the
    evidence and the accepted costs.
-3. **Platforms:** `x86_64-linux` ships today. `aarch64-linux`, `x86_64-darwin`
-   and `arm64-darwin` are next; Windows `x64-mingw-ucrt` is a much larger lift
-   and stays deferred.
+3. **Platforms:** `x86_64-linux`, `aarch64-linux`, `arm64-darwin` and
+   `x64-mingw-ucrt` all cross-compile and smoke-test green (see the status
+   table below). `x86_64-darwin` and `x64-mingw32` are not planned.
 4. **Gem version is SemVer over the Ruby API only.** Vendored versions are data,
    never encoded in the gem version (mirroring xmlsec1's number would mean a
    breaking Ruby API change has to wait for xmlsec to bump minor).
@@ -179,14 +179,15 @@ Vendoring OpenSSL removed it. `otool -L` on the built extension now reports only
 otherwise. The same change unblocks the aarch64 cross-compile, whose failure had
 the same root cause: no OpenSSL for the target in the build environment.
 
-## Status of the Linux cross-compile (measured, not predicted)
+## Status of the cross-compile (measured, not predicted)
 
 | Platform | Result |
 |---|---|
-| `x86_64-linux` | **builds** — 4.0 MB platform gem, vendored libxml2 2.14.6 + xmlsec1 1.3.12, four Ruby ABIs |
-| `aarch64-linux` | **held back** — kept in the workflow but out of ordinary PR runs. Opt in with the `include_aarch64` dispatch input, or a branch named `aarch64*` |
-| `x86_64-darwin`, `arm64-darwin` | not started — blocked on the same decision |
-| `x64-mingw-ucrt` | not started |
+| `x86_64-linux` | **builds and smoke-tests** — vendored libxml2 2.14.6 + xmlsec1 1.3.12, four Ruby ABIs |
+| `aarch64-linux` | **builds and smoke-tests** — on a real `ubuntu-24.04-arm` runner, not emulation |
+| `arm64-darwin` | **builds and smoke-tests** — on a real `macos-latest` runner |
+| `x64-mingw-ucrt` | **builds and smoke-tests** — on a real `windows-latest` runner; see Phase 5 |
+| `x86_64-darwin`, `x64-mingw32` | not planned — see the platform notes above and in Phase 5 |
 
 Four rounds of CI, each failing further along, and every failure was worth
 having:
@@ -298,12 +299,60 @@ Still outstanding before a real (non-dry-run) release:
 Restructure as two contexts — source-gem shape and native-gem shape — driven off
 the same gemspec, so both are asserted rather than one being loosened away.
 
-## Phase 5 — Windows (separate decision, deferred)
+## Phase 5 — Windows — **DONE, x64-mingw-ucrt green in CI**
 
-`x64-mingw-ucrt` has no system libcrypto; Ruby's OpenSSL comes from
-RubyInstaller's own `libcrypto-3-x64.dll`. Either link that DLL's import library
-(fragile: depends on RubyInstaller's naming) or vendor OpenSSL for Windows only.
-Decide when Phases 1–4 are green.
+Decided the way `dependencies.yml`'s header already generalized: vendor OpenSSL
+for Windows too, the same as macOS and Linux, rather than link RubyInstaller's
+`libcrypto-3-x64.dll` import library. `x64-mingw-ucrt` cross-compiles from the
+Linux dock via mingw-w64 and is smoke-tested on a real `windows-latest` runner
+(no container exists for Windows, same as arm64-darwin) — installs, loads,
+signs and verifies a fixture with no Rust/libxmlsec1-dev/pkg-config present,
+across all four Ruby ABIs. `x64-mingw32` (the legacy non-UCRT Windows Ruby) and
+32-bit platforms are not planned.
+
+Four rounds of CI, each failing further along -- the same pattern Linux and
+Darwin went through:
+
+1. `configure: error: libiconv not found`. `--with-iconv` (no argument) means
+   *required*, not *use it if present*, and the mingw dock has no libiconv
+   (none is vendored). Switched to `--without-iconv` for the Windows target;
+   libxml2 falls back to its own built-in UTF-8/UTF-16/ASCII/ISO-8859-1
+   converters, which is what every fixture here needs.
+2. xmlsec1's configure auto-detects Windows and builds the CNG/CryptoAPI
+   crypto backends alongside OpenSSL unless told not to -- and the first
+   attempt to disable them, `--without-mscng --without-mscrypto`, silently did
+   nothing: unlike `--without-nss`/`--without-gnutls`, these are
+   `AC_ARG_ENABLE` options, not `AC_ARG_WITH`, and an unrecognized
+   `--without-*` is accepted and ignored rather than rejected (the same
+   mechanism behind the harmless `--with-tree` warning elsewhere in this
+   build). The mscng module then failed to compile against the dock's older
+   w32api headers. Fixed with the actual flags, `--disable-mscng
+   --disable-mscrypto`.
+3. `undefined reference to __imp_xmlSecError` (and others) linking
+   `libxmlsec1-openssl.a` against `libxmlsec1.a`. Both were compiled without
+   `LIBXML_STATIC`/`XMLSEC_STATIC` defined, so `XMLPUBFUN`/`XMLSEC_EXPORT`
+   expanded to `__declspec(dllimport)` even for a library's *own* other
+   translation units -- every one of them includes the same public headers.
+   dllimport tells the linker to expect the symbol from a DLL's import
+   library; there is no DLL, only static archives. Fixed by threading
+   `-DLIBXML_STATIC -DXMLSEC_STATIC` through the C build (`build_cflags()`)
+   *and* into bindgen's defines, so the generated Rust declarations agree with
+   how the extension actually links.
+4. `undefined reference to __imp_CryptAcquireContextW` (and
+   `BCryptGenRandom`, `CertOpenStore`, event-log functions, …). Static
+   libcrypto and libxml2 call these Win32 APIs directly; nothing was linking
+   their import libraries. Added `advapi32`, `crypt32`, `bcrypt`, `user32`,
+   `gdi32` to `emit_link_flags`'s Windows branch.
+
+**Deferred, not blocking:** the symbol-leak check (`spec/symbols_spec.rb` and
+`smoke_test.sh`'s per-platform loop) has no Windows leg yet. PE export/import
+inspection needs a different tool than `nm -D`/`otool -L` (objdump against a
+different table format), and no such tool is confirmed present on
+`windows-latest` by default. `smoke_test.sh` logs and skips this one check on
+Windows rather than failing; every other check (install, load, sign, verify)
+runs. Lower urgency than it sounds: unlike ELF/Mach-O, a PE DLL does not export
+static-archive members by default in the first place, so the failure mode this
+check guards against is differently shaped on Windows, not simply unguarded.
 
 ## Files
 
