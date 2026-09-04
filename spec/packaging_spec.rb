@@ -35,6 +35,10 @@ RSpec.describe "gem packaging" do
     expect(files).to include("dependencies.yml")
   end
 
+  it "ships third-party license notices for the vendored libraries" do
+    expect(files).to include("THIRD_PARTY_LICENSES.md")
+  end
+
   it "pins a version and a SHA256 for every vendored library" do
     deps = YAML.load_file(root.join("dependencies.yml"))
 
@@ -73,6 +77,14 @@ RSpec.describe "gem packaging" do
 
   it "excludes the long-form design documents" do
     expect(files).not_to include("API_CONTRACT.md", "VENDORING.md")
+  end
+
+  it "records the vendored libraries' bundled license texts" do
+    notices = root.join("THIRD_PARTY_LICENSES.md").read
+
+    expect(notices).to include("libxml2 2.14.6", "xmlsec1 1.3.12", "OpenSSL 3.5.8")
+    expect(notices).to include('Permission is hereby granted, free of charge, to any person obtaining a copy')
+    expect(notices).to include("Apache License", "Acknowledgements")
   end
 
   it "excludes compiled artifacts, so the source gem is built on the target machine" do
