@@ -46,6 +46,7 @@ Gem::Specification.new do |spec|
     README.md
     CHANGELOG.md
     LICENSE.txt
+    THIRD_PARTY_LICENSES.md
   ]
   spec.files = IO.popen(%w[git ls-files -z], chdir: __dir__, err: IO::NULL) do |ls|
     ls.readlines("\x0", chomp: true).select do |f|
