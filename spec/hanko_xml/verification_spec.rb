@@ -54,4 +54,39 @@ RSpec.describe HankoXml::Verification do
     expect(node["data-ref"]).to eq("payload-1")
     expect(seen_id).to eq("payload-1")
   end
+
+  it "computes #references and #signed? without raising FrozenError" do
+    doc = Nokogiri::XML("<root><signed Id=\"payload-1\"/></root>")
+    verification = build_verification(doc: doc, uri: "#payload-1")
+
+    expect(verification.references.map(&:uri)).to eq(["#payload-1"])
+    expect(verification).to be_signed(doc.at_xpath("//signed"))
+  end
+
+  it "flags ResolutionMismatch when the resolver and id_attributes disagree" do
+    doc = Nokogiri::XML("<root><a Id=\"x\"/><b data-ref=\"x\"/></root>")
+    resolver = ->(document, id) { document.at_xpath("//*[@data-ref=$id]", nil, id: id) }
+    verification = build_verification(doc: doc, uri: "#x", id_attributes: ["Id"], resolver: resolver)
+
+    expect(verification).not_to be_valid
+    expect(verification.errors).to include(an_instance_of(HankoXml::ResolutionMismatch))
+  end
+
+  it "does not flag ResolutionMismatch when the resolver and id_attributes agree" do
+    doc = Nokogiri::XML("<root><a Id=\"x\"/></root>")
+    resolver = ->(document, id) { document.at_xpath("//*[@Id=$id]", nil, id: id) }
+    verification = build_verification(doc: doc, uri: "#x", id_attributes: ["Id"], resolver: resolver)
+
+    expect(verification).to be_valid
+    expect(verification.errors).to be_empty
+  end
+
+  it "does not flag ResolutionMismatch when id_attributes is empty (fully delegated to the resolver)" do
+    doc = Nokogiri::XML("<root><target data-ref=\"payload-1\"/></root>")
+    resolver = ->(document, id) { document.at_xpath("//*[@data-ref=$id]", nil, id: id) }
+    verification = build_verification(doc: doc, uri: "#payload-1", id_attributes: [], resolver: resolver)
+
+    expect(verification).to be_valid
+    expect(verification.errors).to be_empty
+  end
 end

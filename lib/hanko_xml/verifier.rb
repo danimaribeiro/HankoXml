@@ -139,6 +139,17 @@ module HankoXml
 
     private
 
+    # xmlSecAddIDs (the native ID table verification resolves "#id" against)
+    # matches by unqualified attribute name only -- it has no concept of the
+    # namespace-qualified [ns, name] entries Verification's Ruby-side XPath
+    # lookup accepts. Passing one of those arrays straight through would fail
+    # Native.verify's String-array conversion, so only the local name crosses
+    # the FFI boundary; namespace-qualified matching stays a Ruby-side-only
+    # refinement over the same, broader native registration.
+    def native_id_attributes
+      @id_attributes.map { |attr| attr.is_a?(Array) ? attr[1].to_s : attr.to_s }
+    end
+
     def resolve_signature_target(sigs, signature_option)
       case signature_option
       when :first
@@ -261,7 +272,7 @@ module HankoXml
       end
 
       begin
-        verify_result = Native.verify(xml_bytes, trusted, untrusted, @id_attributes, index)
+        verify_result = Native.verify(xml_bytes, trusted, untrusted, native_id_attributes, index)
       rescue StandardError => e
         return HankoXml::Verification.new(
           valid: false,
@@ -282,7 +293,6 @@ module HankoXml
         errors << HankoXml::VerificationError.new(msg, xmlsec_errors: verify_result[:errors], signature_node: sig_node)
       end
 
-      # TODO: Policy enforcement
       begin
         @policy.enforce!(sig_info)
       rescue HankoXml::PolicyError => e
