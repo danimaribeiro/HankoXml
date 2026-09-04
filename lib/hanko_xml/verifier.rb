@@ -5,7 +5,8 @@ module HankoXml
   # Handles fetching signatures, validating against a schema, verifying cryptographic integrity,
   # and enforcing security policies.
   class Verifier # rubocop:disable Metrics/ClassLength
-    attr_reader :policy, :id_attributes, :namespaces, :signature, :verification_time, :schema, :referenced_documents
+    attr_reader :policy, :id_attributes, :namespaces, :signature, :verification_time, :schema, :referenced_documents,
+                :resolver
 
     # Creates a new Verifier with the given trust anchors and configuration.
     # Note: You must specify exactly one trust source.
@@ -17,6 +18,8 @@ module HankoXml
     # @param keys [Hash<String, Key>] A mapping of `<KeyName>` to trusted keys.
     # @param policy [Policy] The security policy to enforce (defaults to {Policy.strict}).
     # @param id_attributes [Array<String>] Attributes to consider as IDs for `#foo` references.
+    # @param resolver [Proc, nil] Optional callable `(doc, uri_fragment) -> node` for fragment resolution in
+    #   `Verification#references` / `#signed?`.
     # @param namespaces [Hash<String, String>] Namespaces for XPath signature selection.
     # @param signature [Symbol, Integer, String] Which signature to verify:
     #   `:first`, `:only`, `:all`, an integer index, or an XPath.
@@ -25,7 +28,7 @@ module HankoXml
     #   pre-validate the signature node (e.g. `:default`).
     # @param referenced_documents [Hash<String, Nokogiri::XML::Document>] Documents to resolve external references.
     def initialize(certificate: nil, certificates: nil, store: nil, key: nil, keys: nil,
-                   policy: HankoXml::Policy.strict, id_attributes: %w[Id ID id],
+                   policy: HankoXml::Policy.strict, id_attributes: %w[Id ID id], resolver: nil,
                    namespaces: {}, signature: :first, verification_time: nil,
                    schema: nil, referenced_documents: {})
       supplied_trusts = [certificate, certificates, store, key, keys].compact
@@ -42,6 +45,7 @@ module HankoXml
 
       @policy = policy
       @id_attributes = id_attributes
+      @resolver = resolver
       @namespaces = namespaces
       @signature = signature
       @verification_time = verification_time
@@ -71,7 +75,9 @@ module HankoXml
           errors: [HankoXml::SignatureMissing.new("No <Signature> element found")],
           signature_info: nil,
           signature_node: nil,
-          document: doc
+          document: doc,
+          id_attributes: @id_attributes,
+          resolver: @resolver
         )
       end
 
@@ -84,7 +90,9 @@ module HankoXml
           errors: [HankoXml::SignatureMissing.new("Target signature not found")],
           signature_info: nil,
           signature_node: nil,
-          document: doc
+          document: doc,
+          id_attributes: @id_attributes,
+          resolver: @resolver
         )
       end
 
@@ -131,6 +139,17 @@ module HankoXml
 
     private
 
+    # xmlSecAddIDs (the native ID table verification resolves "#id" against)
+    # matches by unqualified attribute name only -- it has no concept of the
+    # namespace-qualified [ns, name] entries Verification's Ruby-side XPath
+    # lookup accepts. Passing one of those arrays straight through would fail
+    # Native.verify's String-array conversion, so only the local name crosses
+    # the FFI boundary; namespace-qualified matching stays a Ruby-side-only
+    # refinement over the same, broader native registration.
+    def native_id_attributes
+      @id_attributes.map { |attr| attr.is_a?(Array) ? attr[1].to_s : attr.to_s }
+    end
+
     def resolve_signature_target(sigs, signature_option)
       case signature_option
       when :first
@@ -175,7 +194,9 @@ module HankoXml
             errors: [HankoXml::SchemaError.new(xsd_errors.map(&:message).join(", "))],
             signature_info: nil,
             signature_node: sig_node,
-            document: doc
+            document: doc,
+            id_attributes: @id_attributes,
+            resolver: @resolver
           )
         end
       end
@@ -192,7 +213,9 @@ module HankoXml
           errors: [HankoXml::ParseError.new(e.message)],
           signature_info: nil,
           signature_node: sig_node,
-          document: doc
+          document: doc,
+          id_attributes: @id_attributes,
+          resolver: @resolver
         )
       end
 
@@ -214,7 +237,9 @@ module HankoXml
             errors: [HankoXml::UntrustedCertificate.new("KeyName #{key_name.inspect} not found in keys: map")],
             signature_info: sig_info,
             signature_node: sig_node,
-            document: doc
+            document: doc,
+            id_attributes: @id_attributes,
+            resolver: @resolver
           )
         end
       end
@@ -238,21 +263,25 @@ module HankoXml
               errors: [HankoXml::CertificateExpired.new("Certificate expired at #{@verification_time}")],
               signature_info: sig_info,
               signature_node: sig_node,
-              document: doc
+              document: doc,
+              id_attributes: @id_attributes,
+              resolver: @resolver
             )
           end
         end
       end
 
       begin
-        verify_result = Native.verify(xml_bytes, trusted, untrusted, @id_attributes, index)
+        verify_result = Native.verify(xml_bytes, trusted, untrusted, native_id_attributes, index)
       rescue StandardError => e
         return HankoXml::Verification.new(
           valid: false,
           errors: [HankoXml::NativeError.new(e.message)],
           signature_info: sig_info,
           signature_node: sig_node,
-          document: doc
+          document: doc,
+          id_attributes: @id_attributes,
+          resolver: @resolver
         )
       end
 
@@ -264,7 +293,6 @@ module HankoXml
         errors << HankoXml::VerificationError.new(msg, xmlsec_errors: verify_result[:errors], signature_node: sig_node)
       end
 
-      # TODO: Policy enforcement
       begin
         @policy.enforce!(sig_info)
       rescue HankoXml::PolicyError => e
@@ -277,7 +305,9 @@ module HankoXml
         errors: errors,
         signature_info: sig_info,
         signature_node: sig_node,
-        document: doc
+        document: doc,
+        id_attributes: @id_attributes,
+        resolver: @resolver
       )
     end
     # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity

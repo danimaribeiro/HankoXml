@@ -42,6 +42,35 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   Nokogiri's) would otherwise be resolved by load order on Linux, binding our
   calls to the wrong library.
 
+### Fixed
+
+- `Verification#references` (and everything built on it — `#signed?`,
+  `#signed_nodes`, `#covers_root?`, `#at_signed`, `#signed`) raised
+  `FrozenError` on every call: the object froze itself in `initialize`, but
+  `#references` computed and cached itself lazily on first access. Nothing in
+  the test suite called it through the public, memoized path, so this went
+  uncaught. `#references` is now computed during construction, before the
+  object freezes.
+- `Verification#resolve_fragment_reference`'s reference resolution replaced a
+  hardcoded, string-interpolated XPath (`@Id='#{id}' or ...`) with
+  variable-bound XPath, and made the `id_attributes:`/`resolver:` options it
+  already accepted actually used, closing an XPath-injection path in the
+  anti-XSW reference resolver.
+- `Verifier#verify_single` passed `id_attributes:` straight through to
+  `Native.verify`, which only accepts plain strings. A namespace-qualified
+  `[ns, name]` entry (a Ruby-side-only refinement `Verification` understands)
+  crashed with `"array element is not a String"` the moment a caller used it.
+  Native calls now go through `#native_id_attributes`, which reduces each
+  entry to its local name — the native ID table is namespace-unaware anyway.
+- A caller-supplied `resolver:` was never checked against `id_attributes:`
+  when both were configured, so `Verification#signed?` could report a node as
+  covered based on the resolver's answer while `Native.verify` (which only
+  ever sees `id_attributes:`) verified a *different* node with the same ID.
+  `HankoXml::ResolutionMismatch` existed for exactly this per
+  `API_CONTRACT.md` §5.9 but was never raised. It now is, whenever `resolver:`
+  and `id_attributes:` are both non-empty and disagree on a reference's
+  target.
+
 ### Changed
 
 - `spec.files` is now an allowlist over `git ls-files` rather than a reject
