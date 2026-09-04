@@ -39,6 +39,21 @@ RSpec.describe HankoXml do
       expect(described_class.verify(signed_xml, certificate: other_cert_pem).valid?).to be false
     end
 
+    it "validates with a trust store using the certificate embedded in KeyInfo" do
+      store = OpenSSL::X509::Store.new
+      store.add_cert(OpenSSL::X509::Certificate.new(signer_cert_pem))
+
+      expect(described_class.verify(signed_xml, store: store).valid?).to be true
+    end
+
+    it "validates with a trusted public key by matching KeyInfo certificate public key" do
+      signer_key = OpenSSL::X509::Certificate.new(signer_cert_pem).public_key
+      other_key = OpenSSL::X509::Certificate.new(other_cert_pem).public_key
+
+      expect(described_class.verify(signed_xml, key: signer_key).valid?).to be true
+      expect(described_class.verify(signed_xml, key: other_key).valid?).to be false
+    end
+
     it "raises HankoXml::SignatureMissing when the document has no <Signature> element (using verify!)" do
       unsigned_xml = "<Envelope xmlns=\"urn:hanko_xml:example\"><Data>Hello, world!</Data></Envelope>"
 

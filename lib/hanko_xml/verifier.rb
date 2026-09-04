@@ -198,16 +198,43 @@ module HankoXml
 
       sig_info = HankoXml::SignatureInfo.from_native(inspect_result)
 
-      # 3. Call Native.verify
+      # 3. Build trust and call Native.verify
       trusted = []
       untrusted = []
+      begin
+        embedded_certificates = load_embedded_certificates(sig_info)
+      rescue OpenSSL::X509::CertificateError => e
+        return HankoXml::Verification.new(
+          valid: false,
+          errors: [HankoXml::UntrustedCertificate.new("Invalid X509Certificate in KeyInfo: #{e.message}")],
+          signature_info: sig_info,
+          signature_node: sig_node,
+          document: doc
+        )
+      end
 
       # Select key from `keys:` if `keys` is provided
       if @keys
         key_name = sig_info.key_names.first
         if key_name && @keys.key?(key_name)
           cert_or_key = HankoXml::Key.coerce(@keys[key_name])
-          trusted << cert_or_key.to_pem if cert_or_key.certificate?
+          if cert_or_key.certificate?
+            trusted << cert_or_key.to_pem
+          else
+            matched_cert, remaining = match_certificate_by_public_key(cert_or_key, embedded_certificates)
+            unless matched_cert
+              return HankoXml::Verification.new(
+                valid: false,
+                errors: [HankoXml::UntrustedCertificate.new("No KeyInfo certificate matches the configured key for KeyName #{key_name.inspect}")],
+                signature_info: sig_info,
+                signature_node: sig_node,
+                document: doc
+              )
+            end
+
+            trusted << matched_cert.to_pem
+            untrusted.concat(remaining.map(&:to_pem))
+          end
         else
           return HankoXml::Verification.new(
             valid: false,
@@ -217,6 +244,52 @@ module HankoXml
             document: doc
           )
         end
+      end
+
+      if @store
+        if embedded_certificates.empty?
+          return HankoXml::Verification.new(
+            valid: false,
+            errors: [HankoXml::UntrustedCertificate.new("No X509Certificate found in KeyInfo for store verification")],
+            signature_info: sig_info,
+            signature_node: sig_node,
+            document: doc
+          )
+        end
+
+        leaf = embedded_certificates.first
+        chain = embedded_certificates.drop(1)
+        store = @store
+        store.time = @verification_time if @verification_time && store.respond_to?(:time=)
+        unless store.verify(leaf, chain)
+          message = store.error_string.to_s.empty? ? "Certificate chain validation failed" : "Certificate chain validation failed: #{store.error_string}"
+          return HankoXml::Verification.new(
+            valid: false,
+            errors: [HankoXml::UntrustedCertificate.new(message)],
+            signature_info: sig_info,
+            signature_node: sig_node,
+            document: doc
+          )
+        end
+
+        trusted << leaf.to_pem
+        untrusted.concat(chain.map(&:to_pem))
+      end
+
+      if @key
+        matched_cert, remaining = match_certificate_by_public_key(@key, embedded_certificates)
+        unless matched_cert
+          return HankoXml::Verification.new(
+            valid: false,
+            errors: [HankoXml::UntrustedCertificate.new("No KeyInfo certificate matches the configured key")],
+            signature_info: sig_info,
+            signature_node: sig_node,
+            document: doc
+          )
+        end
+
+        trusted << matched_cert.to_pem
+        untrusted.concat(remaining.map(&:to_pem))
       end
 
       trusted << @certificate.to_pem if @certificate
@@ -279,6 +352,17 @@ module HankoXml
         signature_node: sig_node,
         document: doc
       )
+    end
+
+    def load_embedded_certificates(sig_info)
+      sig_info.certificates.map { |pem| OpenSSL::X509::Certificate.new(pem) }
+    end
+
+    def match_certificate_by_public_key(key_material, certificates)
+      expected_key = HankoXml::Key.coerce(key_material).to_openssl
+      expected_public_key = expected_key.is_a?(OpenSSL::X509::Certificate) ? expected_key.public_key : expected_key
+      match = certificates.find { |cert| cert.public_key.to_pem == expected_public_key.to_pem }
+      [match, certificates.reject { |cert| cert.equal?(match) }]
     end
     # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
     # rubocop:enable Metrics/MethodLength, Metrics/PerceivedComplexity
