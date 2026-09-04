@@ -120,13 +120,23 @@ fn probe_vendored_headers(prefix: &Path) -> crate::Headers {
         include_paths.push(multiarch);
     }
 
+    let mut defines: Vec<(String, Option<String>)> = xmlsec
+        .defines
+        .iter()
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect();
+    if target_is_windows() {
+        // See build_cflags(): the headers themselves branch on these, so
+        // bindgen has to see the same static-linkage defines the actual
+        // build used, or it generates dllimport-shaped declarations for
+        // symbols that are in fact statically linked.
+        defines.push(("LIBXML_STATIC".to_string(), None));
+        defines.push(("XMLSEC_STATIC".to_string(), None));
+    }
+
     crate::Headers {
         include_paths,
-        defines: xmlsec
-            .defines
-            .iter()
-            .map(|(name, value)| (name.clone(), value.clone()))
-            .collect(),
+        defines,
     }
 }
 
@@ -323,6 +333,27 @@ fn sha256_file(path: &Path) -> String {
 /// flag is not overridden.
 const HIDDEN_VISIBILITY_CFLAGS: &str = "-fvisibility=hidden -fPIC -O2";
 
+/// CFLAGS for building libxml2 and xmlsec1 (not OpenSSL, which has its own
+/// static/shared switch and never dllimports anything of ours).
+///
+/// On Windows, XMLPUBFUN/XMLSEC_EXPORT expand to `__declspec(dllimport)` for
+/// any translation unit that doesn't define LIBXML_STATIC/XMLSEC_STATIC --
+/// including a library's *own* other translation units, since they all
+/// `#include` the same public headers. Leaving these undefined is what
+/// produced `undefined reference to __imp_xmlSecError` linking
+/// libxmlsec1-openssl.a against libxmlsec1.a: both were built assuming the
+/// symbols would come from a DLL's import library, and there is no DLL --
+/// only static archives, both here and in the final `cargo:rustc-link-lib`.
+/// Non-Windows never defines these dllimport/dllexport forms in the first
+/// place (see the module doc comment), so this is a no-op there.
+fn build_cflags() -> String {
+    if target_is_windows() {
+        format!("{HIDDEN_VISIBILITY_CFLAGS} -DLIBXML_STATIC -DXMLSEC_STATIC")
+    } else {
+        HIDDEN_VISIBILITY_CFLAGS.to_string()
+    }
+}
+
 /// OpenSSL's Configure wants its target as a positional argument and cannot
 /// auto-detect one when cross-compiling. Map the Rust triple onto OpenSSL's
 /// own naming; returning None falls back to `./config`, which auto-detects and
@@ -333,7 +364,24 @@ fn openssl_target() -> Option<&'static str> {
         "aarch64-unknown-linux-gnu" => Some("linux-aarch64"),
         "aarch64-apple-darwin" => Some("darwin64-arm64-cc"),
         "x86_64-apple-darwin" => Some("darwin64-x86_64-cc"),
+        // rb_sys' x64-mingw-ucrt maps to this Rust triple, built with mingw-w64
+        // (not MSVC), so OpenSSL's own mingw64 target is the correct one, not
+        // one of the VC-WIN64* targets.
+        "x86_64-pc-windows-gnu" => Some("mingw64"),
         _ => None,
+    }
+}
+
+/// autoconf's config.sub does not understand Rust's `pc-windows-gnu` vendor
+/// field the way it understands the Linux and Darwin triples above -- mingw-w64
+/// cross toolchains identify themselves as `x86_64-w64-mingw32`. Only libxml2
+/// and xmlsec1 need this (they go through `./configure --host=`); OpenSSL's
+/// `./Configure` takes its own `mingw64` name from `openssl_target()` above and
+/// never sees this value.
+fn autotools_host() -> String {
+    match target_triple().as_str() {
+        "x86_64-pc-windows-gnu" => "x86_64-w64-mingw32".to_string(),
+        other => other.to_string(),
     }
 }
 
@@ -414,7 +462,7 @@ fn build_libxml2(src: &Path, prefix: &Path) {
     // can therefore change which items exist in the generated bindings -- so
     // this list stays conservative, and any change to it needs a full rebuild
     // plus the whole spec suite.
-    let args = vec![
+    let mut args = vec![
         format!("--prefix={}", prefix.display()),
         "--enable-static".into(),
         "--disable-shared".into(),
@@ -430,7 +478,6 @@ fn build_libxml2(src: &Path, prefix: &Path) {
         "--with-pattern".into(),
         "--with-valid".into(),
         "--with-tree".into(),
-        "--with-iconv".into(),
         "--with-threads".into(),
         // Not used by this crate, and dropping http/ftp also closes off
         // network fetches from within XML processing.
@@ -445,6 +492,19 @@ fn build_libxml2(src: &Path, prefix: &Path) {
         "--without-history".into(),
         "--without-debug".into(),
     ];
+
+    // "--with-iconv" (no argument) means required, not "use it if present" --
+    // configure hard-errors when it is requested but not found, which is
+    // exactly the mingw dock's situation (no libiconv there, and we do not
+    // vendor one). Falls back to libxml2's own built-in UTF-8/UTF-16/ASCII/
+    // ISO-8859-1 converters, which is what every fixture in this repo needs;
+    // revisit if a real document shows up needing another legacy encoding.
+    args.push(if target_is_windows() {
+        "--without-iconv".into()
+    } else {
+        "--with-iconv".into()
+    });
+
     configure_make_install(src, &args, "libxml2", &[]);
 }
 
@@ -479,6 +539,20 @@ fn build_xmlsec1(src: &Path, prefix: &Path) {
         "--without-gcrypt".into(),
         "--without-libxslt".into(),
     ];
+    if target_is_windows() {
+        // configure auto-detects the Windows-native CNG/CryptoAPI backends
+        // and builds them alongside OpenSSL unless told not to. Unlike
+        // nss/gnutls/gcrypt above, these two are AC_ARG_ENABLE options, not
+        // AC_ARG_WITH -- "--without-mscng" is silently accepted and ignored
+        // (same as the harmless "--with-tree" warning elsewhere in this
+        // build), which is how the mscng module still got compiled the first
+        // time this was tried. We want exactly one crypto backend, chosen by
+        // --with-default-crypto=openssl above; building CNG's code needs
+        // mingw headers this dock's older w32api does not declare
+        // (CryptExportPublicKeyInfoFromBCryptKeyHandle and friends).
+        args.push("--disable-mscng".into());
+        args.push("--disable-mscrypto".into());
+    }
     args.push(format!("--with-openssl={}", prefix.display()));
 
     // OpenSSL and libxml2 are both already installed into this prefix, so
@@ -524,6 +598,10 @@ fn target_is_macos() -> bool {
     env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos")
 }
 
+fn target_is_windows() -> bool {
+    env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+}
+
 /// The cross toolchain to hand autotools, resolved from the environment the
 /// way the `cc` crate does: `CC_<triple>` (underscored), then `TARGET_CC`, then
 /// the conventional `<triple>-gcc` prefix that rake-compiler-dock provides.
@@ -545,7 +623,19 @@ fn cross_tool(var: &str, suffixes: &[&str]) -> Option<String> {
     // leave CC unset and build the C libraries with the *host* compiler while
     // configured for the target.
     let gnu_triple = triple.replacen("-unknown-", "-", 1);
-    let prefixes = [triple.as_str(), gnu_triple.as_str()];
+    // rake-compiler-dock's mingw toolchain drops the vendor field too
+    // (`x86_64-windows-gnu-gcc`, not `x86_64-pc-windows-gnu-gcc`), and a plain
+    // mingw-w64 cross package as installed on Debian uses the standard GNU
+    // triple instead (`x86_64-w64-mingw32-gcc`). Probe all the spellings this
+    // dock or a distro package might have used; only one needs to exist.
+    let dock_windows_triple = triple.replacen("-pc-windows-", "-windows-", 1);
+    let mingw_host_triple = autotools_host();
+    let prefixes = [
+        triple.as_str(),
+        gnu_triple.as_str(),
+        dock_windows_triple.as_str(),
+        mingw_host_triple.as_str(),
+    ];
 
     prefixes
         .iter()
@@ -568,9 +658,9 @@ fn cross_config() -> (Vec<String>, Vec<(String, String)>) {
         return (Vec::new(), Vec::new());
     }
 
-    let triple = target_triple();
-    // autotools' config.sub understands Rust's cpu-vendor-os triples directly.
-    let mut args = vec![format!("--host={triple}")];
+    // autotools' config.sub understands Rust's cpu-vendor-os triples directly,
+    // except mingw's -- see autotools_host().
+    let mut args = vec![format!("--host={}", autotools_host())];
     // libxml2 and xmlsec both run link-and-execute feature probes that cannot
     // work when the binary is for another architecture; --host already puts
     // autotools in cross mode, this just makes the intent explicit.
@@ -597,7 +687,7 @@ fn configure_make_install(src: &Path, args: &[String], name: &str, extra_env: &[
 
     let mut configure = Command::new("./configure");
     configure.current_dir(src).args(args).args(&cross_args);
-    configure.env("CFLAGS", HIDDEN_VISIBILITY_CFLAGS);
+    configure.env("CFLAGS", build_cflags());
     for (key, value) in cross_env.iter().chain(extra_env) {
         configure.env(key, value);
     }
@@ -679,6 +769,29 @@ fn emit_link_flags(prefix: &Path) {
 
     if target_is_macos() {
         println!("cargo:rustc-link-lib=dylib=iconv");
+        println!("cargo:rustc-link-lib=dylib=m");
+    } else if target_is_windows() {
+        // PE has no dlopen()/pthread/libm to link against -- mingw-w64's
+        // runtime and rustc's own windows-gnu target spec already pull in
+        // whatever those three cover on this platform (winpthread, ucrtbase).
+        // --exclude-libs is a GNU ld option for ELF/XCOFF; whether the mingw
+        // PE backend of ld.bfd honors it for symbol hiding here is unverified
+        // -- unlike ELF, a PE DLL does not export archive members by default
+        // in the first place, so the risk of a leak is different in kind, not
+        // just unmitigated. Confirm with the deferred Phase 5 symbol check
+        // once smoke_test.sh grows one.
+        //
+        // What Windows *does* need: system import libraries for the Win32
+        // APIs our static libcrypto/libxml2 call directly instead of through
+        // a libc shim -- advapi32 (registry/event log, legacy CryptXxx),
+        // crypt32 (certificate store), bcrypt (BCryptGenRandom, used by
+        // libxml2's dict.c), user32/gdi32 (pulled in transitively by
+        // OpenSSL's Windows build). None of these are optional the way the
+        // -lm/-ldl/-lpthread they replace are -- they were undefined
+        // references at link time before this was added.
+        for lib in ["advapi32", "crypt32", "bcrypt", "user32", "gdi32"] {
+            println!("cargo:rustc-link-lib=dylib={lib}");
+        }
     } else {
         // Keep the vendored archives' symbols out of this cdylib's dynamic
         // symbol table so they cannot interpose with Nokogiri's libxml2 -- or,
@@ -687,8 +800,8 @@ fn emit_link_flags(prefix: &Path) {
         // A static libcrypto still needs these from the platform.
         println!("cargo:rustc-link-lib=dylib=dl");
         println!("cargo:rustc-link-lib=dylib=pthread");
+        println!("cargo:rustc-link-lib=dylib=m");
     }
-    println!("cargo:rustc-link-lib=dylib=m");
 }
 
 fn run(command: &mut Command, what: &str) {

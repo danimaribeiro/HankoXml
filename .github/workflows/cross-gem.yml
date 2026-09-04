@@ -1,13 +1,14 @@
 name: Cross-compile
 
-# Builds the precompiled Linux platform gems: the vendored libxml2 + xmlsec1
-# static build (HANKO_XML_VENDOR=1) inside rake-compiler-dock, one platform per
-# job. Nothing here publishes -- release.yml owns that. This workflow exists to
+# Builds the precompiled platform gems: the vendored libxml2 + xmlsec1 static
+# build (HANKO_XML_VENDOR=1) inside rake-compiler-dock, one platform per job.
+# Nothing here publishes -- release.yml owns that. This workflow exists to
 # prove the cross build works and to hand back installable .gem artifacts.
 #
-# Linux only so far. macOS is no longer blocked -- vendoring OpenSSL removed the
-# absolute-Homebrew-path problem that held it back -- it simply has not been
-# wired up yet. Windows remains a much larger toolchain lift. See VENDORING.md.
+# x86_64-linux, aarch64-linux, arm64-darwin, x64-mingw-ucrt. x86_64-darwin
+# stays on the source gem (see the arm64-darwin comment below); x64-mingw32
+# (the legacy non-UCRT Windows Ruby) and 32-bit platforms are not planned.
+# See VENDORING.md.
 
 on:
   # Pull requests only, plus manual runs. Deliberately not `push` as well: a
@@ -45,6 +46,9 @@ jobs:
           # honestly, and GitHub is retiring those, so Intel Macs use the
           # source gem.
           - arm64-darwin
+          # Cross-compiled from Linux via the mingw-w64 toolchain in the dock
+          # image. UCRT, not the legacy msvcrt build -- see VENDORING.md Phase 5.
+          - x64-mingw-ucrt
 
     steps:
       - uses: actions/checkout@v7
@@ -102,6 +106,12 @@ jobs:
             runner: macos-latest
             arch: arm64
             docker_platform: ""
+          # Same reasoning as macOS: no Windows container, runs directly on
+          # the runner with an isolated GEM_HOME.
+          - platform: x64-mingw-ucrt
+            runner: windows-latest
+            arch: x86_64
+            docker_platform: ""
     steps:
       - uses: actions/checkout@v7
 
@@ -111,6 +121,7 @@ jobs:
           path: pkg
 
       - name: Confirm the runner is the architecture we mean to test on
+        shell: bash
         run: |
           echo "runner arch: $(uname -m)"
           if [ "$(uname -m)" != "${{ matrix.arch }}" ]; then
@@ -136,6 +147,7 @@ jobs:
 
       - name: Install and exercise the gem on the runner
         if: matrix.docker_platform == ''
+        shell: bash
         env:
           PKG_DIR: ${{ github.workspace }}/pkg
           FIXTURES_DIR: ${{ github.workspace }}/spec/fixtures

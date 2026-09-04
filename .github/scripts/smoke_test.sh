@@ -18,6 +18,8 @@ export FIXTURES_DIR="${FIXTURES_DIR:-/fixtures}"
 
 case "$(uname -s)" in
   Darwin) EXT=bundle ;;
+  # Yes, .so -- RbConfig::CONFIG['DLEXT'] is "so" even on a mingw Ruby build,
+  # despite the underlying file being a PE DLL. Windows falls through here.
   *)      EXT=so ;;
 esac
 
@@ -89,6 +91,19 @@ fi
 # leak in any of them is a leak a user can hit.
 for so in "${sos[@]}"; do
   echo "artifact: $so"
+
+  # PE export/import tables need a different tool (objdump against a
+  # different format, not nm/otool) and no runner here is known to carry one
+  # by default. Getting the install/load/sign/verify path working comes
+  # first; this check gets a Windows leg once that is green -- see
+  # VENDORING.md Phase 5. Skipping is safe, not silent: it is logged.
+  case "$(uname -s)" in
+    MINGW*|MSYS*)
+      echo "  skipping the symbol-leak check on Windows for now (VENDORING.md Phase 5)"
+      continue
+      ;;
+  esac
+
   # Linux exports through the dynamic symbol table; macOS through -gU. The
   # leading underscore is a Mach-O convention, hence the optional _ below.
   if [ "$(uname -s)" = "Darwin" ]; then
