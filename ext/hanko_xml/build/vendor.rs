@@ -431,7 +431,7 @@ fn build_libxml2(src: &Path, prefix: &Path) {
     // can therefore change which items exist in the generated bindings -- so
     // this list stays conservative, and any change to it needs a full rebuild
     // plus the whole spec suite.
-    let args = vec![
+    let mut args = vec![
         format!("--prefix={}", prefix.display()),
         "--enable-static".into(),
         "--disable-shared".into(),
@@ -447,7 +447,6 @@ fn build_libxml2(src: &Path, prefix: &Path) {
         "--with-pattern".into(),
         "--with-valid".into(),
         "--with-tree".into(),
-        "--with-iconv".into(),
         "--with-threads".into(),
         // Not used by this crate, and dropping http/ftp also closes off
         // network fetches from within XML processing.
@@ -462,6 +461,19 @@ fn build_libxml2(src: &Path, prefix: &Path) {
         "--without-history".into(),
         "--without-debug".into(),
     ];
+
+    // "--with-iconv" (no argument) means required, not "use it if present" --
+    // configure hard-errors when it is requested but not found, which is
+    // exactly the mingw dock's situation (no libiconv there, and we do not
+    // vendor one). Falls back to libxml2's own built-in UTF-8/UTF-16/ASCII/
+    // ISO-8859-1 converters, which is what every fixture in this repo needs;
+    // revisit if a real document shows up needing another legacy encoding.
+    args.push(if target_is_windows() {
+        "--without-iconv".into()
+    } else {
+        "--with-iconv".into()
+    });
+
     configure_make_install(src, &args, "libxml2", &[]);
 }
 
