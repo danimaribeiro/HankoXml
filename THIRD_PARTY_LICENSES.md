@@ -379,8 +379,8 @@ Source: `openssl/openssl`, tag `openssl-3.5.8`, file `LICENSE.txt`
 ```
 
 At the pinned `openssl-3.5.8` ref, the upstream repository does not include a
-top-level `NOTICE` file. It does include `ACKNOWLEDGEMENTS.md`, whose content
-is reproduced here as upstream notice-style attribution text:
+top-level `NOTICE` file. It does include `ACKNOWLEDGEMENTS.md`; the block
+below reproduces that upstream Markdown file verbatim as shipped:
 
 ```text
 Acknowledgements
