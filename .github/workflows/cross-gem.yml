@@ -1,13 +1,14 @@
 name: Cross-compile
 
-# Builds the precompiled Linux platform gems: the vendored libxml2 + xmlsec1
-# static build (HANKO_XML_VENDOR=1) inside rake-compiler-dock, one platform per
-# job. Nothing here publishes -- release.yml owns that. This workflow exists to
+# Builds the precompiled platform gems: the vendored libxml2 + xmlsec1 static
+# build (HANKO_XML_VENDOR=1) inside rake-compiler-dock, one platform per job.
+# Nothing here publishes -- release.yml owns that. This workflow exists to
 # prove the cross build works and to hand back installable .gem artifacts.
 #
-# Linux only so far. macOS is no longer blocked -- vendoring OpenSSL removed the
-# absolute-Homebrew-path problem that held it back -- it simply has not been
-# wired up yet. Windows remains a much larger toolchain lift. See VENDORING.md.
+# x86_64-linux, aarch64-linux, arm64-darwin, x64-mingw-ucrt. x86_64-darwin
+# stays on the source gem (see the arm64-darwin comment below); x64-mingw32
+# (the legacy non-UCRT Windows Ruby) and 32-bit platforms are not planned.
+# See VENDORING.md.
 
 on:
   # Pull requests only, plus manual runs. Deliberately not `push` as well: a
@@ -34,12 +35,17 @@ jobs:
       fail-fast: false
       matrix:
         platform:
-          # --- temporarily narrowed to iterate on Windows without burning CI
-          # minutes on the other three platforms every push. Restore before
-          # merging. ---
-          # - x86_64-linux
-          # - aarch64-linux
-          # - arm64-darwin
+          # Native inside the x86_64 dock container -- no C cross-compilation.
+          - x86_64-linux
+          # Genuinely cross-compiled. Unblocked once OpenSSL was vendored: its
+          # failure was never our build, it was that the container had no
+          # OpenSSL for the target.
+          - aarch64-linux
+          # Cross-compiled from Linux via osxcross in the dock image. Only
+          # arm64: x86_64-darwin would need an Intel macos-13 runner to verify
+          # honestly, and GitHub is retiring those, so Intel Macs use the
+          # source gem.
+          - arm64-darwin
           # Cross-compiled from Linux via the mingw-w64 toolchain in the dock
           # image. UCRT, not the legacy msvcrt build -- see VENDORING.md Phase 5.
           - x64-mingw-ucrt
@@ -82,24 +88,26 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # --- temporarily narrowed to iterate on Windows; restore before
-          # merging. ---
-          # - platform: x86_64-linux
-          #   runner: ubuntu-latest
-          #   arch: x86_64
-          #   docker_platform: linux/amd64
-          # - platform: aarch64-linux
-          #   runner: ubuntu-24.04-arm
-          #   arch: aarch64
-          #   docker_platform: linux/arm64
-          # - platform: arm64-darwin
-          #   runner: macos-latest
-          #   arch: arm64
-          #   docker_platform: ""
-          # No Windows container is used here either, for the same reason as
-          # macOS: it runs directly on the runner with an isolated GEM_HOME,
-          # and the script's dynamic-linkage check is what catches an
-          # accidental link against something only the runner has.
+          - platform: x86_64-linux
+            runner: ubuntu-latest
+            arch: x86_64
+            docker_platform: linux/amd64
+          - platform: aarch64-linux
+            runner: ubuntu-24.04-arm
+            arch: aarch64
+            docker_platform: linux/arm64
+          # No macOS container exists, so this one runs directly on the runner
+          # with an isolated GEM_HOME. Less hermetic than the Linux legs -- the
+          # runner has Homebrew and Xcode -- which is why the script also
+          # asserts nothing links libxml2, libxmlsec or libcrypto dynamically.
+          # Without that, a gem accidentally linked against the runner's
+          # Homebrew would pass here and fail for a user.
+          - platform: arm64-darwin
+            runner: macos-latest
+            arch: arm64
+            docker_platform: ""
+          # Same reasoning as macOS: no Windows container, runs directly on
+          # the runner with an isolated GEM_HOME.
           - platform: x64-mingw-ucrt
             runner: windows-latest
             arch: x86_64
