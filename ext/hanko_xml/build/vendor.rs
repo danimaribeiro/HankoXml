@@ -333,7 +333,24 @@ fn openssl_target() -> Option<&'static str> {
         "aarch64-unknown-linux-gnu" => Some("linux-aarch64"),
         "aarch64-apple-darwin" => Some("darwin64-arm64-cc"),
         "x86_64-apple-darwin" => Some("darwin64-x86_64-cc"),
+        // rb_sys' x64-mingw-ucrt maps to this Rust triple, built with mingw-w64
+        // (not MSVC), so OpenSSL's own mingw64 target is the correct one, not
+        // one of the VC-WIN64* targets.
+        "x86_64-pc-windows-gnu" => Some("mingw64"),
         _ => None,
+    }
+}
+
+/// autoconf's config.sub does not understand Rust's `pc-windows-gnu` vendor
+/// field the way it understands the Linux and Darwin triples above -- mingw-w64
+/// cross toolchains identify themselves as `x86_64-w64-mingw32`. Only libxml2
+/// and xmlsec1 need this (they go through `./configure --host=`); OpenSSL's
+/// `./Configure` takes its own `mingw64` name from `openssl_target()` above and
+/// never sees this value.
+fn autotools_host() -> String {
+    match target_triple().as_str() {
+        "x86_64-pc-windows-gnu" => "x86_64-w64-mingw32".to_string(),
+        other => other.to_string(),
     }
 }
 
@@ -524,6 +541,10 @@ fn target_is_macos() -> bool {
     env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos")
 }
 
+fn target_is_windows() -> bool {
+    env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows")
+}
+
 /// The cross toolchain to hand autotools, resolved from the environment the
 /// way the `cc` crate does: `CC_<triple>` (underscored), then `TARGET_CC`, then
 /// the conventional `<triple>-gcc` prefix that rake-compiler-dock provides.
@@ -545,7 +566,19 @@ fn cross_tool(var: &str, suffixes: &[&str]) -> Option<String> {
     // leave CC unset and build the C libraries with the *host* compiler while
     // configured for the target.
     let gnu_triple = triple.replacen("-unknown-", "-", 1);
-    let prefixes = [triple.as_str(), gnu_triple.as_str()];
+    // rake-compiler-dock's mingw toolchain drops the vendor field too
+    // (`x86_64-windows-gnu-gcc`, not `x86_64-pc-windows-gnu-gcc`), and a plain
+    // mingw-w64 cross package as installed on Debian uses the standard GNU
+    // triple instead (`x86_64-w64-mingw32-gcc`). Probe all the spellings this
+    // dock or a distro package might have used; only one needs to exist.
+    let dock_windows_triple = triple.replacen("-pc-windows-", "-windows-", 1);
+    let mingw_host_triple = autotools_host();
+    let prefixes = [
+        triple.as_str(),
+        gnu_triple.as_str(),
+        dock_windows_triple.as_str(),
+        mingw_host_triple.as_str(),
+    ];
 
     prefixes
         .iter()
@@ -568,9 +601,9 @@ fn cross_config() -> (Vec<String>, Vec<(String, String)>) {
         return (Vec::new(), Vec::new());
     }
 
-    let triple = target_triple();
-    // autotools' config.sub understands Rust's cpu-vendor-os triples directly.
-    let mut args = vec![format!("--host={triple}")];
+    // autotools' config.sub understands Rust's cpu-vendor-os triples directly,
+    // except mingw's -- see autotools_host().
+    let mut args = vec![format!("--host={}", autotools_host())];
     // libxml2 and xmlsec both run link-and-execute feature probes that cannot
     // work when the binary is for another architecture; --host already puts
     // autotools in cross mode, this just makes the intent explicit.
@@ -679,6 +712,17 @@ fn emit_link_flags(prefix: &Path) {
 
     if target_is_macos() {
         println!("cargo:rustc-link-lib=dylib=iconv");
+        println!("cargo:rustc-link-lib=dylib=m");
+    } else if target_is_windows() {
+        // PE has no dlopen()/pthread/libm to link against -- mingw-w64's
+        // runtime and rustc's own windows-gnu target spec already pull in
+        // whatever those three cover on this platform (winpthread, ucrtbase).
+        // --exclude-libs is a GNU ld option for ELF/XCOFF; whether the mingw
+        // PE backend of ld.bfd honors it for symbol hiding here is unverified
+        // -- unlike ELF, a PE DLL does not export archive members by default
+        // in the first place, so the risk of a leak is different in kind, not
+        // just unmitigated. Confirm with the deferred Phase 5 symbol check
+        // once smoke_test.sh grows one.
     } else {
         // Keep the vendored archives' symbols out of this cdylib's dynamic
         // symbol table so they cannot interpose with Nokogiri's libxml2 -- or,
@@ -687,8 +731,8 @@ fn emit_link_flags(prefix: &Path) {
         // A static libcrypto still needs these from the platform.
         println!("cargo:rustc-link-lib=dylib=dl");
         println!("cargo:rustc-link-lib=dylib=pthread");
+        println!("cargo:rustc-link-lib=dylib=m");
     }
-    println!("cargo:rustc-link-lib=dylib=m");
 }
 
 fn run(command: &mut Command, what: &str) {
