@@ -264,15 +264,30 @@ boundaries can bite, and 1-2 minutes is not yet worth that risk.)*
   and costs only CI minutes.
 - `--with-openssl=` must point at the *target* sysroot's OpenSSL, not the host's.
 
-## Phase 4 — Release fan-out
+## Phase 4 — Release fan-out — **wired, not yet released**
 
-- Extend `.github/workflows/release.yml` with a build matrix emitting the four
-  platform gems plus the source gem.
-- Reuse the existing clean-`GEM_HOME` install smoke test per platform, run
-  natively where a runner exists (`ubuntu-latest`, `macos-latest`) — for a
-  precompiled gem it must install **without** any `apt install libxmlsec1-dev`,
-  which is the whole point and the real acceptance test.
-- Push all gems in one job after every platform passes.
+`release.yml` now calls `cross-gem.yml` as a reusable workflow (`workflow_call`)
+so the tag-triggered release builds from the exact same matrix that guards pull
+requests, rather than a second copy of it. The `release` job downloads every
+`gem-*` artifact `cross-gem.yml` uploaded (`x86_64-linux`, `aarch64-linux`,
+`arm64-darwin`) into the same `pkg/` the source gem was built into, and pushes
+and releases everything found there together — one `gem push` per file, one
+`gh release create` with all of `pkg/*.gem` as assets.
+
+`x86_64-darwin` and `x64-mingw-ucrt` are still absent from the matrix (see
+Phase 5), so those users get the source gem — unchanged behavior, since the
+source gem is what everyone got before this phase.
+
+Still outstanding before a real (non-dry-run) release:
+
+- RubyGems trusted-publisher registration for `hanko_xml` — required once,
+  documented in `release.yml`'s header comment.
+- The `spec/packaging_spec.rb` / `native_spec.rb` branching this phase's plan
+  called for was **not needed for the wiring above**: those specs run only in
+  `main.yml`'s source-gem build, never against the platform gems, which are
+  proven instead by `cross-gem.yml`'s own smoke test
+  (`.github/scripts/smoke_test.sh`). Revisit only if platform gems start
+  running through rspec directly.
 
 **Specs that will conflict and must be branched, not deleted:**
 

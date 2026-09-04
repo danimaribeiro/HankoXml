@@ -16,6 +16,10 @@ on:
   # Ruby ABIs.
   pull_request:
   workflow_dispatch:
+  # Lets release.yml build the platform gems it publishes from this exact
+  # matrix, rather than keeping a second copy of it in sync by hand -- same
+  # reason main.yml exposes workflow_call.
+  workflow_call:
 
 # The most expensive workflow here, so cancelling superseded runs matters most.
 concurrency:

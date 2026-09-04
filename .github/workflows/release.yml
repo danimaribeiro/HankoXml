@@ -33,8 +33,17 @@ jobs:
   test:
     uses: ./.github/workflows/main.yml
 
-  release:
+  # Builds and smoke-tests the precompiled platform gems (x86_64-linux,
+  # aarch64-linux, arm64-darwin) from the same matrix that guards pull
+  # requests. x86_64-darwin and Windows are deliberately absent -- see
+  # cross-gem.yml and VENDORING.md -- so those platforms fall back to the
+  # source gem below.
+  cross-gem:
     needs: test
+    uses: ./.github/workflows/cross-gem.yml
+
+  release:
+    needs: [test, cross-gem]
     runs-on: ubuntu-latest
     environment: rubygems
     permissions:
@@ -111,6 +120,20 @@ jobs:
             raise "version guard did not pass" unless HankoXml::NativeVersion.check! == :ok
           '
 
+      # The cross-gem job already built and smoke-tested these on their own
+      # architecture (or under a bare container); this just collects the
+      # artifacts it uploaded into the same pkg/ the source gem was built
+      # into, so every gem below is pushed and released together.
+      - name: Collect the precompiled platform gems
+        uses: actions/download-artifact@v8
+        with:
+          pattern: gem-*
+          path: pkg
+          merge-multiple: true
+
+      - name: List everything about to be published
+        run: ls -la pkg/*.gem
+
       # Deliberately the two-step form rather than rubygems/release-gem, which
       # wraps `rake release` and would try to create and push the git tag that
       # triggered this run. The gem is already built above; this only needs to
@@ -119,9 +142,15 @@ jobs:
         if: inputs.dry_run != true
         uses: rubygems/configure-rubygems-credentials@v1
 
-      - name: Push the gem
+      # One `gem push` per file -- the command only ever takes a single gem.
+      # Source gem plus whichever platform gems cross-gem.yml produced.
+      - name: Push the gems
         if: inputs.dry_run != true
-        run: gem push "pkg/hanko_xml-${{ steps.version.outputs.version }}.gem"
+        run: |
+          for gem in pkg/*.gem; do
+            echo "pushing $gem"
+            gem push "$gem"
+          done
 
       - name: Create the GitHub Release
         if: inputs.dry_run != true
@@ -131,7 +160,7 @@ jobs:
           gh release create "v${{ steps.version.outputs.version }}" \
             --title "v${{ steps.version.outputs.version }}" \
             --notes-file release-notes.md \
-            "pkg/hanko_xml-${{ steps.version.outputs.version }}.gem"
+            pkg/*.gem
 
       - name: Dry run summary
         if: inputs.dry_run == true
@@ -141,6 +170,10 @@ jobs:
             echo
             echo "Built and installed \`hanko_xml-${{ steps.version.outputs.version }}.gem\` successfully."
             echo
+            echo "Gems that would have been pushed and released:"
+            echo
+            ls -1 pkg/*.gem
+            echo
             echo "Release notes that *would* have been used:"
             echo
             cat release-notes.md
@@ -148,5 +181,5 @@ jobs:
 
       - uses: actions/upload-artifact@v7
         with:
-          name: hanko_xml-${{ steps.version.outputs.version }}.gem
+          name: hanko_xml-${{ steps.version.outputs.version }}-gems
           path: pkg/*.gem
