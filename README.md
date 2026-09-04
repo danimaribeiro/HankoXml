@@ -22,10 +22,24 @@ It tightly integrates with Nokogiri, allowing you to sign and verify documents d
 
 ## Requirements
 
-HankoXml compiles its Rust extension against the libxmlsec1 on your machine at
-install time, so the build toolchain has to be present:
+Most users install a precompiled platform gem and do **not** need a local build
+toolchain.
 
 - Ruby 3.1+
+
+Precompiled gems are published for:
+
+- `x86_64-linux`
+- `aarch64-linux`
+- `arm64-darwin`
+- `x64-mingw-ucrt`
+
+### Building from source (fallback)
+
+If RubyGems falls back to the source gem for your platform, HankoXml compiles
+its Rust extension against the local `libxmlsec1`, so the build toolchain has
+to be present:
+
 - Rust toolchain (stable)
 - `libxmlsec1` and `libxml2` development headers, `pkg-config`, and libclang
   (bindgen generates the FFI bindings during the build):
@@ -49,15 +63,15 @@ HankoXml::NativeVersion.build_versions
 # => { xmlsec: "1.3.12", libxml2: "2.15.3", crypto: "openssl" }
 ```
 
-If you upgrade libxmlsec1 through your OS package manager after installing the
-gem, rebuild the extension with `gem pristine hanko_xml`.
+If you installed from source and later upgrade libxmlsec1 through your OS
+package manager, rebuild the extension with `gem pristine hanko_xml`.
 
 ## Installation
 
 Add this line to your application's Gemfile:
 
 ```ruby
-gem "hanko_xml", git: "https://github.com/danimaribeiro/HankoXml"
+gem "hanko_xml"
 ```
 
 ## Usage

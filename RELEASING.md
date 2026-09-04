@@ -62,7 +62,9 @@ Until step 1 is done, only run the workflow via `workflow_dispatch` with
 2. Bump `HankoXml::VERSION` in `lib/hanko_xml/version.rb`.
 3. `bundle exec rake` — the packaging spec checks the two above agree and that
    the file allowlist is complete.
-4. Commit, then:
+4. Ensure `README.md`'s Installation snippet is `gem "hanko_xml"` (no `git:`
+   pin) before cutting the release.
+5. Commit, then:
 
    ```sh
    git tag "v$(ruby -Ilib -rhanko_xml/version -e 'print HankoXml::VERSION')"
