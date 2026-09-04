@@ -120,13 +120,23 @@ fn probe_vendored_headers(prefix: &Path) -> crate::Headers {
         include_paths.push(multiarch);
     }
 
+    let mut defines: Vec<(String, Option<String>)> = xmlsec
+        .defines
+        .iter()
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect();
+    if target_is_windows() {
+        // See build_cflags(): the headers themselves branch on these, so
+        // bindgen has to see the same static-linkage defines the actual
+        // build used, or it generates dllimport-shaped declarations for
+        // symbols that are in fact statically linked.
+        defines.push(("LIBXML_STATIC".to_string(), None));
+        defines.push(("XMLSEC_STATIC".to_string(), None));
+    }
+
     crate::Headers {
         include_paths,
-        defines: xmlsec
-            .defines
-            .iter()
-            .map(|(name, value)| (name.clone(), value.clone()))
-            .collect(),
+        defines,
     }
 }
 
@@ -322,6 +332,27 @@ fn sha256_file(path: &Path) -> String {
 /// XMLPUBFUN/XMLSEC_EXPORT macros expand to nothing on non-Windows, so this
 /// flag is not overridden.
 const HIDDEN_VISIBILITY_CFLAGS: &str = "-fvisibility=hidden -fPIC -O2";
+
+/// CFLAGS for building libxml2 and xmlsec1 (not OpenSSL, which has its own
+/// static/shared switch and never dllimports anything of ours).
+///
+/// On Windows, XMLPUBFUN/XMLSEC_EXPORT expand to `__declspec(dllimport)` for
+/// any translation unit that doesn't define LIBXML_STATIC/XMLSEC_STATIC --
+/// including a library's *own* other translation units, since they all
+/// `#include` the same public headers. Leaving these undefined is what
+/// produced `undefined reference to __imp_xmlSecError` linking
+/// libxmlsec1-openssl.a against libxmlsec1.a: both were built assuming the
+/// symbols would come from a DLL's import library, and there is no DLL --
+/// only static archives, both here and in the final `cargo:rustc-link-lib`.
+/// Non-Windows never defines these dllimport/dllexport forms in the first
+/// place (see the module doc comment), so this is a no-op there.
+fn build_cflags() -> String {
+    if target_is_windows() {
+        format!("{HIDDEN_VISIBILITY_CFLAGS} -DLIBXML_STATIC -DXMLSEC_STATIC")
+    } else {
+        HIDDEN_VISIBILITY_CFLAGS.to_string()
+    }
+}
 
 /// OpenSSL's Configure wants its target as a positional argument and cannot
 /// auto-detect one when cross-compiling. Map the Rust triple onto OpenSSL's
@@ -656,7 +687,7 @@ fn configure_make_install(src: &Path, args: &[String], name: &str, extra_env: &[
 
     let mut configure = Command::new("./configure");
     configure.current_dir(src).args(args).args(&cross_args);
-    configure.env("CFLAGS", HIDDEN_VISIBILITY_CFLAGS);
+    configure.env("CFLAGS", build_cflags());
     for (key, value) in cross_env.iter().chain(extra_env) {
         configure.env(key, value);
     }
@@ -749,6 +780,18 @@ fn emit_link_flags(prefix: &Path) {
         // in the first place, so the risk of a leak is different in kind, not
         // just unmitigated. Confirm with the deferred Phase 5 symbol check
         // once smoke_test.sh grows one.
+        //
+        // What Windows *does* need: system import libraries for the Win32
+        // APIs our static libcrypto/libxml2 call directly instead of through
+        // a libc shim -- advapi32 (registry/event log, legacy CryptXxx),
+        // crypt32 (certificate store), bcrypt (BCryptGenRandom, used by
+        // libxml2's dict.c), user32/gdi32 (pulled in transitively by
+        // OpenSSL's Windows build). None of these are optional the way the
+        // -lm/-ldl/-lpthread they replace are -- they were undefined
+        // references at link time before this was added.
+        for lib in ["advapi32", "crypt32", "bcrypt", "user32", "gdi32"] {
+            println!("cargo:rustc-link-lib=dylib={lib}");
+        }
     } else {
         // Keep the vendored archives' symbols out of this cdylib's dynamic
         // symbol table so they cannot interpose with Nokogiri's libxml2 -- or,
