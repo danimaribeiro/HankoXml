@@ -82,6 +82,23 @@ RSpec.describe "HankoXml::Native" do
       expect(result[:errors]).to be_empty
     end
 
+    it "verifies against a public key PEM and ignores KeyInfo" do
+      xml = fixtures.join("signed_exc_c14n.xml").read
+      pubkey = OpenSSL::X509::Certificate.new(signer_cert_pem).public_key.to_pem
+      result = HankoXml::Native.verify(xml, [pubkey], [], id_attrs, 0)
+
+      expect(result[:status]).to eq(:succeeded)
+    end
+
+    it "returns :invalid when the public key PEM does not match the signature" do
+      xml = fixtures.join("signed_exc_c14n.xml").read
+      other_key = OpenSSL::X509::Certificate.new(other_cert_pem).public_key.to_pem
+      result = HankoXml::Native.verify(xml, [other_key], [], id_attrs, 0)
+
+      expect(result[:status]).to eq(:invalid).or eq(:unknown)
+      expect(result[:errors]).not_to be_empty
+    end
+
     it "returns :invalid with captured error messages when the certificate does not match" do
       xml = fixtures.join("signed_exc_c14n.xml").read
       result = HankoXml::Native.verify(xml, [other_cert_pem], [], id_attrs, 0)
