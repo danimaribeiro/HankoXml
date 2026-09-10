@@ -70,6 +70,13 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   `API_CONTRACT.md` §5.9 but was never raised. It now is, whenever `resolver:`
   and `id_attributes:` are both non-empty and disagree on a reference's
   target.
+- `Verifier` accepted `store:` and `key:` at construction but never used them
+  during verification, so documented trust modes failed closed. `store:` now
+  identifies the KeyInfo end-entity (not document order), validates that cert
+  through `OpenSSL::X509::StoreContext` without mutating the caller's store,
+  and hands libxmlsec1 only the validated leaf. `key:` / key-valued `keys:`
+  entries pass a public-key PEM into `Native.verify`, which pins it as
+  `signKey` so KeyInfo is ignored, matching `API_CONTRACT.md` §5.6.
 
 ### Changed
 

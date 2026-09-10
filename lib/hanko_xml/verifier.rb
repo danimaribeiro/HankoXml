@@ -221,32 +221,11 @@ module HankoXml
 
       sig_info = HankoXml::SignatureInfo.from_native(inspect_result)
 
-      # 3. Call Native.verify
-      trusted = []
-      untrusted = []
-
-      # Select key from `keys:` if `keys` is provided
-      if @keys
-        key_name = sig_info.key_names.first
-        if key_name && @keys.key?(key_name)
-          cert_or_key = HankoXml::Key.coerce(@keys[key_name])
-          trusted << cert_or_key.to_pem if cert_or_key.certificate?
-        else
-          return HankoXml::Verification.new(
-            valid: false,
-            errors: [HankoXml::UntrustedCertificate.new("KeyName #{key_name.inspect} not found in keys: map")],
-            signature_info: sig_info,
-            signature_node: sig_node,
-            document: doc,
-            id_attributes: @id_attributes,
-            resolver: @resolver
-          )
-        end
+      # 3. Resolve trust material and call Native.verify
+      trusted, untrusted, trust_error = collect_trust(sig_info)
+      if trust_error
+        return failed_verification(doc, sig_node, [trust_error], signature_info: sig_info)
       end
-
-      trusted << @certificate.to_pem if @certificate
-
-      trusted.concat(@certificates.map(&:to_pem)) if @certificates
 
       # Check certificate expiration in Ruby if verification_time is set
       # (Ideally, we pass time to native store, but for now we do it here if possible)
@@ -254,18 +233,18 @@ module HankoXml
         # For each trusted cert, check if verification_time is within bounds
         # If any is out of bounds, we could fail early or let xmlsec fail.
         # But xmlsec1 doesn't accept a time parameter in our API yet.
-        # So we validate the parsed certs here.
+        # So we validate the parsed certs here. Key PEMs are skipped: they have
+        # no notBefore/notAfter.
         trusted.each do |pem|
+          next unless certificate_pem?(pem)
+
           cert = OpenSSL::X509::Certificate.new(pem)
           if @verification_time < cert.not_before || @verification_time > cert.not_after
-            return HankoXml::Verification.new(
-              valid: false,
-              errors: [HankoXml::CertificateExpired.new("Certificate expired at #{@verification_time}")],
-              signature_info: sig_info,
-              signature_node: sig_node,
-              document: doc,
-              id_attributes: @id_attributes,
-              resolver: @resolver
+            return failed_verification(
+              doc,
+              sig_node,
+              [HankoXml::CertificateExpired.new("Certificate expired at #{@verification_time}")],
+              signature_info: sig_info
             )
           end
         end
@@ -312,5 +291,116 @@ module HankoXml
     end
     # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
     # rubocop:enable Metrics/MethodLength, Metrics/PerceivedComplexity
+
+    def failed_verification(doc, sig_node, errors, signature_info: nil)
+      HankoXml::Verification.new(
+        valid: false,
+        errors: errors,
+        signature_info: signature_info,
+        signature_node: sig_node,
+        document: doc,
+        id_attributes: @id_attributes,
+        resolver: @resolver
+      )
+    end
+
+    def collect_trust(sig_info)
+      trusted = []
+      untrusted = []
+
+      if @keys
+        key_name = sig_info.key_names.first
+        unless key_name && @keys.key?(key_name)
+          return [nil, nil,
+                  HankoXml::UntrustedCertificate.new("KeyName #{key_name.inspect} not found in keys: map")]
+        end
+
+        trusted << HankoXml::Key.coerce(@keys[key_name]).to_pem
+      elsif @store
+        begin
+          embedded = load_embedded_certificates(sig_info)
+        rescue OpenSSL::X509::CertificateError => e
+          return [nil, nil,
+                  HankoXml::UntrustedCertificate.new("Invalid X509Certificate in KeyInfo: #{e.message}")]
+        end
+
+        if embedded.empty?
+          return [nil, nil,
+                  HankoXml::UntrustedCertificate.new("No X509Certificate found in KeyInfo for store verification")]
+        end
+
+        leaf, error = verified_leaf_from_store(embedded)
+        return [nil, nil, error] if error
+
+        # Contract: hand libxmlsec1 only the validated leaf. Intermediates
+        # already went through OpenSSL::X509::StoreContext; they must not be
+        # re-introduced as xmlsec trust anchors.
+        trusted << leaf.to_pem
+      elsif @key
+        trusted << @key.to_pem
+      else
+        trusted << @certificate.to_pem if @certificate
+        trusted.concat(@certificates.map(&:to_pem)) if @certificates
+      end
+
+      [trusted, untrusted, nil]
+    end
+
+    def load_embedded_certificates(sig_info)
+      sig_info.certificates.map { |pem| OpenSSL::X509::Certificate.new(pem) }
+    end
+
+    def verified_leaf_from_store(certificates)
+      candidates = end_entity_certificates(certificates)
+      candidates = certificates if candidates.empty?
+
+      verified = []
+      last_error = "Certificate chain validation failed"
+
+      candidates.each do |leaf|
+        chain = certificates.reject { |cert| cert.equal?(leaf) }
+        ctx = OpenSSL::X509::StoreContext.new(@store, leaf, chain)
+        if @policy.check_certificate_validity
+          ctx.time = @verification_time if @verification_time
+        else
+          ctx.flags = OpenSSL::X509::V_FLAG_NO_CHECK_TIME
+        end
+
+        if ctx.verify
+          verified << leaf
+        else
+          message = ctx.error_string.to_s
+          last_error = message.empty? ? last_error : "Certificate chain validation failed: #{message}"
+        end
+      end
+
+      case verified.size
+      when 1
+        [verified.first, nil]
+      when 0
+        [nil, HankoXml::UntrustedCertificate.new(last_error)]
+      else
+        [nil, HankoXml::UntrustedCertificate.new(
+          "Ambiguous KeyInfo: multiple certificates chain to the trust store"
+        )]
+      end
+    end
+
+    # End-entity certs in this KeyInfo set: nobody else in the set was issued
+    # by them. Document order is not a leaf indicator (XML-DSig does not
+    # require leaf-first X509Certificate).
+    def end_entity_certificates(certificates)
+      certificates.select do |candidate|
+        certificates.none? { |other| issued_by?(other, candidate) }
+      end
+    end
+
+    def issued_by?(cert, issuer)
+      !cert.equal?(issuer) && cert.issuer.to_der == issuer.subject.to_der
+    end
+
+    def certificate_pem?(pem)
+      pem.include?("BEGIN CERTIFICATE")
+    end
   end
 end
