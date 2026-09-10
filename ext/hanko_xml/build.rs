@@ -213,6 +213,7 @@ fn generate_bindings(headers: &Headers) {
              #include <xmlsec/openssl/app.h>\n\
              #include <xmlsec/openssl/crypto.h>\n\
              #include <libxml/tree.h>\n\
+             #include <libxml/valid.h>\n\
              #include <libxml/xmlmemory.h>\n\
              #include <libxml/xmlversion.h>\n",
         )
@@ -225,6 +226,8 @@ fn generate_bindings(headers: &Headers) {
         .allowlist_function("xmlReadMemory")
         .allowlist_function("xmlFreeDoc")
         .allowlist_function("xmlDocGetRootElement")
+        // libxml2 ID table lookup (same table xmlsec uses for URI="#id")
+        .allowlist_function("xmlGetID")
         // libxml2 serialization (for sign → return signed bytes)
         .allowlist_function("xmlDocDumpMemory")
         .allowlist_function("xmlDocDumpFormatMemory")
@@ -239,6 +242,7 @@ fn generate_bindings(headers: &Headers) {
         .allowlist_type("xmlDoc")
         .allowlist_type("xmlAttr")
         .allowlist_type("xmlNs")
+        .allowlist_type("xmlID")
         .derive_default(true)
         .generate_comments(false)
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()));

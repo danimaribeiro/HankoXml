@@ -156,7 +156,12 @@ fn native_sign(
 /// `HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signature_index)`
 ///
 /// Verifies the nth `<ds:Signature>` and returns a Hash:
-/// `{ status: :succeeded | :invalid | :unknown, errors: Array<String> }`
+/// `{ status:, errors:, reference_element_indexes: Array<Integer|nil> }`
+///
+/// `reference_element_indexes` is the document-order element index of each
+/// SignedInfo Reference's target as resolved by libxml2's ID table (the same
+/// table xmlsec used for `#id` verification). Empty-URI references report the
+/// root. Unresolved / non-fragment URIs are `nil`.
 ///
 /// Only raises for conditions that are not a verification verdict.
 fn native_verify(
@@ -183,6 +188,19 @@ fn native_verify(
 
             let errors_array = string_slice_to_rarray(ruby, &result.errors)?;
             hash.aset(ruby.to_symbol("errors"), errors_array)
+                .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
+
+            let indexes = ruby.ary_new();
+            for entry in &result.reference_element_indexes {
+                let value = match entry {
+                    Some(i) => ruby.integer_from_i64(*i as i64).as_value(),
+                    None => ruby.qnil().as_value(),
+                };
+                indexes
+                    .push(value)
+                    .map_err(|e| native_error(ruby, format!("array error: {e}")))?;
+            }
+            hash.aset(ruby.to_symbol("reference_element_indexes"), indexes)
                 .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
 
             Ok(hash)

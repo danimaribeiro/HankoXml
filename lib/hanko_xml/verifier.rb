@@ -284,7 +284,8 @@ module HankoXml
         signature_node: sig_node,
         document: doc,
         id_attributes: @id_attributes,
-        resolver: @resolver
+        resolver: @resolver,
+        reference_element_indexes: verify_result[:reference_element_indexes]
       )
     end
     # rubocop:enable Metrics/CyclomaticComplexity

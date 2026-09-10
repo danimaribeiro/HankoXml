@@ -27,7 +27,7 @@ RSpec.describe HankoXml::Verification do
   def resolve(uri, **kwargs)
     verification = build_verification(uri: uri, **kwargs)
     reference = HankoXml::SignatureInfo::ReferenceInfo.new(uri: uri, digest_method: digest_method)
-    verification.send(:resolve_reference, reference)
+    verification.send(:resolve_reference, reference, 0)
   end
 
   it "does not allow XPath injection via reference ID values" do
@@ -70,6 +70,7 @@ RSpec.describe HankoXml::Verification do
 
     expect(verification).not_to be_valid
     expect(verification.errors).to include(an_instance_of(HankoXml::ResolutionMismatch))
+    expect(verification).not_to be_signed(doc.at_xpath("//a"))
   end
 
   it "does not flag ResolutionMismatch when the resolver and id_attributes agree" do
@@ -88,5 +89,45 @@ RSpec.describe HankoXml::Verification do
 
     expect(verification).to be_valid
     expect(verification.errors).to be_empty
+  end
+
+  it "prefers native element indexes over Ruby ID XPath" do
+    doc = Nokogiri::XML("<root><order Id=\"inv-1\"/><invoice Id=\"inv-1\"/></root>")
+    # Document-order: root=0, order=1, invoice=2. Point at invoice the way
+    # xmlsec's ID table would after a DTD typed the Invoice element.
+    verification = described_class.new(
+      valid: true,
+      errors: [],
+      signature_info: HankoXml::SignatureInfo.new(
+        signature_method: signature_method,
+        canonicalization_method: canonicalization_method,
+        references: [{ uri: "#inv-1", digest_method: digest_method, transforms: [] }]
+      ),
+      signature_node: nil,
+      document: doc,
+      id_attributes: ["Id"],
+      reference_element_indexes: [2]
+    )
+
+    expect(verification.references.first.node).to eq(doc.at_xpath("//invoice"))
+    expect(verification).to be_signed(doc.at_xpath("//invoice"))
+    expect(verification).not_to be_signed(doc.at_xpath("//order"))
+  end
+
+  it "returns false from #signed? when the verification is invalid" do
+    doc = Nokogiri::XML("<root><signed Id=\"payload-1\"/></root>")
+    verification = described_class.new(
+      valid: false,
+      errors: [HankoXml::VerificationError.new("nope")],
+      signature_info: HankoXml::SignatureInfo.new(
+        signature_method: signature_method,
+        canonicalization_method: canonicalization_method,
+        references: [{ uri: "#payload-1", digest_method: digest_method, transforms: [] }]
+      ),
+      signature_node: nil,
+      document: doc
+    )
+
+    expect(verification).not_to be_signed(doc.at_xpath("//signed"))
   end
 end

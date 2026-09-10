@@ -540,6 +540,11 @@ pub struct InspectReference {
 pub struct VerifyResult {
     pub status: VerifyStatus,
     pub errors: Vec<String>,
+    /// Per SignedInfo `<Reference>`, the document-order element index of the
+    /// node xmlsec's ID table resolved (same table `#id` verification used),
+    /// or `None` when the URI is empty (root), unresolved, or non-fragment.
+    /// Empty URI references always report the root element's index.
+    pub reference_element_indexes: Vec<Option<usize>>,
 }
 
 const DSIG_NS: &str = "http://www.w3.org/2000/09/xmldsig#";
@@ -754,11 +759,118 @@ pub fn verify_document(
 
     let status = ctx.verify(sig_node);
     let captured_errors = errors::drain_errors();
+    let reference_element_indexes =
+        collect_reference_element_indexes(&doc, root, sig_node);
 
     Ok(VerifyResult {
         status,
         errors: captured_errors,
+        reference_element_indexes,
     })
+}
+
+/// For each SignedInfo `<Reference>`, report the document-order element index
+/// of the node the libxml2 ID table resolves — the same table xmlsec used for
+/// `#id` fragment verification. Empty URI → root index. Non-fragment / missing
+/// ID → `None`.
+fn collect_reference_element_indexes(
+    doc: &OwnedXmlDoc,
+    root: sys::xmlNodePtr,
+    sig_node: sys::xmlNodePtr,
+) -> Vec<Option<usize>> {
+    let signed_info = unsafe { find_child(sig_node, "SignedInfo", DSIG_NS) };
+    let Some(signed_info) = signed_info else {
+        return Vec::new();
+    };
+
+    let ref_nodes = unsafe { find_children(signed_info, "Reference", DSIG_NS) };
+    ref_nodes
+        .into_iter()
+        .map(|ref_node| {
+            let uri = unsafe { get_attribute(ref_node, b"URI\0") }.unwrap_or_default();
+            resolve_reference_element(doc, root, &uri)
+                .and_then(|node| element_document_index(root, node))
+        })
+        .collect()
+}
+
+fn resolve_reference_element(
+    doc: &OwnedXmlDoc,
+    root: sys::xmlNodePtr,
+    uri: &str,
+) -> Option<sys::xmlNodePtr> {
+    if uri.is_empty() {
+        return Some(root);
+    }
+    if let Some(id) = uri.strip_prefix('#') {
+        // Bare fragment only — xpointer(...) / other same-document forms are
+        // left unresolved here (Ruby already treats them as node: nil).
+        if id.is_empty() || id.contains('(') {
+            return None;
+        }
+        return element_for_id(doc, id);
+    }
+    None
+}
+
+fn element_for_id(doc: &OwnedXmlDoc, id: &str) -> Option<sys::xmlNodePtr> {
+    let mut id_bytes = id.as_bytes().to_vec();
+    id_bytes.push(0);
+
+    // SAFETY: doc.0 is a live OwnedXmlDoc; id_bytes is NUL-terminated for the
+    // duration of the call. xmlGetID returns a pointer into the document's ID
+    // table (not newly allocated).
+    let attr = unsafe { sys::xmlGetID(doc.0, id_bytes.as_ptr().cast()) };
+    if attr.is_null() {
+        return None;
+    }
+
+    // SAFETY: attr is a valid xmlAttr from this document; its parent is the
+    // element that owns the ID attribute.
+    let parent = unsafe { (*attr).parent };
+    if parent.is_null() {
+        return None;
+    }
+    let parent_ref = unsafe { &*parent };
+    if parent_ref.type_ != sys::xmlElementType_XML_ELEMENT_NODE {
+        return None;
+    }
+    Some(parent)
+}
+
+/// Document-order index among element nodes only (root = 0), matching
+/// Nokogiri/`//*` order for the same serialized tree.
+fn element_document_index(root: sys::xmlNodePtr, target: sys::xmlNodePtr) -> Option<usize> {
+    let mut index = 0usize;
+    find_element_index(root, target, &mut index)
+}
+
+fn find_element_index(
+    node: sys::xmlNodePtr,
+    target: sys::xmlNodePtr,
+    index: &mut usize,
+) -> Option<usize> {
+    if node.is_null() {
+        return None;
+    }
+
+    // SAFETY: node is non-null within the document lifetime.
+    let node_ref = unsafe { &*node };
+    if node_ref.type_ == sys::xmlElementType_XML_ELEMENT_NODE {
+        if std::ptr::eq(node, target) {
+            return Some(*index);
+        }
+        *index += 1;
+
+        let mut child = node_ref.children;
+        while !child.is_null() {
+            if let Some(found) = find_element_index(child, target, index) {
+                return Some(found);
+            }
+            child = unsafe { (*child).next };
+        }
+    }
+    None
 }
 
 fn pem_is_certificate(pem: &[u8]) -> bool {

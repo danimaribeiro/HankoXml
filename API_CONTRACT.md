@@ -873,12 +873,20 @@ override), pass a resolver:
 resolver: ->(doc, uri_fragment) { doc.at_xpath("//*[@wsu:Id=$id]", …) }
 ```
 
-The resolver is used for `Verification#references[].node` and for `#signed?`
-coverage. It does **not** change what libxmlsec1 itself resolves — if your
-resolver and `id_attributes` disagree, `Verification` reports
-`HankoXml::ResolutionMismatch` in `#errors` and `#valid?` becomes `false`.
-Silently letting the two disagree is exactly how "verified a different node than
-the one I read" happens.
+`Native.verify` returns `reference_element_indexes`: for each SignedInfo
+`<Reference>`, the document-order element index of the node libxml2's ID table
+resolved (the same table xmlsec used for `URI="#id"`), or `nil` when the URI
+is non-fragment / unresolved. Empty URI reports the root. `Verification` maps
+those indexes onto the caller's Nokogiri DOM for `#references[].node` and
+`#signed?` — Ruby does **not** re-run ID lookup for coverage after a native
+verify (issues #28 / #34).
+
+A caller-supplied `resolver:` is a cross-check only: if it disagrees with the
+native locator (or, when no native indexes are present, with Ruby
+`id_attributes`), `Verification` reports `HankoXml::ResolutionMismatch` in
+`#errors` and `#valid?` becomes `false`. Silently letting the two disagree is
+exactly how "verified a different node than the one I read" happens. `#signed?`
+is also false whenever `#valid?` is false (§5.4).
 
 ### 5.10 Errors
 
@@ -1123,9 +1131,10 @@ Verification does **not** mutate the caller's document. It serializes to bytes;
 ID registration happens on Rust's private copy. (Contrast with the current
 implementation, where `xmlSecAddIDs` mutates the caller's document's ID table.)
 
-`Verification#signed_nodes` and `#signed?` resolve against the *caller's*
-document using Ruby-side ID/XPath resolution (§5.9), which is why the resolver
-consistency check exists.
+`Verification#signed_nodes` and `#signed?` map each Reference onto the
+*caller's* document using the element indexes `Native.verify` returned from
+libxml2's ID table (§5.9) — the same table xmlsec used for crypto — so coverage
+cannot disagree with what was digested.
 
 ### 6.6 Optional core extension
 
@@ -1245,7 +1254,9 @@ HankoXml::Native.inspect(xml, signature_index)
 HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signature_index)
 #   trusted_pems    : Array<String> — certs/keys that establish trust
 #   untrusted_pems  : Array<String> — intermediates, for chain building
-# => { status: :succeeded | :invalid | :unknown, errors: Array<String> }
+# => { status: :succeeded | :invalid | :unknown,
+#      errors: Array<String>,
+#      reference_element_indexes: Array<Integer|nil> }  # §5.9
 # raises only for conditions that are not a verification verdict
 #   (unparseable input, index out of range, unreadable key material)
 ```

@@ -5,9 +5,8 @@ Original scope: the whole repository at commit `3af4155` -- the Rust extension
 (`ext/hanko_xml`), the Ruby layer (`lib/hanko_xml`), the build/vendoring
 pipeline, CI/release workflows, and the specs.
 
-This document is the follow-up tracker. GitHub issues could not be filed from
-the cloud agent (`403 Resource not accessible by integration` on the issues
-API), so remaining work lives here rather than in the issue tracker.
+This document is the follow-up tracker. Remaining findings are filed as GitHub
+issues (#33–#51); the checklist below links each open item.
 
 Follow-up commit `fdcf06e` (PR #30) wired `store:` / `key:` and pinned
 `signKey` for key PEMs. Re-checked on `main` at `40a005a` (this findings
@@ -40,7 +39,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 |----|----------|------|---------|-------------|----------|
 | S-01 | **Critical** | Verifier / native | `<KeyValue>` supplied by the document is accepted as the verification key. After #30 this is still true for `certificate:` / `certificates:` / cert-valued `keys:` / `Native.verify` with cert PEMs or empty trust. `key:` and `store:` now pin `signKey` and reject the forged document. | **partial** (#30) | confirmed, re-checked |
 | S-02 | **High** | Verifier | `store:` and `key:` trust sources are accepted, documented, and silently ignored (empty trust set) | **fixed** (#30) | confirmed, then re-checked |
-| S-03 | **High** | Verification | Fragment-reference resolution disagrees between xmlsec (libxml2 ID table: DTD- and `xml:id`-aware, namespace-agnostic) and `Verification#signed?` (XPath over configured attribute names, no-namespace only). A DTD internal subset lets an attacker make `signed?` bless an unsigned node while the signature stays valid | **open** | code review |
+| S-03 | **High** | Verification | Fragment-reference resolution disagrees between xmlsec (libxml2 ID table: DTD- and `xml:id`-aware, namespace-agnostic) and `Verification#signed?` (XPath over configured attribute names, no-namespace only). A DTD internal subset lets an attacker make `signed?` bless an unsigned node while the signature stays valid | **fixed** (#28/#34) | confirmed (spec X1/X3) |
 | S-04 | **High** | Verifier | Policy is enforced *after* `Native.verify`, so external `Reference URI="file://…"`/`http://…` are dereferenced by xmlsec before `allow_external_references: false` rejects them (local-file digest oracle, SSRF) | **open** | code review |
 | S-05 | **High** | Signer | `Signer#sign!` (default `template: :adopt`) signs any pre-existing `<Signature>` template in the input with the caller's key and never enforces `Signer#policy`: a signing oracle for attacker-chosen algorithms, references and external URIs | **open** | code review |
 | S-06 | **Medium** | Policy | 11 of 18 `Policy` fields were declared and documented as enforced but never checked. After #30, `check_certificate_validity` is honored on the `store:` path only; the other ten fields are still unread. | **partial** (#30) | confirmed (grep), re-checked |
@@ -72,31 +71,34 @@ lookup uses variable bindings (no injection); RubyGems trusted publishing with
 `store:` / `key:` / key-valued `keys:` honor `API_CONTRACT.md` §5.6 and pin
 `signKey` so KeyInfo is ignored on those paths.
 
-## Open work (issue-tracker stand-in)
+## Open work
 
-- [ ] **S-01** remaining: pin `signKey` (or disable KeyValue) for
+- [ ] **S-01** (#33) remaining: pin `signKey` (or disable KeyValue) for
       `certificate:` / `certificates:` / cert-valued `keys:` /
       `Native.verify` with cert PEMs; empty trust must fail closed
-- [ ] **S-03** ID resolution mismatch (needs a reproducing spec)
-- [ ] **S-04** policy before crypto; do not dereference external URIs first
-- [ ] **S-05** `template: :adopt` signing oracle; enforce Signer policy
-- [ ] **S-06** remaining unenforced Policy fields
-- [ ] **S-07** remaining: `certificate:` path + native `certsVerificationTime`
-- [ ] **S-09** per-reference validity / `signed?` over-approximation
-- [ ] **S-10** restrict transforms/URIs regardless of host xmlsec build
-- [ ] **S-11** `signature: :first` and Signer/Verifier index disagreement
-- [ ] **S-12** `xml.len() as i32` + `max_document_size`
-- [ ] **S-13** error classification and xmlsec log in messages
-- [ ] **S-14** reject mismatched `key:` / `certificate:` at sign time
-- [ ] **S-15** `Key#dispose!` / `private_key?` / PEM heuristic
-- [ ] **S-16** freeze or snapshot `Algorithms.register`
-- [ ] **S-17** `SignedDocument` mutability / unused `FrozenSignatureError`
-- [ ] **S-18** document vendored cache/stamp as trusted inputs
-- [ ] **S-19** pin Actions to SHAs; `permissions:` on `main.yml`
-- [ ] **S-20** spec (and fix if needed) root-element `Id` registration
-- [ ] **S-21** README path Strings vs PEM `Key.coerce`
-- [x] **S-02** `store:` / `key:` ignored — fixed in #30
+- [x] **S-03** (#34) ID resolution mismatch — fixed via native
+      `reference_element_indexes` (#28)
+- [ ] **S-04** (#35) policy before crypto; do not dereference external URIs first
+- [ ] **S-05** (#36) `template: :adopt` signing oracle; enforce Signer policy
+- [ ] **S-06** (#37) remaining unenforced Policy fields
+- [ ] **S-07** (#38) remaining: `certificate:` path + native `certsVerificationTime`
+- [ ] **S-09** (#39) per-reference validity / `signed?` over-approximation
+- [ ] **S-10** (#40) restrict transforms/URIs regardless of host xmlsec build
+- [ ] **S-11** (#41) `signature: :first` and Signer/Verifier index disagreement
+- [ ] **S-12** (#42) `xml.len() as i32` + `max_document_size`
+- [ ] **S-13** (#43) error classification and xmlsec log in messages
+- [ ] **S-14** (#44) reject mismatched `key:` / `certificate:` at sign time
+- [ ] **S-15** (#45) `Key#dispose!` / `private_key?` / PEM heuristic
+- [ ] **S-16** (#46) freeze or snapshot `Algorithms.register`
+- [ ] **S-17** (#47) `SignedDocument` mutability / unused `FrozenSignatureError`
+- [ ] **S-18** (#48) document vendored cache/stamp as trusted inputs
+- [ ] **S-19** (#49) pin Actions to SHAs; `permissions:` on `main.yml`
+- [ ] **S-20** (#50) spec (and fix if needed) root-element `Id` registration
+- [ ] **S-21** (#51) README path Strings vs PEM `Key.coerce`
+- [x] **S-02** `store:` / `key:` ignored — fixed in #30 (also closed #12)
 - [x] **S-08** `keys:` public key empty trust set — fixed in #30
+
+Signing/verification coverage gaps: #52 (`SIGNING_TEST_COVERAGE.md`).
 
 ---
 
@@ -223,13 +225,15 @@ FORGED (KeyValue) doc, key: signer pubkey -> valid?: false
 The Copilot branch `origin/copilot/fix-verifier-store-and-key-usage` (PR #27)
 is superseded by #30.
 
-### S-03 -- ID resolution mismatch between xmlsec and `Verification#signed?`  [code review, High, **open**]
+### S-03 -- ID resolution mismatch between xmlsec and `Verification#signed?`  [confirmed, High, **fixed**]
 
-**Disposition:** still open. PR #26 hardened XPath / `id_attributes` /
-`resolver`, but DTD / `xml:id` vs xmlsec's ID table is untouched. Needs a
-reproducing spec before a fix.
+**Disposition:** fixed. `Native.verify` returns `reference_element_indexes`
+from libxml2's ID table (`xmlGetID`) after verification; `Verification` maps
+those indexes onto the caller's DOM. Specs X1 (DTD) and X3 (`xml:id`) in
+`spec/hanko_xml/id_resolution_spec.rb` pass. Remaining related work: S-20
+(root-element Id registration, #50) and unused `reject_duplicate_ids` (S-06).
 
-Two independent resolvers decide which node `URI="#id"` denotes:
+Two independent resolvers ~~decide~~ decided which node `URI="#id"` denotes:
 
 - **Native** (`register_id_attributes` → `xmlSecAddIDs`): libxml2's ID table.
   It already contains every `xml:id` and every attribute the document's
@@ -572,11 +576,10 @@ S-02 and S-08 are done. Remaining, in order:
    the README path.
 2. S-04 + S-05 + S-10 -- policy before crypto on both sides; restrict
    `enabledUris`/`enabledTransforms` natively.
-3. S-03 -- unify ID resolution or reject DTD/`xml:id`/duplicate IDs up front.
-4. S-06, S-07 -- make every documented knob real or remove it from the API
+3. S-06, S-07 -- make every documented knob real or remove it from the API
    and docs, including the `certificate:` time path.
-5. S-11, S-14, S-09, S-12, S-13 -- correctness and robustness.
-6. S-15 through S-21 -- hygiene.
+4. S-11, S-14, S-09, S-12, S-13 -- correctness and robustness.
+5. S-15 through S-21 -- hygiene.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /

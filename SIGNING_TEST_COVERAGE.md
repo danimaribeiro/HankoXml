@@ -241,9 +241,9 @@ to S-01, not this group.
 
 | # | Spec |
 |---|------|
-| X1 | DTD `<!ATTLIST Invoice Id ID #IMPLIED>` + earlier `<Order Id="inv-1">`: `valid?` must be false **or** `signed?(order) == false` and `references[0].node` must be the node xmlsec digested |
-| X2 | Prefix variant (`<!ATTLIST n:Invoice …>`, attacker `<x:Invoice xmlns:x=same-ns>`): `at_signed("//n:Invoice")` never returns the attacker node |
-| X3 | `xml:id="inv-1"` on an attacker element vs `Id="inv-1"` on the signed one, both orders → consistent resolution or rejection |
+| X1 | DTD `<!ATTLIST Invoice Id ID #IMPLIED>` + earlier `<Order Id="inv-1">`: `valid?` must be false **or** `signed?(order) == false` and `references[0].node` must be the node xmlsec digested | **pass** (`id_resolution_spec`) |
+| X2 | Prefix variant (`<!ATTLIST n:Invoice …>`, attacker `<x:Invoice xmlns:x=same-ns>`): `at_signed("//n:Invoice")` never returns the attacker node | still open |
+| X3 | `xml:id="inv-1"` on an attacker element vs `Id="inv-1"` on the signed one, both orders → consistent resolution or rejection | **pass** (`id_resolution_spec`; xml:id on signed element) |
 | X4 | Namespaced attacker attribute `<Evil p:Id="inv-1">` before the legit element → consistent or rejected |
 | X5 | Duplicate plain `Id` (attacker first / attacker last) → with `reject_duplicate_ids: true` the result is invalid with a `PolicyError`; with the field false, `signed?` agrees with xmlsec |
 | X6 | Classic XSW: move the signed element under a wrapper and put a forged copy at the original path → `valid? == true` but `signed?(forged) == false`, `at_signed(original_xpath)` raises `NotSignedError` (this is the documented defence; it has **no spec today**) |

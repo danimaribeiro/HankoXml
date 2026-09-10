@@ -85,8 +85,8 @@ module HankoXml
     end
   end
 
-  # A caller-supplied `resolver:` and xmlsec's own ID resolution disagreed on
-  # what a Reference URI points to. See API_CONTRACT.md §5.9.
+  # A caller-supplied `resolver:` and xmlsec's ID table disagreed on what a
+  # Reference URI points to. See API_CONTRACT.md §5.9.
   class ResolutionMismatch < VerificationError; end
 
   # Verification#at_signed found a node the signature does not cover.

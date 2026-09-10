@@ -44,6 +44,13 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **S-03 / #28 / #34:** `Verification#signed?` / `#references[].node` no longer
+  re-resolve `URI="#id"` with a Ruby XPath that can disagree with xmlsec's ID
+  table (DTD-typed IDs, `xml:id`). `Native.verify` returns
+  `reference_element_indexes` from `xmlGetID` after verification; Ruby maps
+  those document-order indexes onto the caller's Nokogiri DOM. `resolver:` is
+  now a cross-check against the native locator (`ResolutionMismatch` on
+  disagreement). `#signed?` also returns false unless `#valid?` is true.
 - `Verification#references` (and everything built on it — `#signed?`,
   `#signed_nodes`, `#covers_root?`, `#at_signed`, `#signed`) raised
   `FrozenError` on every call: the object froze itself in `initialize`, but

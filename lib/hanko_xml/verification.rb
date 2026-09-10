@@ -15,10 +15,10 @@ module HankoXml
     end
 
     attr_reader :valid, :errors, :signature_info, :signature_node, :document, :certificate, :id_attributes, :resolver,
-                :references
+                :references, :reference_element_indexes
 
     def initialize(valid:, errors:, signature_info:, signature_node:, document:, certificate: nil,
-                   id_attributes: %w[Id ID id], resolver: nil)
+                   id_attributes: %w[Id ID id], resolver: nil, reference_element_indexes: nil)
       @valid = valid
       @errors = errors.dup
       @signature_info = signature_info
@@ -27,6 +27,11 @@ module HankoXml
       @certificate = certificate
       @id_attributes = (id_attributes || []).dup.freeze
       @resolver = resolver
+      # Native.verify returns document-order element indexes from libxml2's ID
+      # table (the same table xmlsec used for `#id`). When present, those are
+      # authoritative for #references[].node / #signed? — Ruby does not
+      # re-resolve IDs (issues #28 / #34 / S-03).
+      @reference_element_indexes = reference_element_indexes&.dup&.freeze
       # Resolution must happen, and #errors/#valid must be able to react to it
       # (see detect_resolution_mismatches!), before we freeze below -- the object
       # is immutable from here on, so #references can't be computed lazily on
@@ -69,6 +74,8 @@ module HankoXml
     end
 
     def signed?(node)
+      return false unless valid?
+
       # True if the node is equal to or a descendant of any reference's target node,
       # EXCEPT if it is equal to or a descendant of the signature_node (and the reference is enveloped).
       references.any? do |ref|
@@ -112,8 +119,8 @@ module HankoXml
     def build_references
       return [] unless signature_info
 
-      signature_info.references.map do |ref|
-        target_node = resolve_reference(ref)
+      signature_info.references.map.with_index do |ref, index|
+        target_node = resolve_reference(ref, index)
 
         # For now, we assume if the overall signature is valid, the reference is valid.
         # xmlsec1 doesn't tell us which reference failed in the struct yet, but we can look at the errors array.
@@ -130,48 +137,63 @@ module HankoXml
       end
     end
 
-    # A caller-supplied resolver: only replaces what Verification itself uses to
-    # locate a node (#references[].node, #signed?) -- it never reaches
-    # Native.verify, which resolves "#id" via id_attributes through xmlsec's own
-    # ID table. If the two disagree, #signed?(node) could be true for a node
-    # xmlsec never actually verified. Only checked when id_attributes is
-    # non-empty: an empty id_attributes: means "the native side isn't matching
-    # by ID attribute either", so there is no native-side resolution to compare
-    # the resolver against.
+    # When Native.verify supplied element indexes, those are the authority.
+    # A caller-supplied resolver: may only *agree* with them — disagreement is
+    # ResolutionMismatch (API_CONTRACT §5.9). Without native indexes (unit tests
+    # that construct Verification directly), fall back to resolver / id_attributes.
     def detect_resolution_mismatches!
       return unless resolver
-      return if id_attributes.empty?
       return unless signature_info
 
-      signature_info.references.each do |ref|
+      signature_info.references.each_with_index do |ref, index|
         next unless ref.uri&.start_with?("#")
 
         id = ref.uri[1..]
-        record_resolution_mismatch(id) unless same_node?(resolver.call(document, id), resolve_by_id_attributes(id))
+        resolver_node = resolver.call(document, id)
+        expected = if reference_element_indexes
+                     node_at_element_index(reference_element_indexes[index])
+                   elsif !id_attributes.empty?
+                     resolve_by_id_attributes(id)
+                   else
+                     next
+                   end
+
+        record_resolution_mismatch(id) unless same_node?(resolver_node, expected)
       end
     end
 
     def record_resolution_mismatch(id)
       @errors << HankoXml::ResolutionMismatch.new(
-        "resolver and id_attributes disagree on the target of \"##{id}\""
+        "resolver and xmlsec ID resolution disagree on the target of \"##{id}\""
       )
       @valid = false
     end
 
-    def same_node?(resolver_node, id_attributes_node)
-      return true if resolver_node.nil? && id_attributes_node.nil?
-      return false if resolver_node.nil? || id_attributes_node.nil?
+    def same_node?(left, right)
+      return true if left.nil? && right.nil?
+      return false if left.nil? || right.nil?
 
-      resolver_node == id_attributes_node
+      left == right
     end
 
-    # External references fall through to nil: they are not resolved by default.
-    def resolve_reference(ref)
+    def resolve_reference(ref, index)
+      if reference_element_indexes
+        return node_at_element_index(reference_element_indexes[index])
+      end
+
+      # Fallback for Verification constructed without a Native.verify result
+      # (specs / error paths that never reached crypto).
       if ref.uri.nil? || ref.uri.empty?
         document.root
       elsif ref.uri.start_with?("#")
         resolve_fragment_reference(ref.uri[1..])
       end
+    end
+
+    def node_at_element_index(index)
+      return nil if index.nil?
+
+      document.xpath("//*")[index]
     end
 
     def resolve_fragment_reference(id)
