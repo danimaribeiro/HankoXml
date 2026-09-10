@@ -1,12 +1,14 @@
 # XML Signing Test Coverage: Gaps and Specs to Add
 
-Date: 2026-09-10 (against commit `3af4155`; `bundle exec rspec` = 179
-examples, 0 failures, 1.1 s)
+Date: 2026-09-10 (originally against commit `3af4155`; `bundle exec rspec` =
+179 examples. Re-checked after PR #30: trust-source specs T1–T4 now live in
+`spec/hanko_xml/verifier_spec.rb` and pass; suite is 198 examples, 0 failures.)
 
 This document inventories what the suite currently exercises on the *signing*
 side of HankoXml, lists the scenarios it does not, and specifies the specs that
 should be written. It covers functional gaps as well as security regressions;
-security items cross-reference `SECURITY_REVIEW.md` (S-xx).
+security items cross-reference `SECURITY_REVIEW.md` (S-xx). Dispositions in
+that file are the source of truth after PR #30.
 
 Legend for the **Expected today** column:
 
@@ -201,7 +203,11 @@ signed.
 Each of these should be written now and marked pending until fixed. Group by
 finding so a fix PR can flip its group to passing.
 
-### S-01 KeyValue trust (Critical)
+### S-01 KeyValue trust (Critical, **partial** after #30)
+
+K1–K3 still FAIL on the remaining surface (`certificate:` / Native cert PEMs /
+empty trust). `key:` / `store:` already reject this forged document; add those
+as passing guards so they do not regress.
 
 | # | Spec | Level |
 |---|------|-------|
@@ -214,17 +220,22 @@ finding so a fix PR can flip its group to passing.
 | K7 | Legit doc whose `<KeyInfo>` is **absent** but `trusted = [signer.crt]` → valid (pinning must still work without KeyInfo) | Native |
 | K8 | Legit doc with `X509Certificate` = signer, trusted = `[other.crt]` → invalid (already covered; keep) | Native |
 
-### S-02 / S-08 trust sources
+### S-02 / S-08 trust sources (**fixed** in #30)
 
-| # | Spec |
-|---|------|
-| T1 | `store:` containing `signer.crt` accepts the genuine fixture (`valid? == true`) |
-| T2 | `store:` containing only `other.crt` rejects it |
-| T3 | `key:` = signer public key accepts; `key:` = other public key rejects |
-| T4 | `keys: { "name" => signer_public_key }` with `<KeyName>name</KeyName>` accepts; with `other` key rejects; with unknown name → `UntrustedCertificate` |
-| T5 | `keys:` where the document's `KeyName` names a trusted entry but the **signature** was made with a different key → invalid (name is unauthenticated) |
-| T6 | Passing two trust sources → `ConfigurationError` (exists implicitly; make explicit) |
-| T7 | Passing **no** trust source → `ConfigurationError` (today: allowed, `trusted = []`, and with S-01 everything verifies) |
+T1–T4 (and T5 for public-key values) now pass in
+`spec/hanko_xml/verifier_spec.rb`. T7 is still FAIL because of remaining S-01
+(`Native.verify` with empty trust succeeds). Cert-valued `keys:` still belongs
+to S-01, not this group.
+
+| # | Spec | After #30 |
+|---|------|-----------|
+| T1 | `store:` containing `signer.crt` accepts the genuine fixture (`valid? == true`) | pass |
+| T2 | `store:` containing only `other.crt` rejects it | pass |
+| T3 | `key:` = signer public key accepts; `key:` = other public key rejects | pass |
+| T4 | `keys: { "name" => signer_public_key }` with `<KeyName>name</KeyName>` accepts; with `other` key rejects; with unknown name → `UntrustedCertificate` | pass |
+| T5 | `keys:` where the document's `KeyName` names a trusted entry but the **signature** was made with a different key → invalid (name is unauthenticated) | pass (public-key values) |
+| T6 | Passing two trust sources → `ConfigurationError` (constructor already raises; dedicated spec still missing) | coverage gap |
+| T7 | Passing **no** trust source → `ConfigurationError` (today: allowed, `trusted = []`, and with remaining S-01 everything verifies) | FAIL |
 
 ### S-03 ID resolution / XSW
 
@@ -254,7 +265,7 @@ finding so a fix PR can flip its group to passing.
 | R7 | Verifier: `Native.verify` is not invoked when `inspect_sig` output already violates policy (spy on `HankoXml::Native`) |
 | R8 | `max_transforms_per_reference` exceeded → rejected before native |
 
-### S-06 unenforced policy fields (one spec per field, all FAIL today)
+### S-06 unenforced policy fields (one spec per field; `check_certificate_validity` is **partial** on `store:` after #30, the rest still FAIL today)
 
 | Field | Spec |
 |-------|------|
@@ -266,7 +277,7 @@ finding so a fix PR can flip its group to passing.
 | `allow_hmac` | `hmac-sha256` SignatureMethod → `PolicyError` under strict regardless of `signature_methods` |
 | `allow_retrieval_method` | `<RetrievalMethod>` in KeyInfo → `PolicyError` |
 | `allow_same_document_xpointer` | `URI="#xpointer(/)"` → `PolicyError` |
-| `check_certificate_validity` / `clock_skew` | expired signing cert: strict → `CertificateExpired`; `check_certificate_validity: false` → valid; `clock_skew: 3600` accepts a cert that expired 30 min ago |
+| `check_certificate_validity` / `clock_skew` | expired signing cert: strict → `CertificateExpired`; `check_certificate_validity: false` → valid; `clock_skew: 3600` accepts a cert that expired 30 min ago. After #30 the `store:` path honors `check_certificate_validity` via `StoreContext`; `certificate:` and `clock_skew` still FAIL. |
 | `schema` | `Policy.strict.schema == :default` → `Verifier` validates the `<Signature>` against the XSD without the caller passing `schema:` |
 
 ### S-07 `verification_time`

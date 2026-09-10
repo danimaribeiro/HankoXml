@@ -80,6 +80,10 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Changed
 
+- `SECURITY_REVIEW.md` is the follow-up tracker (GitHub issues could not be
+  opened from the cloud agent). It records which findings PR #30 closed
+  (S-02, S-08), which it narrowed (S-01, S-06, S-07), and which remain open.
+  `SIGNING_TEST_COVERAGE.md` marks trust-source specs T1–T4 as passing.
 - `spec.files` is now an allowlist over `git ls-files` rather than a reject
   list. The gem was shipping the entire Astro docs site, `API_CONTRACT.md`, and
   the design assets — 103 files and 734 KB, now 44 files and 169 KB.
