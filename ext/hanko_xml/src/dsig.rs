@@ -541,9 +541,8 @@ pub struct VerifyResult {
     pub status: VerifyStatus,
     pub errors: Vec<String>,
     /// Per SignedInfo `<Reference>`, the document-order element index of the
-    /// node xmlsec's ID table resolved (same table `#id` verification used),
-    /// or `None` when the URI is empty (root), unresolved, or non-fragment.
-    /// Empty URI references always report the root element's index.
+    /// node xmlsec's ID table resolved (same table `#id` verification used).
+    /// Empty URI → root element's index. Unresolved / non-fragment → `None`.
     pub reference_element_indexes: Vec<Option<usize>>,
 }
 
