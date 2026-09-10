@@ -21,13 +21,30 @@ dependencies = [
  "cexpr",
  "clang-sys",
  "itertools",
+ "proc-macro2",
+ "quote",
+ "regex",
+ "rustc-hash",
+ "shlex 1.3.0",
+ "syn",
+]
+
+[[package]]
+name = "bindgen"
+version = "0.73.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54be9a169b85a1bef39252af30bb6246a31b23c7e0f6a162520dd869f8dad33c"
+dependencies = [
+ "bitflags",
+ "cexpr",
+ "clang-sys",
  "log",
  "prettyplease",
  "proc-macro2",
  "quote",
  "regex",
  "rustc-hash",
- "shlex",
+ "shlex 2.0.1",
  "syn",
 ]
 
@@ -123,7 +140,7 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 name = "hanko_xml"
 version = "0.1.0"
 dependencies = [
- "bindgen",
+ "bindgen 0.73.1",
  "magnus",
  "pkg-config",
  "sha2",
@@ -269,7 +286,7 @@ version = "0.9.130"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "05be6f9c86fe5482808162826f6c047d093b3670582296c770de1d94f8066694"
 dependencies = [
- "bindgen",
+ "bindgen 0.72.1",
  "lazy_static",
  "proc-macro2",
  "quote",
@@ -347,6 +364,12 @@ name = "shlex"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
+
+[[package]]
+name = "shlex"
+version = "2.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "syn"
