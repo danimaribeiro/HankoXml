@@ -29,7 +29,7 @@ module HankoXmlVerifierSpecHelpers
     doc
   end
 
-  def issue_cert(subject:, key:, serial:, ca:, issuer_cert: nil, issuer_key: nil,
+  def issue_cert(subject:, key:, serial:, is_ca:, issuer_cert: nil, issuer_key: nil,
                  not_before: Time.now - 3600, not_after: Time.now + 86_400)
     cert = OpenSSL::X509::Certificate.new
     cert.version = 2
@@ -42,12 +42,10 @@ module HankoXmlVerifierSpecHelpers
     factory = OpenSSL::X509::ExtensionFactory.new
     factory.subject_certificate = cert
     factory.issuer_certificate = issuer_cert || cert
-    cert.add_extension(factory.create_extension("basicConstraints", ca ? "CA:TRUE" : "CA:FALSE", true))
-    cert.add_extension(factory.create_extension("keyUsage", ca ? "keyCertSign,cRLSign" : "digitalSignature", true))
+    cert.add_extension(factory.create_extension("basicConstraints", is_ca ? "CA:TRUE" : "CA:FALSE", true))
+    cert.add_extension(factory.create_extension("keyUsage", is_ca ? "keyCertSign,cRLSign" : "digitalSignature", true))
     cert.add_extension(factory.create_extension("subjectKeyIdentifier", "hash", false))
-    if issuer_cert
-      cert.add_extension(factory.create_extension("authorityKeyIdentifier", "keyid:always", false))
-    end
+    cert.add_extension(factory.create_extension("authorityKeyIdentifier", "keyid:always", false)) if issuer_cert
     cert.sign(issuer_key || key, OpenSSL::Digest.new("SHA256"))
     cert
   end
@@ -82,12 +80,12 @@ RSpec.describe HankoXml::Verifier do
     it "validates against the signing public key" do
       signed = HankoXml.sign(unsigned_xml, key: signer_key_pem, certificate: signer_cert_pem)
 
-      expect(HankoXml.verify(signed, key: signer_key.public_key).valid?).to be true
+      expect(HankoXml.verify(signed.to_s, key: signer_key.public_key).valid?).to be true
     end
 
     it "rejects a public key that did not produce the signature" do
       signed = HankoXml.sign(unsigned_xml, key: signer_key_pem, certificate: signer_cert_pem)
-      result = HankoXml.verify(signed, key: other_key.public_key)
+      result = HankoXml.verify(signed.to_s, key: other_key.public_key)
 
       expect(result.valid?).to be false
     end
@@ -104,7 +102,7 @@ RSpec.describe HankoXml::Verifier do
     it "validates a signature that has no KeyInfo at all" do
       signed = HankoXml.sign(unsigned_xml, key: signer_key_pem, key_info: [])
 
-      expect(HankoXml.verify(signed, key: signer_key.public_key).valid?).to be true
+      expect(HankoXml.verify(signed.to_s, key: signer_key.public_key).valid?).to be true
     end
   end
 
@@ -117,21 +115,21 @@ RSpec.describe HankoXml::Verifier do
       @leaf_key = OpenSSL::PKey::RSA.new(2048)
       @other_leaf_key = OpenSSL::PKey::RSA.new(2048)
 
-      @root_cert = HankoXmlVerifierSpecHelpers.issue_cert(subject: "test-root", key: @root_key, serial: 1, ca: true)
+      @root_cert = HankoXmlVerifierSpecHelpers.issue_cert(subject: "test-root", key: @root_key, serial: 1, is_ca: true)
       @intermediate_cert = HankoXmlVerifierSpecHelpers.issue_cert(
-        subject: "test-intermediate", key: @intermediate_key, serial: 2, ca: true,
+        subject: "test-intermediate", key: @intermediate_key, serial: 2, is_ca: true,
         issuer_cert: @root_cert, issuer_key: @root_key
       )
       @leaf_cert = HankoXmlVerifierSpecHelpers.issue_cert(
-        subject: "test-leaf", key: @leaf_key, serial: 3, ca: false,
+        subject: "test-leaf", key: @leaf_key, serial: 3, is_ca: false,
         issuer_cert: @intermediate_cert, issuer_key: @intermediate_key
       )
       @other_leaf_cert = HankoXmlVerifierSpecHelpers.issue_cert(
-        subject: "test-other-leaf", key: @other_leaf_key, serial: 4, ca: false,
+        subject: "test-other-leaf", key: @other_leaf_key, serial: 4, is_ca: false,
         issuer_cert: @intermediate_cert, issuer_key: @intermediate_key
       )
       @expired_leaf_cert = HankoXmlVerifierSpecHelpers.issue_cert(
-        subject: "test-expired-leaf", key: @leaf_key, serial: 5, ca: false,
+        subject: "test-expired-leaf", key: @leaf_key, serial: 5, is_ca: false,
         issuer_cert: @intermediate_cert, issuer_key: @intermediate_key,
         not_before: Time.now - 7200, not_after: Time.now - 60
       )
@@ -177,7 +175,7 @@ RSpec.describe HankoXml::Verifier do
     end
 
     it "rejects KeyInfo with no certificates" do
-      signed = HankoXml.sign(unsigned_xml, key: leaf_key, key_info: [])
+      signed = HankoXml.sign(unsigned_xml, key: leaf_key, key_info: []).to_s
       result = HankoXml.verify(signed, store: root_store)
 
       expect(result.valid?).to be false
@@ -219,7 +217,7 @@ RSpec.describe HankoXml::Verifier do
     end
 
     it "threads id_attributes through a failed store check" do
-      signed = HankoXml.sign(unsigned_xml, key: leaf_key, key_info: [])
+      signed = HankoXml.sign(unsigned_xml, key: leaf_key, key_info: []).to_s
       result = HankoXml.verify(signed, store: root_store, id_attributes: ["CustomId"])
 
       expect(result.valid?).to be false
@@ -239,7 +237,7 @@ RSpec.describe HankoXml::Verifier do
         template: :require
       )
       sig = signer.template(doc)
-      sig.at_xpath("ds:KeyName", HankoXml::NS).content = name
+      sig.at_xpath("ds:KeyInfo/ds:KeyName", HankoXml::NS).content = name
       HankoXml::Placement.append_to_root.insert(doc, sig)
       signer.sign!(doc)
       doc

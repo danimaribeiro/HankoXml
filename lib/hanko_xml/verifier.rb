@@ -175,7 +175,7 @@ module HankoXml
     # goes. Splitting it would thread that state through helpers rather than
     # genuinely simplify it, so the metrics cops are waived here pending a
     # deliberate refactor.
-    # rubocop:disable Metrics/AbcSize, Metrics/CyclomaticComplexity
+    # rubocop:disable Metrics/CyclomaticComplexity
     # rubocop:disable Metrics/MethodLength, Metrics/PerceivedComplexity
     def verify_single(doc, sig_node, index)
       # Schema validation before any crypto
@@ -223,9 +223,7 @@ module HankoXml
 
       # 3. Resolve trust material and call Native.verify
       trusted, untrusted, trust_error = collect_trust(sig_info)
-      if trust_error
-        return failed_verification(doc, sig_node, [trust_error], signature_info: sig_info)
-      end
+      return failed_verification(doc, sig_node, [trust_error], signature_info: sig_info) if trust_error
 
       # Check certificate expiration in Ruby if verification_time is set
       # (Ideally, we pass time to native store, but for now we do it here if possible)
@@ -289,7 +287,7 @@ module HankoXml
         resolver: @resolver
       )
     end
-    # rubocop:enable Metrics/AbcSize, Metrics/CyclomaticComplexity
+    # rubocop:enable Metrics/CyclomaticComplexity
     # rubocop:enable Metrics/MethodLength, Metrics/PerceivedComplexity
 
     def failed_verification(doc, sig_node, errors, signature_info: nil)
@@ -305,45 +303,47 @@ module HankoXml
     end
 
     def collect_trust(sig_info)
+      return keys_trust(sig_info) if @keys
+      return store_trust(sig_info) if @store
+
       trusted = []
-      untrusted = []
+      trusted << @key.to_pem if @key
+      trusted << @certificate.to_pem if @certificate
+      trusted.concat(@certificates.map(&:to_pem)) if @certificates
+      [trusted, [], nil]
+    end
 
-      if @keys
-        key_name = sig_info.key_names.first
-        unless key_name && @keys.key?(key_name)
-          return [nil, nil,
-                  HankoXml::UntrustedCertificate.new("KeyName #{key_name.inspect} not found in keys: map")]
-        end
-
-        trusted << HankoXml::Key.coerce(@keys[key_name]).to_pem
-      elsif @store
-        begin
-          embedded = load_embedded_certificates(sig_info)
-        rescue OpenSSL::X509::CertificateError => e
-          return [nil, nil,
-                  HankoXml::UntrustedCertificate.new("Invalid X509Certificate in KeyInfo: #{e.message}")]
-        end
-
-        if embedded.empty?
-          return [nil, nil,
-                  HankoXml::UntrustedCertificate.new("No X509Certificate found in KeyInfo for store verification")]
-        end
-
-        leaf, error = verified_leaf_from_store(embedded)
-        return [nil, nil, error] if error
-
-        # Contract: hand libxmlsec1 only the validated leaf. Intermediates
-        # already went through OpenSSL::X509::StoreContext; they must not be
-        # re-introduced as xmlsec trust anchors.
-        trusted << leaf.to_pem
-      elsif @key
-        trusted << @key.to_pem
-      else
-        trusted << @certificate.to_pem if @certificate
-        trusted.concat(@certificates.map(&:to_pem)) if @certificates
+    def keys_trust(sig_info)
+      key_name = sig_info.key_names.first
+      unless key_name && @keys.key?(key_name)
+        return [nil, nil,
+                HankoXml::UntrustedCertificate.new("KeyName #{key_name.inspect} not found in keys: map")]
       end
 
-      [trusted, untrusted, nil]
+      [[HankoXml::Key.coerce(@keys[key_name]).to_pem], [], nil]
+    end
+
+    def store_trust(sig_info)
+      begin
+        embedded = load_embedded_certificates(sig_info)
+      rescue OpenSSL::X509::CertificateError => e
+        return [nil, nil,
+                HankoXml::UntrustedCertificate.new("Invalid X509Certificate in KeyInfo: #{e.message}")]
+      end
+
+      if embedded.empty?
+        return [nil, nil,
+                HankoXml::UntrustedCertificate.new("No X509Certificate found in KeyInfo for store verification")]
+      end
+
+      leaf, error = verified_leaf_from_store(embedded)
+      return [nil, nil, error] if error
+
+      # xmlsec treats trusted cert PEMs as CA anchors and still X509-verifies
+      # every KeyInfo cert. A CA:FALSE leaf therefore cannot be "pinned" that
+      # way. After Ruby has enforced chain policy, pin the leaf public key as
+      # signKey (same path as `key:`) so KeyInfo is ignored.
+      [[leaf.public_key.to_pem], [], nil]
     end
 
     def load_embedded_certificates(sig_info)
