@@ -301,6 +301,34 @@ impl XmlSecKey {
         Ok(Self(ptr))
     }
 
+    /// Loads a public key from a PEM certificate.
+    ///
+    /// `xmlSecKeyDataFormatCertPem` makes xmlsec read the X.509 cert and
+    /// extract its SPKI, so the cert can be pinned as `signKey` the same
+    /// way a bare public-key PEM is. Without this, a cert PEM is only a
+    /// KeysMngr trust anchor and xmlsec still takes `<KeyValue>` from the
+    /// document (S-01).
+    pub fn from_cert_pem(pem: &[u8]) -> Result<Self, &'static str> {
+        // SAFETY: pem is a valid slice; xmlSecOpenSSLAppKeyLoadMemory
+        // copies what it needs. KEY_FORMAT_CERT_PEM dispatches to
+        // xmlSecOpenSSLAppKeyFromCertLoadBIO rather than treating the
+        // bytes as a PKCS#1/SPKI key.
+        let ptr = unsafe {
+            sys::xmlSecOpenSSLAppKeyLoadMemory(
+                pem.as_ptr(),
+                pem.len() as _,
+                sys::KEY_FORMAT_CERT_PEM,
+                ptr::null(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            )
+        };
+        if ptr.is_null() {
+            return Err("failed to load PEM certificate");
+        }
+        Ok(Self(ptr))
+    }
+
     /// Attaches a PEM certificate to this key (for KeyInfo population).
     pub fn add_cert_pem(&self, cert_pem: &[u8]) -> Result<(), &'static str> {
         // SAFETY: self.0 is valid; cert_pem is a valid slice.
@@ -431,13 +459,13 @@ impl<'mngr> DsigCtx<'mngr> {
         })
     }
 
-    /// Creates a signature context for signing with a specific key.
+    /// Creates a signature context with `signKey` already set.
+    ///
+    /// Used for both signing and verification. On verify, a pre-set
+    /// `signKey` makes xmlsec skip KeyInfo — the document cannot pick
+    /// the verification key (S-01).
     fn for_signing(mngr: &'mngr KeysMngr, key: XmlSecKey) -> Result<Self, &'static str> {
-        // SAFETY: mngr.0 is a valid initialized keys manager.
-        let ptr = unsafe { sys::xmlSecDSigCtxCreate(mngr.0) };
-        if ptr.is_null() {
-            return Err("failed to create xmlsec signature context");
-        }
+        let ctx = Self::new(mngr)?;
         // SAFETY: setting signKey transfers ownership of the key to the context.
         // xmlSecDSigCtxDestroy will call xmlSecKeyDestroy on it.
         //
@@ -451,12 +479,9 @@ impl<'mngr> DsigCtx<'mngr> {
         // come from one source and cannot disagree. For system builds,
         // HankoXml::NativeVersion is the runtime backstop.
         unsafe {
-            (*ptr).signKey = key.into_raw();
+            (*ctx.ptr).signKey = key.into_raw();
         }
-        Ok(Self {
-            ptr,
-            _mngr: std::marker::PhantomData,
-        })
+        Ok(ctx)
     }
 
     /// Signs the document at the given signature node.
@@ -699,9 +724,14 @@ pub fn sign_document(
 /// Verifies the nth `<ds:Signature>` against trusted/untrusted certs.
 ///
 /// `trusted_pems` may contain certificate PEMs, key PEMs, or both.
-/// Certificates are loaded as trust anchors. A key PEM is pinned on the
-/// dsig context as `signKey`, which makes xmlsec skip KeyInfo lookup —
-/// the `key:` contract (bare public key, KeyInfo ignored).
+/// Every trusted PEM is converted to a public key and pinned on the
+/// dsig context as `signKey`, which makes xmlsec skip KeyInfo lookup.
+/// That is the `key:` / `certificate:` contract: the document cannot
+/// supply the verification key via `<KeyValue>`, `<DEREncodedKeyValue>`,
+/// or `<RetrievalMethod>` (S-01). Multiple certificate PEMs are tried
+/// in order until one verifies (`certificates:` — any one of these).
+/// An empty trust list fails closed (`:invalid`), never by reading
+/// KeyInfo.
 ///
 /// Returns a `VerifyResult` with status and captured error messages.
 /// Only raises (returns `Err`) for conditions that are not a verification
@@ -727,45 +757,72 @@ pub fn verify_document(
         .find_nth_signature(root, signature_index)
         .ok_or_else(|| format_error("no <Signature> element found in document"))?;
 
-    let trusted_certs: Vec<Vec<u8>> = trusted_pems
-        .iter()
-        .filter(|pem| pem_is_certificate(pem))
-        .cloned()
-        .collect();
-
-    let mut pinned_key = None;
+    let mut pinned_key_pems: Vec<&[u8]> = Vec::new();
+    let mut cert_pems: Vec<&[u8]> = Vec::new();
     for pem in trusted_pems {
         if pem_is_certificate(pem) {
-            continue;
+            cert_pems.push(pem);
+        } else {
+            pinned_key_pems.push(pem);
         }
-        if pinned_key.is_some() {
-            return Err("at most one trusted key PEM is supported".into());
-        }
-        pinned_key = Some(XmlSecKey::from_pem(pem).map_err(|msg| format_error(msg))?);
     }
 
-    let mngr = KeysMngr::new(&trusted_certs, untrusted_pems)
-        .map_err(|msg| format_error(msg))?;
+    if pinned_key_pems.len() > 1 {
+        return Err("at most one trusted key PEM is supported".into());
+    }
 
-    // Pinning signKey is the same field write used for signing. For verify,
-    // xmlsec uses a pre-set signKey instead of reading KeyInfo — that is
-    // what lets `key:` ignore the document's certificates entirely.
-    let mut ctx = if let Some(key) = pinned_key {
-        DsigCtx::for_signing(&mngr, key).map_err(|msg| format_error(msg))?
-    } else {
-        DsigCtx::new(&mngr).map_err(|msg| format_error(msg))?
-    };
+    // Chain building stays a Ruby `store:` concern. Native only ever pins
+    // a verification key; untrusted PEMs are still accepted so the FFI
+    // shape is unchanged, but they are not consulted once signKey is set.
+    let mngr = KeysMngr::new(&[], untrusted_pems).map_err(|msg| format_error(msg))?;
 
-    let status = ctx.verify(sig_node);
-    let captured_errors = errors::drain_errors();
+    let keys_to_try = load_pinned_keys(&pinned_key_pems, &cert_pems)?;
     let reference_element_indexes =
         collect_reference_element_indexes(&doc, root, sig_node);
+
+    if keys_to_try.is_empty() {
+        return Ok(VerifyResult {
+            status: VerifyStatus::Invalid,
+            errors: vec!["no trusted key or certificate provided".into()],
+            reference_element_indexes,
+        });
+    }
+
+    let mut status = VerifyStatus::Invalid;
+    let mut captured_errors = Vec::new();
+    for key in keys_to_try {
+        errors::clear_errors();
+        let mut ctx = DsigCtx::for_signing(&mngr, key).map_err(|msg| format_error(msg))?;
+        status = ctx.verify(sig_node);
+        captured_errors = errors::drain_errors();
+        if status == VerifyStatus::Succeeded {
+            break;
+        }
+    }
 
     Ok(VerifyResult {
         status,
         errors: captured_errors,
         reference_element_indexes,
     })
+}
+
+/// One key PEM pins immediately. Otherwise each certificate PEM is loaded
+/// as a public key so `certificates:` can try them until one matches.
+fn load_pinned_keys(
+    key_pems: &[&[u8]],
+    cert_pems: &[&[u8]],
+) -> Result<Vec<XmlSecKey>, String> {
+    if let Some(pem) = key_pems.first() {
+        return Ok(vec![
+            XmlSecKey::from_pem(pem).map_err(|msg| format_error(msg))?,
+        ]);
+    }
+
+    cert_pems
+        .iter()
+        .map(|pem| XmlSecKey::from_cert_pem(pem).map_err(|msg| format_error(msg)))
+        .collect()
 }
 
 /// For each SignedInfo `<Reference>`, report the document-order element index

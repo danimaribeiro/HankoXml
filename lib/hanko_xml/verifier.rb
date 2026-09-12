@@ -9,7 +9,7 @@ module HankoXml
                 :resolver
 
     # Creates a new Verifier with the given trust anchors and configuration.
-    # Note: You must specify exactly one trust source.
+    # Exactly one trust source must be specified.
     #
     # @param certificate [Key, OpenSSL::X509::Certificate, String, Pathname] A single trusted certificate.
     # @param certificates [Array<Key, OpenSSL::X509::Certificate, String, Pathname>] A list of trusted certificates.
@@ -32,7 +32,7 @@ module HankoXml
                    namespaces: {}, signature: :first, verification_time: nil,
                    schema: nil, referenced_documents: {})
       supplied_trusts = [certificate, certificates, store, key, keys].compact
-      if supplied_trusts.size > 1
+      if supplied_trusts.size != 1
         raise HankoXml::ConfigurationError,
               "Specify exactly one trust source: certificate, certificates, store, key, or keys"
       end

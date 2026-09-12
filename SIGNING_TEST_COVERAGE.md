@@ -1,8 +1,9 @@
 # XML Signing Test Coverage: Gaps and Specs to Add
 
-Date: 2026-09-10 (originally against commit `3af4155`; `bundle exec rspec` =
+Date: 2026-09-12 (originally against commit `3af4155`; `bundle exec rspec` =
 179 examples. Re-checked after PR #30: trust-source specs T1–T4 now live in
-`spec/hanko_xml/verifier_spec.rb` and pass; suite is 198 examples, 0 failures.)
+`spec/hanko_xml/verifier_spec.rb`. S-01 group K lives in
+`spec/hanko_xml/key_value_trust_spec.rb`.)
 
 This document inventories what the suite currently exercises on the *signing*
 side of HankoXml, lists the scenarios it does not, and specifies the specs that
@@ -203,11 +204,11 @@ signed.
 Each of these should be written now and marked pending until fixed. Group by
 finding so a fix PR can flip its group to passing.
 
-### S-01 KeyValue trust (Critical, **partial** after #30)
+### S-01 KeyValue trust (Critical, **fixed**)
 
-K1–K3 still FAIL on the remaining surface (`certificate:` / Native cert PEMs /
-empty trust). `key:` / `store:` already reject this forged document; add those
-as passing guards so they do not regress.
+K1–K8 pass in `spec/hanko_xml/key_value_trust_spec.rb`. `key:` / `store:`
+already rejected this forged document after #30; cert PEMs and empty trust
+now do too.
 
 | # | Spec | Level |
 |---|------|-------|
@@ -223,9 +224,8 @@ as passing guards so they do not regress.
 ### S-02 / S-08 trust sources (**fixed** in #30)
 
 T1–T4 (and T5 for public-key values) now pass in
-`spec/hanko_xml/verifier_spec.rb`. T7 is still FAIL because of remaining S-01
-(`Native.verify` with empty trust succeeds). Cert-valued `keys:` still belongs
-to S-01, not this group.
+`spec/hanko_xml/verifier_spec.rb`. T6 and T7 (exactly one trust source) also
+pass there. Cert-valued `keys:` is covered under S-01 group K.
 
 | # | Spec | After #30 |
 |---|------|-----------|
@@ -234,8 +234,8 @@ to S-01, not this group.
 | T3 | `key:` = signer public key accepts; `key:` = other public key rejects | pass |
 | T4 | `keys: { "name" => signer_public_key }` with `<KeyName>name</KeyName>` accepts; with `other` key rejects; with unknown name → `UntrustedCertificate` | pass |
 | T5 | `keys:` where the document's `KeyName` names a trusted entry but the **signature** was made with a different key → invalid (name is unauthenticated) | pass (public-key values) |
-| T6 | Passing two trust sources → `ConfigurationError` (constructor already raises; dedicated spec still missing) | coverage gap |
-| T7 | Passing **no** trust source → `ConfigurationError` (today: allowed, `trusted = []`, and with remaining S-01 everything verifies) | FAIL |
+| T6 | Passing two trust sources → `ConfigurationError` | pass (`verifier_spec` "trust source selection") |
+| T7 | Passing **no** trust source → `ConfigurationError` | pass (`verifier_spec` "trust source selection") |
 
 ### S-03 ID resolution / XSW
 

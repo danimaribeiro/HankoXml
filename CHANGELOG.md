@@ -44,6 +44,13 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **S-01 / #33:** `Native.verify` pins every trusted PEM as xmlsec `signKey`
+  (certificate PEMs via `xmlSecKeyDataFormatCertPem`) so a document-supplied
+  `<KeyValue>`, `<DEREncodedKeyValue>`, or `<RetrievalMethod>` cannot become
+  the verification key. An empty trust list returns `:invalid` instead of
+  succeeding. `Verifier` now raises `ConfigurationError` when no trust source
+  is given, matching the existing "exactly one" constructor contract.
+
 - **S-03 / #28 / #34:** `Verification#signed?` / `#references[].node` no longer
   re-resolve `URI="#id"` with a Ruby XPath that can disagree with xmlsec's ID
   table (DTD-typed IDs, `xml:id`). `Native.verify` returns
@@ -89,8 +96,9 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 - `SECURITY_REVIEW.md` is the follow-up tracker (GitHub issues could not be
   opened from the cloud agent). It records which findings PR #30 closed
-  (S-02, S-08), which it narrowed (S-01, S-06, S-07), and which remain open.
-  `SIGNING_TEST_COVERAGE.md` marks trust-source specs T1–T4 as passing.
+  (S-02, S-08) and which S-01 closed (certificate-PEM KeyValue bypass and
+  empty-trust). `SIGNING_TEST_COVERAGE.md` marks trust-source specs T1–T7
+  and S-01 group K as passing.
 - `spec.files` is now an allowlist over `git ls-files` rather than a reject
   list. The gem was shipping the entire Astro docs site, `API_CONTRACT.md`, and
   the design assets — 103 files and 734 KB, now 44 files and 169 KB.
