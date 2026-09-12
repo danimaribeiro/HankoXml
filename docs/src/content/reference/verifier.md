@@ -31,8 +31,9 @@ verifier = HankoXml::Verifier.new(
 ```
 
 Trust sources are mutually exclusive: passing more than one of `certificate:`, `certificates:`,
-`store:`, `key:`, `keys:` raises `HankoXml::ConfigurationError` at construction. See
-[Trust Anchors & Verification](/guide/trust-anchors) for a full discussion of each keyword.
+`store:`, `key:`, `keys:` — or omitting all of them — raises `HankoXml::ConfigurationError` at
+construction. See [Trust Anchors & Verification](/guide/trust-anchors) for a full discussion of
+each keyword.
 
 ## `signature:` values
 

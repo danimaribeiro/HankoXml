@@ -61,15 +61,33 @@ RSpec.describe HankoXml::Verifier do
 
   describe "#native_id_attributes" do
     it "passes plain string id_attributes through unchanged" do
-      verifier = described_class.new(id_attributes: %w[Id ID id])
+      verifier = described_class.new(certificate: signer_cert_pem, id_attributes: %w[Id ID id])
 
       expect(verifier.send(:native_id_attributes)).to eq(%w[Id ID id])
     end
 
     it "reduces namespace-qualified [ns, name] entries to their local name" do
-      verifier = described_class.new(id_attributes: [["http://example.com/ns", "CustomId"], "Id"])
+      verifier = described_class.new(
+        certificate: signer_cert_pem,
+        id_attributes: [["http://example.com/ns", "CustomId"], "Id"]
+      )
 
       expect(verifier.send(:native_id_attributes)).to eq(%w[CustomId Id])
+    end
+  end
+
+  describe "trust source selection" do
+    it "rejects construction with no trust source" do
+      expect { described_class.new }.to raise_error(
+        HankoXml::ConfigurationError,
+        /exactly one trust source/
+      )
+    end
+
+    it "rejects construction with two trust sources" do
+      expect do
+        described_class.new(certificate: signer_cert_pem, key: signer_key_pem)
+      end.to raise_error(HankoXml::ConfigurationError, /exactly one trust source/)
     end
   end
 

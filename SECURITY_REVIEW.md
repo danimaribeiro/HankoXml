@@ -1,6 +1,6 @@
 # HankoXml Security Review
 
-Date: 2026-09-10 (re-checked the same day after PR #30)
+Date: 2026-09-12 (re-checked after S-01 / #33)
 Original scope: the whole repository at commit `3af4155` -- the Rust extension
 (`ext/hanko_xml`), the Ruby layer (`lib/hanko_xml`), the build/vendoring
 pipeline, CI/release workflows, and the specs.
@@ -9,9 +9,10 @@ This document is the follow-up tracker. Remaining findings are filed as GitHub
 issues (#33–#51); the checklist below links each open item.
 
 Follow-up commit `fdcf06e` (PR #30) wired `store:` / `key:` and pinned
-`signKey` for key PEMs. Re-checked on `main` at `40a005a` (this findings
-file, sitting on #30). Findings that still hold were judged to still make
-sense; S-02 and S-08 are closed as originally stated.
+`signKey` for key PEMs. S-01 remaining surface (certificate PEMs / empty trust)
+is closed by pinning every trusted PEM as `signKey`. Findings that still hold
+were judged to still make sense; S-01, S-02, S-03, and S-08 are closed as
+originally stated.
 
 Each finding is tagged with how it was established:
 
@@ -37,7 +38,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 
 | ID | Severity | Area | Finding | Disposition | Evidence |
 |----|----------|------|---------|-------------|----------|
-| S-01 | **Critical** | Verifier / native | `<KeyValue>` supplied by the document is accepted as the verification key. After #30 this is still true for `certificate:` / `certificates:` / cert-valued `keys:` / `Native.verify` with cert PEMs or empty trust. `key:` and `store:` now pin `signKey` and reject the forged document. | **partial** (#30) | confirmed, re-checked |
+| S-01 | **Critical** | Verifier / native | `<KeyValue>` supplied by the document is accepted as the verification key. After #30 this was still true for `certificate:` / `certificates:` / cert-valued `keys:` / `Native.verify` with cert PEMs or empty trust. Every trusted PEM is now pinned as `signKey`; empty trust fails closed. | **fixed** | confirmed, then re-checked |
 | S-02 | **High** | Verifier | `store:` and `key:` trust sources are accepted, documented, and silently ignored (empty trust set) | **fixed** (#30) | confirmed, then re-checked |
 | S-03 | **High** | Verification | Fragment-reference resolution disagrees between xmlsec (libxml2 ID table: DTD- and `xml:id`-aware, namespace-agnostic) and `Verification#signed?` (XPath over configured attribute names, no-namespace only). A DTD internal subset lets an attacker make `signed?` bless an unsigned node while the signature stays valid | **fixed** (#28/#34) | confirmed (spec X1/X3) |
 | S-04 | **High** | Verifier | Policy is enforced *after* `Native.verify`, so external `Reference URI="file://…"`/`http://…` are dereferenced by xmlsec before `allow_external_references: false` rejects them (local-file digest oracle, SSRF) | **open** | code review |
@@ -68,14 +69,16 @@ AS_XML-only serialization; SHA-256 pinned vendored tarballs with hidden
 visibility and `--exclude-libs,ALL` plus a symbol-leak spec; XPath fragment
 lookup uses variable bindings (no injection); RubyGems trusted publishing with
 `rubygems_mfa_required`; ABI-compatibility check at require time. After #30:
-`store:` / `key:` / key-valued `keys:` honor `API_CONTRACT.md` §5.6 and pin
-`signKey` so KeyInfo is ignored on those paths.
+`store:` / `key:` / `certificate:` / `certificates:` / `keys:` honor
+`API_CONTRACT.md` §5.6 and pin `signKey` so KeyInfo is ignored. Empty
+trust fails closed (`Native.verify` → `:invalid`; `Verifier.new` without a
+trust source → `ConfigurationError`).
 
 ## Open work
 
-- [ ] **S-01** (#33) remaining: pin `signKey` (or disable KeyValue) for
-      `certificate:` / `certificates:` / cert-valued `keys:` /
-      `Native.verify` with cert PEMs; empty trust must fail closed
+- [x] **S-01** (#33) remaining: pin `signKey` for `certificate:` /
+      `certificates:` / cert-valued `keys:` / `Native.verify` with cert
+      PEMs; empty trust fails closed
 - [x] **S-03** (#34) ID resolution mismatch — fixed via native
       `reference_element_indexes` (#28)
 - [ ] **S-04** (#35) policy before crypto; do not dereference external URIs first
@@ -104,97 +107,25 @@ Signing/verification coverage gaps: #52 (`SIGNING_TEST_COVERAGE.md`).
 
 ## Findings in detail
 
-### S-01 -- `<KeyValue>` from the document is trusted as the verification key  [confirmed, Critical, **partial**]
+### S-01 -- `<KeyValue>` from the document is trusted as the verification key  [confirmed, Critical, **fixed**]
 
-**Disposition:** still a release blocker on the README path. PR #30 pins
-`ctx.signKey` when the trusted PEM is a **key** (`key:`, `store:` after the
-leaf public key is extracted, key-valued `keys:`). Certificate PEMs still go
-into KeysMngr only, so xmlsec still takes `<KeyValue>` from the document.
+**Disposition:** closed. `verify_document` now loads every trusted PEM as a
+public key (certificate PEMs via `xmlSecKeyDataFormatCertPem`) and pins
+`ctx.signKey`, so xmlsec never reads the document's KeyInfo for the
+verification key. Several cert PEMs are tried in order (`certificates:`).
+An empty trust list returns `:invalid` with `no trusted key or certificate
+provided`. `Verifier` requires exactly one trust source at construction.
+Regression specs: `spec/hanko_xml/key_value_trust_spec.rb` (K1–K8).
 
-Remaining surface (re-checked after #30 with the reproduction below):
+Historical reproduction (pre-fix, at `3af4155` / after #30): a template with
+`<KeyInfo><KeyValue/></KeyInfo>` signed by `other.key` verified as
+`:succeeded` against `signer.crt` and against an empty trust list, because
+`xmlSecKeysMngrGetKey` prefers a complete `<RSAKeyValue>` from the document
+over the KeysMngr. `key:` / `store:` were already pinned by #30; the leftover
+was cert PEMs going into KeysMngr as CA anchors.
 
-```
-Native.verify trusted=[signer.crt]                         => :succeeded
-Native.verify trusted=[]                                   => :succeeded
-HankoXml.verify(forged, certificate: signer.crt).valid?    => true
-HankoXml.verify(forged, certificates: [signer.crt]).valid? => true
-HankoXml.verify(forged, store: store).valid?               => false  (fixed: no X509Certificate in KeyInfo)
-HankoXml.verify(forged, key: signer_pubkey).valid?         => false  (fixed)
-HankoXml.verify(forged_named, keys: {alice: signer.crt})   => true   (cert-valued leftover)
-```
-
-`dsig.rs::verify_document` builds a `KeysMngr` from the trusted PEMs and
-creates the context with `xmlSecDSigCtxCreate(mngr)`. When no key PEM is
-present it still never restricts `keyInfoReadCtx.enabledKeyData`, never sets
-any `XMLSEC_KEYINFO_FLAGS_*`, and never pins `ctx->signKey`. libxmlsec1's
-`xmlSecKeysMngrGetKey` therefore reads the key **out of the document's own
-`<KeyInfo>` first** and only consults the keys manager when that yields
-nothing. An `<RSAKeyValue>` is a complete public key, so it always yields
-something, and no trust check applies to it.
-
-Reproduction (`bundle exec ruby -Ilib` from the repo root):
-
-```ruby
-template = <<~XML
-  <Envelope xmlns="urn:probe"><Data>Hello</Data>
-    <Signature xmlns="http://www.w3.org/2000/09/xmldsig#">
-      <SignedInfo>
-        <CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
-        <SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>
-        <Reference URI="">
-          <Transforms>
-            <Transform Algorithm="http://www.w3.org/2000/09/xmldsig#enveloped-signature"/>
-            <Transform Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
-          </Transforms>
-          <DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
-          <DigestValue/>
-        </Reference>
-      </SignedInfo>
-      <SignatureValue/>
-      <KeyInfo><KeyValue/></KeyInfo>
-    </Signature>
-  </Envelope>
-XML
-other_key  = File.read("spec/fixtures/other.key")   # attacker's key
-signer_crt = File.read("spec/fixtures/signer.crt")  # the ONLY trusted cert
-ids = %w[Id ID id]
-forged = HankoXml::Native.sign(template, other_key, [], ids, 0)
-
-HankoXml::Native.verify(forged, [signer_crt], [], ids, 0)[:status]  # => :succeeded
-HankoXml::Native.verify(forged, [],           [], ids, 0)[:status]  # => :succeeded
-HankoXml.verify(forged, certificate: signer_crt).valid?             # => true
-HankoXml.verify(forged, store: OpenSSL::X509::Store.new).valid?     # => false after #30
-```
-
-Observed at `3af4155`:
-
-```
-forged contains RSAKeyValue: true
-Native.verify(trusted=[signer.crt]) status: :succeeded
-Native.verify(trusted=[]) status: :succeeded
-HankoXml.verify(certificate: signer.crt).valid?: true
-errors: []
-```
-
-Impact (remaining): complete authentication bypass for `certificate:` /
-`certificates:` / cert-valued `keys:` / `Native.verify` with cert PEMs or an
-empty trust list. `Policy` does not help; `<KeyInfo>` contents are not a
-policy dimension. The existing spec "returns false when the signature doesn't
-chain to the given certificate" passes only because the fixtures carry
-`<X509Certificate>` rather than `<KeyValue>`.
-
-Remediation direction:
-
-- In `verify_document`, either build the verification key from the trusted
-  material and set `ctx.signKey` directly (bypassing `<KeyInfo>`), or restrict
-  `ctx.keyInfoReadCtx.enabledKeyData` to `xmlSecKeyDataX509Id` (plus
-  `xmlSecKeyDataNameId` for the `keys:` flow) so `KeyValue`,
-  `DEREncodedKeyValue`, `RetrievalMethod`, `PGPData`, `SPKIData` are ignored.
-- Review the `<X509Data>` sub-elements xmlsec will match against *untrusted*
-  certificates already in the manager (`X509SKI`, `X509IssuerSerial`,
-  `X509SubjectName`), and whether `untrusted_pems` should ever be non-empty.
-- Native-level and Verifier-level regression specs (see
-  `SIGNING_TEST_COVERAGE.md`, group G).
+Do not re-open. Chain validation remains a Ruby `store:` concern — Native no
+longer treats trusted cert PEMs as CA anchors.
 
 ### S-02 -- `store:` and `key:` are ignored  [confirmed, High, **fixed**]
 
@@ -403,17 +334,17 @@ impossible, and `clock_skew` is meaningless. Fix by setting
 values. `keys_trust` now always does `Key.coerce(...).to_pem`; a key PEM
 pins `signKey`. Do not re-open the empty-trust-set bug.
 
-Leftover, tracked under S-01: a **certificate** in the `keys:` map is still
-a cert PEM, so a forged `<KeyValue>` document verifies. The `KeyName` looked
-up is still the document's unauthenticated string; that is intended `keys:`
-semantics once each value is a pinned key.
+Leftover from S-01 is closed: a certificate in the `keys:` map is now a
+cert PEM that Native pins as `signKey`. The `KeyName` looked up is still
+the document's unauthenticated string; that is intended `keys:` semantics
+once each value is a pinned key.
 
-Re-checked after #30:
+Re-checked after S-01:
 
 ```
 good doc, keys: {alice => signer_pubkey}  -> valid?: true
 forged KeyValue, keys: {alice => signer_pubkey} -> valid?: false
-forged KeyValue, keys: {alice => signer.crt}    -> valid?: true  (S-01)
+forged KeyValue, keys: {alice => signer.crt}    -> valid?: false
 ```
 
 ### S-09 -- Per-reference validity and non-trivial shapes  [code review, Medium, **open**]
@@ -568,20 +499,16 @@ accept path Strings explicitly.
 
 ## Suggested remediation order
 
-S-02 and S-08 are done. Remaining, in order:
+S-01, S-02, S-03, and S-08 are done. Remaining, in order:
 
-1. S-01 remaining surface -- pin `signKey` (or disable KeyValue) for
-   `certificate:` / `certificates:` / cert-valued `keys:` / `Native.verify`
-   with cert PEMs; empty trust must fail closed. Still a release blocker for
-   the README path.
-2. S-04 + S-05 + S-10 -- policy before crypto on both sides; restrict
+1. S-04 + S-05 + S-10 -- policy before crypto on both sides; restrict
    `enabledUris`/`enabledTransforms` natively.
-3. S-06, S-07 -- make every documented knob real or remove it from the API
+2. S-06, S-07 -- make every documented knob real or remove it from the API
    and docs, including the `certificate:` time path.
-4. S-11, S-14, S-09, S-12, S-13 -- correctness and robustness.
-5. S-15 through S-21 -- hygiene.
+3. S-11, S-14, S-09, S-12, S-13 -- correctness and robustness.
+4. S-15 through S-21 -- hygiene.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /
-S-08 now exist in `spec/hanko_xml/verifier_spec.rb` and pass. S-01 group K
-is still outstanding.
+S-08 live in `spec/hanko_xml/verifier_spec.rb`. S-01 group K lives in
+`spec/hanko_xml/key_value_trust_spec.rb` and passes.

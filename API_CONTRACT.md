@@ -407,8 +407,8 @@ whose URI is not a key in this map raises `ReferenceError`. This gives
 `xmldsig`'s `referenced_documents:` feature without its network surface.
 
 Trust sources are mutually exclusive: passing more than one of `certificate:`,
-`certificates:`, `store:`, `key:`, `keys:` raises `ConfigurationError` at
-construction. Verifying against the operating system's CA bundle is
+`certificates:`, `store:`, `key:`, `keys:` — or omitting all of them — raises
+`ConfigurationError` at construction. Verifying against the operating system's CA bundle is
 `store: OpenSSL::X509::Store.new.tap(&:set_default_paths)` —
 `nokogiri-xmlsec`'s `verify_signature` / `certs: []`, spelled out rather than
 hidden behind an empty array.
@@ -1252,8 +1252,15 @@ HankoXml::Native.inspect(xml, signature_index)
 #                      id: nil, type: nil } ] }
 
 HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signature_index)
-#   trusted_pems    : Array<String> — certs/keys that establish trust
-#   untrusted_pems  : Array<String> — intermediates, for chain building
+#   trusted_pems    : Array<String> — certs/keys that establish trust.
+#                     Each PEM is pinned as signKey (certs via
+#                     xmlSecKeyDataFormatCertPem) so KeyInfo cannot supply
+#                     the verification key. Several cert PEMs are tried in
+#                     order until one verifies. An empty list returns
+#                     status: :invalid (fail closed).
+#   untrusted_pems  : Array<String> — unused once signKey is pinned;
+#                     retained for FFI compatibility. Chain building is a
+#                     Ruby `store:` concern.
 # => { status: :succeeded | :invalid | :unknown,
 #      errors: Array<String>,
 #      reference_element_indexes: Array<Integer|nil> }  # §5.9

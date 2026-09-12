@@ -29,7 +29,8 @@ HankoXml.verify!(
 ## Trust sources
 
 Trust sources are mutually exclusive: passing more than one of `certificate:`, `certificates:`,
-`store:`, `key:`, `keys:` raises `HankoXml::ConfigurationError` at construction.
+`store:`, `key:`, `keys:` — or omitting all of them — raises `HankoXml::ConfigurationError` at
+construction.
 
 | Keyword | Behaviour |
 | --- | --- |
