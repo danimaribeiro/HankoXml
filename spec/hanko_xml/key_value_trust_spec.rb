@@ -55,7 +55,7 @@ RSpec.describe "S-01 KeyValue trust" do
   end
 
   def parse(xml)
-    Nokogiri::XML(xml) { |config| config.noblanks }
+    Nokogiri::XML(xml)
   end
 
   describe "Native.verify" do
