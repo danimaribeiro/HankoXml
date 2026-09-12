@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "spec_helper"
-require "base64"
 require "nokogiri"
 require "openssl"
 require "pathname"
@@ -94,7 +93,7 @@ RSpec.describe "S-01 KeyValue trust" do
       key_info.children.remove
       der = Nokogiri::XML::Node.new("DEREncodedKeyValue", doc)
       der.default_namespace = dsig11
-      der.content = Base64.strict_encode64(OpenSSL::PKey::RSA.new(other_key_pem).public_key.to_der)
+      der.content = [OpenSSL::PKey::RSA.new(other_key_pem).public_key.to_der].pack("m0")
       key_info.add_child(der)
 
       result = HankoXml::Native.verify(doc.to_xml, [signer_cert_pem], [], id_attrs, 0)

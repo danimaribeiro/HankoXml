@@ -177,9 +177,7 @@ module HankoXml
     end
 
     def resolve_reference(ref, index)
-      if reference_element_indexes
-        return node_at_element_index(reference_element_indexes[index])
-      end
+      return node_at_element_index(reference_element_indexes[index]) if reference_element_indexes
 
       # Fallback for Verification constructed without a Native.verify result
       # (specs / error paths that never reached crypto).
