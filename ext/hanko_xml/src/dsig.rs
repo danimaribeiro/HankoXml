@@ -465,7 +465,7 @@ impl<'mngr> DsigCtx<'mngr> {
     /// `signKey` makes xmlsec skip KeyInfo — the document cannot pick
     /// the verification key (S-01).
     fn for_signing(mngr: &'mngr KeysMngr, key: XmlSecKey) -> Result<Self, &'static str> {
-        let ctx = Self::new(mngr)?;
+        let mut ctx = Self::new(mngr)?;
         // SAFETY: setting signKey transfers ownership of the key to the context.
         // xmlSecDSigCtxDestroy will call xmlSecKeyDestroy on it.
         //
@@ -481,7 +481,26 @@ impl<'mngr> DsigCtx<'mngr> {
         unsafe {
             (*ctx.ptr).signKey = key.into_raw();
         }
+        ctx.restrict_reference_uris_to_same_document();
         Ok(ctx)
+    }
+
+    /// xmlSecDSigCtxCreate leaves `enabledReferenceUris` /
+    /// `transformCtx.enabledUris` as `xmlSecTransformUriTypeAny`, so a
+    /// `<Reference URI="file://…">` or `http://…` is fetched before Ruby
+    /// Policy can reject it (S-04). Limit both to empty + same-document;
+    /// `referenced_documents:` is the only supported non-fragment path
+    /// and it never hits libxml2 I/O.
+    fn restrict_reference_uris_to_same_document(&mut self) {
+        let allowed = sys::URI_TYPE_EMPTY | sys::URI_TYPE_SAME_DOCUMENT;
+        // SAFETY: self.ptr is a live xmlSecDSigCtx we exclusively own.
+        // enabledReferenceUris and transformCtx.enabledUris are
+        // application-settable; xmlsec reads them when resolving
+        // Reference hrefs. Same ABI caveat as the signKey write.
+        unsafe {
+            (*self.ptr).enabledReferenceUris = allowed;
+            (*self.ptr).transformCtx.enabledUris = allowed;
+        }
     }
 
     /// Signs the document at the given signature node.

@@ -1,6 +1,6 @@
 # HankoXml Security Review
 
-Date: 2026-09-12 (re-checked after S-01 / #33)
+Date: 2026-09-12 (re-checked after S-04 / #35)
 Original scope: the whole repository at commit `3af4155` -- the Rust extension
 (`ext/hanko_xml`), the Ruby layer (`lib/hanko_xml`), the build/vendoring
 pipeline, CI/release workflows, and the specs.
@@ -11,7 +11,7 @@ issues (#33–#51); the checklist below links each open item.
 Follow-up commit `fdcf06e` (PR #30) wired `store:` / `key:` and pinned
 `signKey` for key PEMs. S-01 remaining surface (certificate PEMs / empty trust)
 is closed by pinning every trusted PEM as `signKey`. Findings that still hold
-were judged to still make sense; S-01, S-02, S-03, and S-08 are closed as
+were judged to still make sense; S-01, S-02, S-03, S-04, and S-08 are closed as
 originally stated.
 
 Each finding is tagged with how it was established:
@@ -41,7 +41,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-01 | **Critical** | Verifier / native | `<KeyValue>` supplied by the document is accepted as the verification key. After #30 this was still true for `certificate:` / `certificates:` / cert-valued `keys:` / `Native.verify` with cert PEMs or empty trust. Every trusted PEM is now pinned as `signKey`; empty trust fails closed. | **fixed** | confirmed, then re-checked |
 | S-02 | **High** | Verifier | `store:` and `key:` trust sources are accepted, documented, and silently ignored (empty trust set) | **fixed** (#30) | confirmed, then re-checked |
 | S-03 | **High** | Verification | Fragment-reference resolution disagrees between xmlsec (libxml2 ID table: DTD- and `xml:id`-aware, namespace-agnostic) and `Verification#signed?` (XPath over configured attribute names, no-namespace only). A DTD internal subset lets an attacker make `signed?` bless an unsigned node while the signature stays valid | **fixed** (#28/#34) | confirmed (spec X1/X3) |
-| S-04 | **High** | Verifier | Policy is enforced *after* `Native.verify`, so external `Reference URI="file://…"`/`http://…` are dereferenced by xmlsec before `allow_external_references: false` rejects them (local-file digest oracle, SSRF) | **open** | code review |
+| S-04 | **High** | Verifier / native | Policy is enforced *after* `Native.verify`, so external `Reference URI="file://…"`/`http://…` are dereferenced by xmlsec before `allow_external_references: false` rejects them (local-file digest oracle, SSRF) | **fixed** | confirmed (spec R1/R2/R6/R8) |
 | S-05 | **High** | Signer | `Signer#sign!` (default `template: :adopt`) signs any pre-existing `<Signature>` template in the input with the caller's key and never enforces `Signer#policy`: a signing oracle for attacker-chosen algorithms, references and external URIs | **open** | code review |
 | S-06 | **Medium** | Policy | 11 of 18 `Policy` fields were declared and documented as enforced but never checked. After #30, `check_certificate_validity` is honored on the `store:` path only; the other ten fields are still unread. | **partial** (#30) | confirmed (grep), re-checked |
 | S-07 | **Medium** | Verifier | `verification_time:` validates only the *trusted* certificates' validity window, never the signing certificate; `check_certificate_validity: false` has no effect. After #30, `store:` applies both knobs to the signing cert via `StoreContext`; `certificate:` is unchanged. | **partial** (#30) | confirmed, re-checked |
@@ -81,7 +81,7 @@ trust source → `ConfigurationError`).
       PEMs; empty trust fails closed
 - [x] **S-03** (#34) ID resolution mismatch — fixed via native
       `reference_element_indexes` (#28)
-- [ ] **S-04** (#35) policy before crypto; do not dereference external URIs first
+- [x] **S-04** (#35) policy before crypto; do not dereference external URIs first
 - [ ] **S-05** (#36) `template: :adopt` signing oracle; enforce Signer policy
 - [ ] **S-06** (#37) remaining unenforced Policy fields
 - [ ] **S-07** (#38) remaining: `certificate:` path + native `certsVerificationTime`
@@ -215,36 +215,25 @@ only no-namespace attributes natively (or matching any namespace in Ruby), and
 fail verification when the native error log contains `xmlSecAddIDs` duplicate
 warnings. Specs: `SIGNING_TEST_COVERAGE.md`, group H.
 
-### S-04 -- Policy runs after cryptography; external references are dereferenced first  [code review, High, **open**]
+### S-04 -- Policy runs after cryptography; external references are dereferenced first  [confirmed, High, **fixed**]
 
-**Disposition:** still open. `Verifier#verify_single` still calls
-`Native.verify` then `@policy.enforce!`.
+**Disposition:** closed. `Verifier#verify_single` runs `@policy.enforce!` on
+`inspect_sig` output **before** `Native.verify`. `DsigCtx::for_signing`
+(sign and verify) sets `enabledReferenceUris` and
+`transformCtx.enabledUris` to
+`xmlSecTransformUriTypeEmpty | xmlSecTransformUriTypeSameDocument`, so
+`file://` / `http://` References are not fetched even if Ruby is bypassed.
+`Policy.permissive` (`allow_external_references: true`) skips the Ruby
+check but still does not fetch — `referenced_documents:` remains the only
+supported non-fragment path. Specs: `spec/hanko_xml/policy_ordering_spec.rb`
+(R1, R2, R6, R7, R8).
 
-`Verifier#verify_single` order is: schema (only if `schema:` given) →
-`Native.inspect_sig` → `Native.verify` → `@policy.enforce!`. `Policy`'s own
-doc comment says the opposite ("enforced in Ruby before anything reaches
-libxmlsec1").
+Signer `:adopt` still does not enforce policy before `Native.sign` (S-05);
+the native URI restriction now also covers that path so a hostile template
+cannot make `Native.sign` read `file://`. Algorithm / chosen-message
+adoption remains S-05.
 
-`xmlSecDSigCtxCreate` leaves `transformCtx.enabledUris =
-xmlSecTransformUriTypeAny`, so a `<Reference URI="file:///etc/passwd">` or
-`URI="http://169.254.169.254/…"` is fetched by libxml2's I/O layer inside
-`Native.verify` (and inside `Native.sign`, S-05). The strict policy then
-reports `allow_external_references` -- after the read happened. Consequences:
-
-- local-file **digest oracle**: the verifier confirms whether the attacker's
-  `DigestValue` matches `sha256(file)`; combined with the xmlsec error text in
-  `VerificationError#xmlsec_errors` this also leaks path existence;
-- **SSRF** from the verifying host for any URI scheme libxml2 supports
-  (`http`, `ftp` on builds that enable them; the vendored build passes
-  `--without-http` but the *source gem* links whatever the OS ships);
-- CPU/IO amplification via `RetrievalMethod`, XPath/XPath2/XSLT transforms
-  (S-10) before `max_transforms_per_reference` is even considered.
-
-Remediation direction: enforce policy on `inspect_sig` output **before**
-`Native.verify`; set `transformCtx.enabledUris` to
-`xmlSecTransformUriTypeEmpty | xmlSecTransformUriTypeSameDocument` unless the
-policy allows external references; restrict
-`transformCtx.enabledTransforms` from the policy's `transforms` allowlist.
+Do not re-open the verify-side fetch.
 
 ### S-05 -- Signer adopts hostile templates and never enforces its policy  [code review, High, **open**]
 
@@ -367,10 +356,11 @@ caller checks `valid?` before `signed?`.
 `lib/hanko_xml/hanko_xml.so` in this checkout links `libxslt.so.1` via the
 system `libxmlsec1`, so the XSLT transform is registered. The vendored builds
 pass `--without-libxslt`, `--without-http`, `--without-ftp`-equivalents, but
-the source gem inherits the distro's configuration, and `dsig.rs` never
-restricts `enabledTransforms`/`enabledUris`. The security posture of the same
-gem version differs by installation path, and nothing surfaces that to the
-user (`NativeVersion.build_versions` reports versions only).
+the source gem inherits the distro's configuration. `dsig.rs` now restricts
+`enabledUris` (S-04) but still does not restrict `enabledTransforms`, so an
+XSLT transform is registered whenever the host xmlsec was built with libxslt.
+Ruby Policy rejects it before `Native.verify` (R6); the remaining gap is a
+direct `Native.verify` / `Native.sign` call, and host-dependent registration.
 
 ### S-11 -- Multiple signatures and `signature: :first`  [code review, Medium, **open**]
 
@@ -499,10 +489,10 @@ accept path Strings explicitly.
 
 ## Suggested remediation order
 
-S-01, S-02, S-03, and S-08 are done. Remaining, in order:
+S-01, S-02, S-03, S-04, and S-08 are done. Remaining, in order:
 
-1. S-04 + S-05 + S-10 -- policy before crypto on both sides; restrict
-   `enabledUris`/`enabledTransforms` natively.
+1. S-05 + S-10 -- Signer `:adopt` oracle; restrict `enabledTransforms`
+   natively regardless of host xmlsec.
 2. S-06, S-07 -- make every documented knob real or remove it from the API
    and docs, including the `certificate:` time path.
 3. S-11, S-14, S-09, S-12, S-13 -- correctness and robustness.
@@ -511,4 +501,5 @@ S-01, S-02, S-03, and S-08 are done. Remaining, in order:
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /
 S-08 live in `spec/hanko_xml/verifier_spec.rb`. S-01 group K lives in
-`spec/hanko_xml/key_value_trust_spec.rb` and passes.
+`spec/hanko_xml/key_value_trust_spec.rb`. S-04 group R lives in
+`spec/hanko_xml/policy_ordering_spec.rb`.

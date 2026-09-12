@@ -44,6 +44,11 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **S-04 / #35:** `Verifier` enforces `Policy` on `inspect_sig` output
+  before `Native.verify`, so a `file://` / `http://` Reference is rejected
+  without reaching libxmlsec1. The native dsig context also limits
+  `enabledReferenceUris` / `transformCtx.enabledUris` to empty and
+  same-document URIs on both sign and verify.
 - **S-01 / #33:** `Native.verify` pins every trusted PEM as xmlsec `signKey`
   (certificate PEMs via `xmlSecKeyDataFormatCertPem`) so a document-supplied
   `<KeyValue>`, `<DEREncodedKeyValue>`, or `<RetrievalMethod>` cannot become

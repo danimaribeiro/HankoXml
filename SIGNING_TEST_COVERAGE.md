@@ -254,16 +254,21 @@ pass there. Cert-valued `keys:` is covered under S-01 group K.
 
 ### S-04 / S-05 / S-10 external references, transforms, ordering
 
-| # | Spec |
-|---|------|
-| R1 | Verifier: `<Reference URI="file:///tmp/probe">` under strict → `PolicyError` **and** the file was not opened (use a FIFO or `strace`-free trick: point at a path in a directory whose `atime`/existence you control, or a `TCPServer` for `http://` and assert zero connections) |
-| R2 | Verifier: same under `Policy.permissive` → verifies (documents the opt-in) |
-| R3 | Signer `:adopt` with a template containing a `file://` reference → `PolicyError` before `Native.sign`; file not read |
-| R4 | Signer `:adopt` with a template using rsa-sha1 while Signer is strict → `PolicyError` |
-| R5 | Signer `:adopt` with a template referencing `#attacker-node` not in `Signer#references` → error or explicit opt-in |
-| R6 | Verifier: XSLT transform present under strict → `PolicyError` **before** `Native.verify` (assert via a spy on `Native.verify` that it was not called) |
-| R7 | Verifier: `Native.verify` is not invoked when `inspect_sig` output already violates policy (spy on `HankoXml::Native`) |
-| R8 | `max_transforms_per_reference` exceeded → rejected before native |
+S-04 verify-side ordering and URI fetch are **fixed** in
+`spec/hanko_xml/policy_ordering_spec.rb`. R3–R5 remain S-05 (Signer
+`:adopt`). Native transform allowlisting is S-10; R6 only asserts the
+Ruby policy gate.
+
+| # | Spec | After S-04 |
+|---|------|------------|
+| R1 | Verifier: `<Reference URI="file:///tmp/probe">` under strict → `PolicyError` **and** the file was not opened | **pass** |
+| R2 | Verifier: same under `Policy.permissive` → Ruby allows Native.verify; native still does not fetch; `valid? == false` | **pass** (no libxml2 fetch; `referenced_documents:` is the supported path) |
+| R3 | Signer `:adopt` with a template containing a `file://` reference → `PolicyError` before `Native.sign`; file not read | still open (S-05); native URI restriction now blocks the read |
+| R4 | Signer `:adopt` with a template using rsa-sha1 while Signer is strict → `PolicyError` | still open (S-05) |
+| R5 | Signer `:adopt` with a template referencing `#attacker-node` not in `Signer#references` → error or explicit opt-in | still open (S-05) |
+| R6 | Verifier: XSLT transform present under strict → `PolicyError` **before** `Native.verify` | **pass** |
+| R7 | Verifier: `Native.verify` is not invoked when `inspect_sig` output already violates policy | **pass** (same specs as R1/R6/R8) |
+| R8 | `max_transforms_per_reference` exceeded → rejected before native | **pass** |
 
 ### S-06 unenforced policy fields (one spec per field; `check_certificate_validity` is **partial** on `store:` after #30, the rest still FAIL today)
 

@@ -1261,6 +1261,8 @@ HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signat
 #   untrusted_pems  : Array<String> — unused once signKey is pinned;
 #                     retained for FFI compatibility. Chain building is a
 #                     Ruby `store:` concern.
+#   Reference URIs are limited to empty / same-document (`URI=""` / `#id`).
+#   file:// and http:// are not fetched (S-04).
 # => { status: :succeeded | :invalid | :unknown,
 #      errors: Array<String>,
 #      reference_element_indexes: Array<Integer|nil> }  # §5.9

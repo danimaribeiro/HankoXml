@@ -38,6 +38,6 @@ pub const DSIG_STATUS_SUCCEEDED: xmlSecDSigStatus =
 pub const DSIG_STATUS_INVALID: xmlSecDSigStatus =
     xmlSecDSigStatus_xmlSecDSigStatusInvalid;
 
-/// DSig verification status unknown (error during verification).
-pub const DSIG_STATUS_UNKNOWN: xmlSecDSigStatus =
-    xmlSecDSigStatus_xmlSecDSigStatusUnknown;
+/// Same-document Reference URIs: empty `URI=""` and `URI="#id"`.
+pub const URI_TYPE_EMPTY: xmlSecTransformUriType = xmlSecTransformUriTypeEmpty;
+pub const URI_TYPE_SAME_DOCUMENT: xmlSecTransformUriType = xmlSecTransformUriTypeSameDocument;
