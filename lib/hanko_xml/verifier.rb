@@ -170,11 +170,11 @@ module HankoXml
       end
     end
 
-    # One linear sequence of interdependent checks -- schema, digest, signature,
-    # certificate chain, time bounds, policy -- accumulating shared state as it
-    # goes. Splitting it would thread that state through helpers rather than
-    # genuinely simplify it, so the metrics cops are waived here pending a
-    # deliberate refactor.
+    # One linear sequence of interdependent checks -- schema, policy,
+    # certificate chain, time bounds, then crypto -- accumulating shared
+    # state as it goes. Splitting it would thread that state through helpers
+    # rather than genuinely simplify it, so the metrics cops are waived here
+    # pending a deliberate refactor.
     # rubocop:disable Metrics/CyclomaticComplexity
     # rubocop:disable Metrics/MethodLength, Metrics/PerceivedComplexity
     def verify_single(doc, sig_node, index)
@@ -220,6 +220,16 @@ module HankoXml
       end
 
       sig_info = HankoXml::SignatureInfo.from_native(inspect_result)
+
+      # Policy is a structural allowlist over inspect_sig output. Enforce it
+      # before Native.verify so a file:// or http:// Reference is never
+      # handed to libxml2 I/O (S-04). Native.verify also restricts
+      # enabledReferenceUris as defense in depth.
+      begin
+        @policy.enforce!(sig_info)
+      rescue HankoXml::PolicyError => e
+        return failed_verification(doc, sig_node, [e], signature_info: sig_info)
+      end
 
       # 3. Resolve trust material and call Native.verify
       trusted, untrusted, trust_error = collect_trust(sig_info)
@@ -268,13 +278,6 @@ module HankoXml
       unless valid
         msg = verify_result[:errors].first || "Signature verification failed"
         errors << HankoXml::VerificationError.new(msg, xmlsec_errors: verify_result[:errors], signature_node: sig_node)
-      end
-
-      begin
-        @policy.enforce!(sig_info)
-      rescue HankoXml::PolicyError => e
-        valid = false
-        errors << e
       end
 
       HankoXml::Verification.new(

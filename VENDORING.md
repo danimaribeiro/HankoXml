@@ -61,14 +61,12 @@ total: `xmlNode.{type_, children, next, name, ns}` (`dsig.rs:159-194`) and
 ever passed to functions. That is a narrow surface to keep stable, and it makes
 pinning libxml2 2.14.6 low-risk.
 
-**The most ABI-fragile line in the codebase is `dsig.rs:442`** —
-`(*ptr).signKey = key.into_raw();`, a direct field *write* into
-`xmlSecDSigCtx`, bypassing any xmlsec setter. If xmlsec ever restructures that
-struct, bindgen regenerates a different-but-still-valid Rust struct and the
-breakage is silent. **Vendoring actively improves this**: headers and archive
-become the same pinned source by construction, so the compile-time layout and
-the linked code can no longer disagree. Worth a comment at that line saying so.
-The only other xmlsec field access is reading `.status` (`dsig.rs:469`).
+**The most ABI-fragile lines in the codebase are the direct field writes
+into `xmlSecDSigCtx`** — `signKey`, and (S-04) `enabledReferenceUris` /
+`transformCtx.enabledUris`. If xmlsec ever restructures that struct, bindgen
+regenerates a different-but-still-valid Rust struct and the breakage is
+silent. **Vendoring actively improves this**: headers and archive become the
+same pinned source by construction. The only xmlsec field *read* is `.status`.
 
 **`allowlist_var("LIBXML_.*")` couples libxml2's configure flags to the
 generated bindings.** It sweeps in every `LIBXML_*_ENABLED` macro, and those
