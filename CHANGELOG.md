@@ -44,6 +44,12 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **S-05 / #36:** `Signer#sign!` enforces `Policy` on `inspect_sig` output
+  before `Native.sign`, for both built and adopted templates. Adopted /
+  required templates must also have Reference URIs that match
+  `Signer#references` (empty `references` means whole-document `URI=""`).
+  A hostile `file://`, SHA-1, or `#attacker-node` template is therefore
+  rejected without a native signing call.
 - **S-04 / #35:** `Verifier` enforces `Policy` on `inspect_sig` output
   before `Native.verify`, so a `file://` / `http://` Reference is rejected
   without reaching libxmlsec1. The native dsig context also limits

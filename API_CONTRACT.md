@@ -289,19 +289,30 @@ first:
 
 - **none present** → build one from the `Signer` configuration (§5.2), as
   described everywhere else in this document;
-- **one or more present** → adopt them. The signer's `signature_method`,
-  `digest_method`, `canonicalization_method`, `references` and `placement` are
-  **ignored**, because the template already states them; they are read *out* of
-  the template and validated against `Policy` exactly as on verification. Only
-  `key`, `certificates`, `key_info` and `id_attributes` still apply.
+- **one or more present** → adopt them. The template's `<SignedInfo>` is kept
+  as-is (not rewritten from `signature_method` / `digest_method` /
+  `canonicalization_method` / `placement`). Before `Native.sign`, the Signer
+  inspects the template and:
+  - enforces `policy` the same way verification does (algorithms, transforms,
+    `allow_external_references`, …);
+  - requires the template's Reference URIs to match `references`. Empty
+    `references` means whole-document `URI=""` — the same default
+    `Template.build` uses. A fragment or `file://` URI therefore needs an
+    explicit `references:` opt-in, not merely a hostile template.
+
+Only `key`, `certificates`, `key_info` and `id_attributes` are applied to an
+adopted template beyond those checks. `:adopt` still means "the input already
+contains the `<Signature>` skeleton"; it does not mean "sign whatever the
+input asks for".
 
 `:require` is also the one signing mode that runs without Nokogiri (§6.1):
 nothing has to be constructed, so no DOM is needed.
 
-A `Signer` configured with explicit `references:` that then adopts a template
-raises `HankoXml::ConfigurationError` rather than silently discarding them —
+A template whose Reference URIs do not match `references` raises
+`HankoXml::ConfigurationError` rather than silently signing something else —
 "I told it what to sign and it did something else" is not a failure mode we
-ship.
+ship. A template that fails `policy` raises `HankoXml::PolicyError` before
+any native signing call.
 
 Signing order for multiple/nested signatures follows `xmldsig`'s rule and for
 the same reason: **innermost first**, sorted by ancestor depth descending. An
