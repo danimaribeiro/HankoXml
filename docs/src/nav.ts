@@ -6,6 +6,7 @@ export const guideNav = [
   { slug: 'trust-anchors', title: 'Trust Anchors & Verification' },
   { slug: 'keys-and-certificates', title: 'Keys & Certificates' },
   { slug: 'errors', title: 'Errors' },
+  { slug: 'comparison-signxml', title: 'Comparison with SignXML' },
 ];
 
 // `yard` is the path to the generated YARD HTML for this class, served
