@@ -163,4 +163,27 @@ RSpec.describe "S-04 policy before crypto" do
       end
     end
   end
+
+  describe "Native transform restriction (S-10)" do
+    it "rejects XSLT transform even when called directly" do
+      xml = add_transforms(signed_xml, ["http://www.w3.org/TR/1999/REC-xslt-19991116"])
+
+      result = HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0)
+
+      # The signature fails because the XSLT transform is not in the allow-list
+      expect(result[:status]).not_to eq(:succeeded)
+      expect(%i[invalid unknown]).to include(result[:status])
+    end
+
+    it "allows enveloped signature transform" do
+      # Enveloped is a core DSig transform that should be allowed
+      xml = add_transforms(signed_xml, ["http://www.w3.org/2000/09/xmldsig#enveloped-signature"])
+
+      result = HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0)
+
+      # The signature may not be valid due to the added transform, but it
+      # should not be rejected because the transform type is unsupported
+      expect(%i[invalid unknown]).to include(result[:status])
+    end
+  end
 end

@@ -484,6 +484,7 @@ impl<'mngr> DsigCtx<'mngr> {
             (*ctx.ptr).signKey = key.into_raw();
         }
         ctx.restrict_reference_uris_to_same_document();
+        ctx.restrict_transforms()?;
         Ok(ctx)
     }
 
@@ -503,6 +504,50 @@ impl<'mngr> DsigCtx<'mngr> {
             (*self.ptr).enabledReferenceUris = allowed;
             (*self.ptr).transformCtx.enabledUris = allowed;
         }
+    }
+
+    /// Restricts `enabledReferenceTransforms` to core DSig transforms only.
+    ///
+    /// xmlSecDSigCtxCreate leaves `enabledReferenceTransforms` as NULL, so
+    /// all registered transforms are allowed, including XSLT when the host
+    /// xmlsec was built with libxslt (S-10). Initialize the list and add
+    /// only safe core DSig transforms — excluding XSLT, XPath, and XPointer.
+    fn restrict_transforms(&mut self) -> Result<(), &'static str> {
+        // List of safe transform IDs to allow. These cover the standard
+        // DSig operations: canonicalization, base64, enveloped signature.
+        // Notably absent: XSLT, XPath, XPointer, and other potentially
+        // dangerous transforms.
+        let safe_transforms: &[unsafe extern "C" fn() -> sys::xmlSecTransformId] = &[
+            sys::xmlSecTransformEnvelopedGetKlass,
+            sys::xmlSecTransformBase64GetKlass,
+            sys::xmlSecTransformInclC14NGetKlass,
+            sys::xmlSecTransformInclC14NWithCommentsGetKlass,
+            sys::xmlSecTransformInclC14N11GetKlass,
+            sys::xmlSecTransformInclC14N11WithCommentsGetKlass,
+            sys::xmlSecTransformExclC14NGetKlass,
+            sys::xmlSecTransformExclC14NWithCommentsGetKlass,
+            // Digest methods
+            sys::xmlSecOpenSSLTransformSha1GetKlass,
+            sys::xmlSecOpenSSLTransformSha224GetKlass,
+            sys::xmlSecOpenSSLTransformSha256GetKlass,
+            sys::xmlSecOpenSSLTransformSha384GetKlass,
+            sys::xmlSecOpenSSLTransformSha512GetKlass,
+        ];
+
+        // SAFETY: self.ptr is a live xmlSecDSigCtx we exclusively own.
+        // xmlSecDSigCtxEnableReferenceTransform initializes the
+        // enabledReferenceTransforms list on first call and adds the
+        // transform ID. After this, only transforms in the list are allowed.
+        for get_klass in safe_transforms {
+            let transform_id = unsafe { get_klass() };
+            let rc = unsafe {
+                sys::xmlSecDSigCtxEnableReferenceTransform(self.ptr, transform_id)
+            };
+            if rc < 0 {
+                return Err("failed to enable safe transform");
+            }
+        }
+        Ok(())
     }
 
     /// Signs the document at the given signature node.
