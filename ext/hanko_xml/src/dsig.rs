@@ -241,10 +241,11 @@ unsafe fn find_child(parent: sys::xmlNodePtr, name: &str, ns_href: &str) -> Opti
     let mut child = (*parent).children;
     while !child.is_null() {
         let child_ref = &*child;
-        if child_ref.type_ == sys::xmlElementType_XML_ELEMENT_NODE {
-            if node_name(child) == name && node_ns_href(child) == ns_href {
-                return Some(child);
-            }
+        if child_ref.type_ == sys::xmlElementType_XML_ELEMENT_NODE
+            && node_name(child) == name
+            && node_ns_href(child) == ns_href
+        {
+            return Some(child);
         }
         child = child_ref.next;
     }
@@ -260,10 +261,11 @@ unsafe fn find_children(parent: sys::xmlNodePtr, name: &str, ns_href: &str) -> V
     let mut child = (*parent).children;
     while !child.is_null() {
         let child_ref = &*child;
-        if child_ref.type_ == sys::xmlElementType_XML_ELEMENT_NODE {
-            if node_name(child) == name && node_ns_href(child) == ns_href {
-                result.push(child);
-            }
+        if child_ref.type_ == sys::xmlElementType_XML_ELEMENT_NODE
+            && node_name(child) == name
+            && node_ns_href(child) == ns_href
+        {
+            result.push(child);
         }
         child = child_ref.next;
     }
@@ -719,25 +721,19 @@ pub fn sign_document(
         .find_nth_signature(root, signature_index)
         .ok_or_else(|| format_error("signature index out of range or no <Signature> found"))?;
 
-    let key = XmlSecKey::from_pem(key_pem)
-        .map_err(|msg| format_error(msg))?;
+    let key = XmlSecKey::from_pem(key_pem).map_err(format_error)?;
 
     for cert_pem in cert_pems {
-        key.add_cert_pem(cert_pem)
-            .map_err(|msg| format_error(msg))?;
+        key.add_cert_pem(cert_pem).map_err(format_error)?;
     }
 
-    let mngr = KeysMngr::new(&[], &[])
-        .map_err(|msg| format_error(msg))?;
+    let mngr = KeysMngr::new(&[], &[]).map_err(format_error)?;
 
-    let mut ctx = DsigCtx::for_signing(&mngr, key)
-        .map_err(|msg| format_error(msg))?;
+    let mut ctx = DsigCtx::for_signing(&mngr, key).map_err(format_error)?;
 
-    ctx.sign(sig_node)
-        .map_err(|msg| format_error(msg))?;
+    ctx.sign(sig_node).map_err(format_error)?;
 
-    doc.serialize()
-        .map_err(|msg| format_error(msg))
+    doc.serialize().map_err(format_error)
 }
 
 /// Verifies the nth `<ds:Signature>` against trusted/untrusted certs.
@@ -793,7 +789,7 @@ pub fn verify_document(
     // Chain building stays a Ruby `store:` concern. Native only ever pins
     // a verification key; untrusted PEMs are still accepted so the FFI
     // shape is unchanged, but they are not consulted once signKey is set.
-    let mngr = KeysMngr::new(&[], untrusted_pems).map_err(|msg| format_error(msg))?;
+    let mngr = KeysMngr::new(&[], untrusted_pems).map_err(format_error)?;
 
     let keys_to_try = load_pinned_keys(&pinned_key_pems, &cert_pems)?;
     let reference_element_indexes =
@@ -811,7 +807,7 @@ pub fn verify_document(
     let mut captured_errors = Vec::new();
     for key in keys_to_try {
         errors::clear_errors();
-        let mut ctx = DsigCtx::for_signing(&mngr, key).map_err(|msg| format_error(msg))?;
+        let mut ctx = DsigCtx::for_signing(&mngr, key).map_err(format_error)?;
         status = ctx.verify(sig_node);
         captured_errors = errors::drain_errors();
         if status == VerifyStatus::Succeeded {
@@ -834,13 +830,13 @@ fn load_pinned_keys(
 ) -> Result<Vec<XmlSecKey>, String> {
     if let Some(pem) = key_pems.first() {
         return Ok(vec![
-            XmlSecKey::from_pem(pem).map_err(|msg| format_error(msg))?,
+            XmlSecKey::from_pem(pem).map_err(format_error)?,
         ]);
     }
 
     cert_pems
         .iter()
-        .map(|pem| XmlSecKey::from_cert_pem(pem).map_err(|msg| format_error(msg)))
+        .map(|pem| XmlSecKey::from_cert_pem(pem).map_err(format_error))
         .collect()
 }
 

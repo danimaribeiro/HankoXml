@@ -1,0 +1,40 @@
+# cargo-deny config for the hanko_xml workspace (ext/hanko_xml + build deps).
+# Advisories are hard-fail: this is a crypto library, and Dependabot already
+# opens upgrade PRs — red CI is the merge gate, not a surprise.
+
+[graph]
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]
+all-features = true
+
+[advisories]
+yanked = "deny"
+ignore = []
+
+[licenses]
+confidence-threshold = 0.8
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unlicense",
+]
+
+[bans]
+# Warn rather than deny: bindgen's transitive tree often carries two minor
+# versions of the same crate, and forcing a single version is not worth the
+# churn for a thin FFI extension.
+multiple-versions = "warn"
+wildcards = "deny"
+deny = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -15,7 +15,7 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 
 thread_local! {
-    static ERROR_BUF: RefCell<Vec<String>> = RefCell::new(Vec::new());
+    static ERROR_BUF: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
 }
 
 /// Clears the thread-local error buffer. Call at the start of each

@@ -16,4 +16,6 @@ gem "nokogiri", "~> 1.18"
 
 gem "rubocop", "~> 1.21"
 
+gem "bundler-audit", "~> 0.9"
+
 gem "yard", "~> 0.9.45"
