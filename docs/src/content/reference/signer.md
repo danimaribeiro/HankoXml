@@ -59,7 +59,7 @@ makes the whole template layer testable with plain XML assertions and no keys.
 ## Signing a document that already has a `<Signature>` template
 
 Many real documents arrive with the `<Signature>` skeleton already in place — SAML request
-templates, ERP-generated NFe, anything produced by a tool that separates "build the envelope" from
+templates, ERP envelopes, anything produced by a tool that separates "build the envelope" from
 "sign it". This is a first-class mode:
 
 ```ruby
