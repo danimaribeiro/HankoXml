@@ -28,8 +28,9 @@ Signing is exercised in exactly three places:
 | Spec | What it proves |
 |------|----------------|
 | `spec/hanko_xml/native_spec.rb` `.sign` | `Native.sign` on the six `template_*.xml` fixtures produces output that `Native.verify` accepts with `signer.crt`; `ParseError` on garbage XML; `KeyLoadError` on a bad key. |
-| `spec/hanko_xml/nokogiri_ext_spec.rb` | `doc.sign` returns a `SignedDocument` and `doc.sign!` mutates in place -- both then `signature_valid?`. This is the **only** end-to-end coverage of `Signer#sign`/`#sign!` and of `write_back_signature`. |
+| `spec/hanko_xml/nokogiri_ext_spec.rb` | `doc.sign` returns a `SignedDocument` and `doc.sign!` mutates in place -- both then `signature_valid?`. Detached templates pass `references: ["#payload-1"]` (S-05). |
 | `spec/hanko_xml/signer_spec.rb` | Configuration only: defaults, coercion, block form, freezing, `#to_h`, `#inspect`, two `ConfigurationError`s. Never calls `#sign`. |
+| `spec/hanko_xml/signer_policy_spec.rb` | S-05: Policy and reference-URI checks run before `Native.sign` on adopted and built templates (R3/R4/R5/H7). |
 
 Adjacent but not signing: `template_spec.rb` (unsigned tree shape),
 `placement_spec.rb` (insertion modes on a bare node), `reference_spec.rb`,
@@ -114,7 +115,7 @@ with `Native.verify` **and** `HankoXml.verify` (strict or `legacy_sha1`).
 | C12 | `:base64` transform over an `<Object>` in an enveloping signature | verifies | ? |
 | C13 | Reference with `id:`/`type:` set | attributes present in output; survive write-back | pass |
 | C14 | Reference `URI` with characters needing escaping (`#a b`, `#a&b`, `#a'b`) | template escapes; native resolves or errors cleanly; no XPath injection (`verification_spec` covers verify side only) | pass |
-| C15 | External `URI="file://…"`/`http://…` in a **Signer-configured** reference | `Signer` refuses under strict policy | FAIL (S-04/S-05: policy unenforced; file is read) |
+| C15 | External `URI="file://…"`/`http://…` in a **Signer-configured** reference | `Signer` refuses under strict policy | **pass** (S-05) |
 | C16 | Enveloping signature built through the Ruby API (`<Object Id>` + `URI="#object"`) | currently impossible without a hand template? -- pin either support or the error | ? |
 
 ### D. Template modes and multiple signatures
@@ -129,7 +130,7 @@ with `Native.verify` **and** `HankoXml.verify` (strict or `legacy_sha1`).
 | D6 | Nested signatures (outer envelopes inner `<Signature>`) | inner signed first, then outer covers it; both verify | pass (depth sort exists for this; untested) |
 | D7 | `signature: 0` selects which template to sign | **depth-sorted** index (Signer) vs **document-order** index (Verifier) -- spec documents the discrepancy (S-11) | FAIL or pin |
 | D8 | `signature: 99` out of range | returns doc unchanged? raises? pin | ? |
-| D9 | Adopted template whose algorithms differ from the Signer's configuration | Signer's `signature_method: :rsa_sha256` but template says rsa-sha1 → output is SHA-1 | FAIL (S-05: should raise or be documented) |
+| D9 | Adopted template whose algorithms differ from the Signer's configuration | Signer's `signature_method: :rsa_sha256` but template says rsa-sha1 → `PolicyError` under strict | **pass** (S-05 R4) |
 | D10 | Adopted template with `KeyInfo` shapes: none / `X509Data` empty / `X509Data` with stale cert / `KeyValue` / `KeyName` | see E-group | mixed |
 
 ### E. `write_back_signature` fidelity
@@ -195,7 +196,7 @@ signed.
 | H4 | `NativeError` from a non-String `id_attributes` entry | `NativeError` message "array element is not a String" | pass |
 | H5 | Unsupported `doc_or_xml` type | `ArgumentError` | pass |
 | H6 | Concurrency: 8 threads signing simultaneously with distinct Signers | no crash, all verify (GVL + `Once` init) | pass |
-| H7 | `HankoXml.sign` with `Policy` violation in configured references | `PolicyError` before native call | FAIL (S-05) |
+| H7 | `HankoXml.sign` with `Policy` violation in configured references | `PolicyError` before native call | **pass** (S-05) |
 
 ---
 
@@ -255,17 +256,17 @@ pass there. Cert-valued `keys:` is covered under S-01 group K.
 ### S-04 / S-05 / S-10 external references, transforms, ordering
 
 S-04 verify-side ordering and URI fetch are **fixed** in
-`spec/hanko_xml/policy_ordering_spec.rb`. R3–R5 remain S-05 (Signer
-`:adopt`). Native transform allowlisting is S-10; R6 only asserts the
-Ruby policy gate.
+`spec/hanko_xml/policy_ordering_spec.rb`. S-05 Signer `:adopt` policy and
+reference-URI matching are **fixed** in `spec/hanko_xml/signer_policy_spec.rb`.
+Native transform allowlisting is S-10; R6 only asserts the Ruby policy gate.
 
-| # | Spec | After S-04 |
+| # | Spec | After S-05 |
 |---|------|------------|
 | R1 | Verifier: `<Reference URI="file:///tmp/probe">` under strict → `PolicyError` **and** the file was not opened | **pass** |
 | R2 | Verifier: same under `Policy.permissive` → Ruby allows Native.verify; native still does not fetch; `valid? == false` | **pass** (no libxml2 fetch; `referenced_documents:` is the supported path) |
-| R3 | Signer `:adopt` with a template containing a `file://` reference → `PolicyError` before `Native.sign`; file not read | still open (S-05); native URI restriction now blocks the read |
-| R4 | Signer `:adopt` with a template using rsa-sha1 while Signer is strict → `PolicyError` | still open (S-05) |
-| R5 | Signer `:adopt` with a template referencing `#attacker-node` not in `Signer#references` → error or explicit opt-in | still open (S-05) |
+| R3 | Signer `:adopt` with a template containing a `file://` reference → `PolicyError` before `Native.sign`; file not read | **pass** |
+| R4 | Signer `:adopt` with a template using rsa-sha1 while Signer is strict → `PolicyError` | **pass** |
+| R5 | Signer `:adopt` with a template referencing `#attacker-node` not in `Signer#references` → `ConfigurationError`; opt-in via `references: ["#id"]` | **pass** |
 | R6 | Verifier: XSLT transform present under strict → `PolicyError` **before** `Native.verify` | **pass** |
 | R7 | Verifier: `Native.verify` is not invoked when `inspect_sig` output already violates policy | **pass** (same specs as R1/R6/R8) |
 | R8 | `max_transforms_per_reference` exceeded → rejected before native | **pass** |

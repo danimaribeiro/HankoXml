@@ -71,16 +71,18 @@ Signer.new(key: key, template: :require) # only fill in an existing one; raise i
 Under `:adopt` (the default), `sign`/`sign!` look for `ds:Signature` elements first:
 
 - **none present** → build one from the `Signer` configuration, as described above;
-- **one or more present** → adopt them. The signer's `signature_method`, `digest_method`,
-  `canonicalization_method`, `references` and `placement` are **ignored**, because the template
-  already states them; they are read *out* of the template and validated against `Policy` exactly
-  as on verification. Only `key`, `certificates`, `key_info` and `id_attributes` still apply.
+- **one or more present** → adopt them. The template's `<SignedInfo>` is kept as-is. Before
+  `Native.sign`, `policy` is enforced on that template (same allowlist as verification) and
+  its Reference URIs must match `references`. Empty `references` means whole-document `URI=""`.
+  A fragment template therefore needs `references: ["#that-id"]`; a `file://` / SHA-1 template
+  is rejected under `Policy.strict`. Only `key`, `certificates`, `key_info` and `id_attributes`
+  still apply to the adopted skeleton.
 
 `:require` is also the one signing mode that runs without Nokogiri: nothing has to be constructed,
 so no DOM is needed.
 
-A `Signer` configured with explicit `references:` that then adopts a template raises
-`HankoXml::ConfigurationError` rather than silently discarding them.
+A template whose Reference URIs do not match `references` raises `HankoXml::ConfigurationError`.
+A template that violates `policy` raises `HankoXml::PolicyError` before any native signing call.
 
 ## Signing order for multiple/nested signatures
 

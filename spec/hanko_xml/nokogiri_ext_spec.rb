@@ -26,7 +26,7 @@ RSpec.describe "Nokogiri Core Extensions" do
 
   it "adds #sign to Nokogiri::XML::Document" do
     doc = Nokogiri::XML(unsigned_xml)
-    signed_doc = doc.sign(key: signer_key_pem, certificate: signer_cert_pem)
+    signed_doc = doc.sign(key: signer_key_pem, certificate: signer_cert_pem, references: ["#payload-1"])
     expect(signed_doc).to be_a(HankoXml::SignedDocument)
     expect(signed_doc.valid?(certificate: signer_cert_pem)).to be true
 
@@ -36,7 +36,7 @@ RSpec.describe "Nokogiri Core Extensions" do
 
   it "adds #sign! to Nokogiri::XML::Document" do
     doc = Nokogiri::XML(unsigned_xml)
-    doc.sign!(key: signer_key_pem, certificate: signer_cert_pem)
+    doc.sign!(key: signer_key_pem, certificate: signer_cert_pem, references: ["#payload-1"])
     expect(doc.signed?).to be true
     expect(doc.signature_valid?(certificate: signer_cert_pem)).to be true
   end

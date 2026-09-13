@@ -10,7 +10,7 @@ module HankoXml
   #
   # #template and #to_h inspect what a Signer would produce without signing;
   # #sign and #sign! perform the signature through the native extension.
-  class Signer
+  class Signer # rubocop:disable Metrics/ClassLength
     TEMPLATE_MODES = %i[adopt build require].freeze
 
     attr_accessor :key, :certificate, :certificates, :signature_method, :canonicalization_method,
@@ -131,8 +131,7 @@ module HankoXml
       doc = HankoXml.coerce_document(doc_or_xml)
       Dom.require!("HankoXml::Signer#sign!")
 
-      # 1. Find existing signatures or build one
-      signatures = find_or_build_signatures(doc)
+      signatures, adopted = find_or_build_signatures(doc)
 
       # Sort by depth descending (innermost first)
       signatures.sort_by! { |node| -node.ancestors.size }
@@ -143,28 +142,24 @@ module HankoXml
                              signatures
                            end
 
-      # Filter out already signed if not forced
       signatures_to_sign.reject! { |node| node_signed?(node) } unless force
 
-      # If there's nothing to sign, return the doc as-is
       return doc if signatures_to_sign.empty?
 
-      # 2. Serialize the DOM state to bytes
       xml_bytes = HankoXml.serialize(doc)
+      all_sigs_in_order = doc.xpath(".//ds:Signature", ds: NS["ds"])
 
-      # 3. For each signature to sign, we call the native layer sequentially.
-      # Wait, Native.sign takes a single signature_index and returns a fully signed byte array.
-      # But since Native.sign returns bytes, and we need to sign multiple, we can do it iteratively
-      # on the byte string, but that changes the signature index if we re-parse!
-      # Actually, since we only need to write back, we can just call Native.sign for all indices,
-      # but Native.sign operates on one index at a time.
-      # Let's do it correctly: for each signature node, find its index in document order,
-      # sign it via Native.sign, update xml_bytes for the next iteration.
+      # Policy + reference-URI checks run on every template before any
+      # Native.sign (S-05). inspect_sig does not fetch; Native.sign would.
+      # Two loops on purpose: a later template must not be signed after an
+      # earlier one already passed, if a subsequent one is hostile.
+      # rubocop:disable Style/CombinableLoops
       signatures_to_sign.each do |sig_node|
-        # In the *current* xml_bytes, we need the document-order index of this signature.
-        # But wait, we can just sign it and update xml_bytes.
-        # To find its index, we can search the Nokogiri document since we haven't changed the DOM structure.
-        all_sigs_in_order = doc.xpath(".//ds:Signature", ds: NS["ds"])
+        index = all_sigs_in_order.index(sig_node)
+        enforce_before_native_sign!(xml_bytes, index, adopted: adopted)
+      end
+
+      signatures_to_sign.each do |sig_node|
         index = all_sigs_in_order.index(sig_node)
 
         cert_pems = @certificates.map(&:to_pem)
@@ -178,9 +173,9 @@ module HankoXml
           index
         )
 
-        # 4. Write back the signed values to the caller's node
         write_back_signature(doc, xml_bytes, index, sig_node)
       end
+      # rubocop:enable Style/CombinableLoops
 
       doc
     end
@@ -199,18 +194,45 @@ module HankoXml
       if existing.empty?
         raise HankoXml::ConfigurationError, "template: :require but no <Signature> found" if @template_mode == :require
 
-        # Build one
         template_node = template(doc)
         @placement.insert(doc, template_node)
-        [template_node]
+        [[template_node], false]
       else
         if @template_mode == :build
           raise HankoXml::ConfigurationError,
                 "template: :build but <Signature> already exists"
         end
 
-        existing
+        [existing, true]
       end
+    end
+
+    # Policy is a structural allowlist over inspect_sig output. Enforce it
+    # before Native.sign so a hostile adopted template cannot choose
+    # algorithms, external URIs, or XSLT (S-05). On :adopt/:require, the
+    # template's Reference URIs must also match this Signer's references
+    # (empty references means whole-document URI=""); that is the
+    # chosen-message opt-in.
+    def enforce_before_native_sign!(xml_bytes, index, adopted:)
+      sig_info = HankoXml::SignatureInfo.from_native(Native.inspect_sig(xml_bytes, index))
+      @policy.enforce!(sig_info)
+      ensure_adopted_references_match!(sig_info) if adopted
+    end
+
+    def ensure_adopted_references_match!(sig_info)
+      expected = effective_reference_uris
+      actual = sig_info.references.map(&:uri)
+      return if expected == actual
+
+      raise HankoXml::ConfigurationError,
+            "template: #{@template_mode} would sign reference URIs #{actual.inspect}, " \
+            "which do not match this Signer's references #{expected.inspect}"
+    end
+
+    def effective_reference_uris
+      refs = @references
+      refs = [HankoXml::Reference.new(uri: "")] if refs.empty?
+      refs.map(&:uri)
     end
 
     def node_signed?(sig_node)
