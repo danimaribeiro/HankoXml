@@ -273,7 +273,7 @@ testable with plain XML assertions and no keys.
 #### Signing a document that already has a `<Signature>` template
 
 Many real documents arrive with the `<Signature>` skeleton already in place —
-SAML request templates, ERP-generated NFe, anything produced by a tool that
+SAML request templates, ERP envelopes, anything produced by a tool that
 separates "build the envelope" from "sign it". Building a second template
 next to the existing one would be wrong. This is the entire model of the
 `xmldsig` gem, and we support it as a first-class mode:
@@ -391,13 +391,13 @@ route to the right IdP key.
 checked against this `Time` instead of `Time.now`. Without it, every archived
 document becomes unverifiable the day its signing certificate expires, which is
 wrong: the question is whether the certificate was valid *when the document was
-signed*. Brazilian NFe (5-year retention, 1-3 year A1 certificates) and any
-long-lived SAML/contract archive need this. Pass the document's own timestamp,
+signed*. Long-lived archives (invoices, SAML assertions, contracts) whose
+signing certificate has since expired need this. Pass the document's own timestamp,
 or a timestamp from a trusted source — never one the signed document itself
 supplies unless it is inside signed material.
 
 ```ruby
-HankoXml::Verifier.new(store: store, verification_time: nfe.emission_time)
+HankoXml::Verifier.new(store: store, verification_time: archived_at)
 ```
 
 Setting `policy: policy.with(check_certificate_validity: false)` skips the
@@ -597,8 +597,8 @@ HankoXml::Key.from_pem(pem, password: nil)
 HankoXml::Key.from_der(der)
 HankoXml::Key.from_file(path, password: nil)
 
-# PKCS#12 — the common case for Brazilian NFe A1 certificates and for
-# Windows-exported keys. Returns key + leaf certificate + CA chain in one go.
+# PKCS#12 / PFX — Windows-exported keys and A1-style software certificates.
+# Returns key + leaf certificate + CA chain in one go.
 bundle = HankoXml::Key.from_pkcs12("cert.pfx", password: ENV["PFX_PASSWORD"])
 bundle.key           # => OpenSSL::PKey::RSA
 bundle.certificate   # => OpenSSL::X509::Certificate
@@ -873,9 +873,9 @@ id_attributes: []                                # register nothing
 ```
 
 A bare String is an unqualified attribute name; a `[href, name]` pair is a
-namespace-qualified one. The default covers SAML's `ID`, XML-DSig's and NFe's
-`Id`, and XHTML's `id` — the same broad default the current implementation
-hardcodes, now visible and overridable.
+namespace-qualified one. The default covers SAML's `ID`, XML-DSig's `Id`, and
+XHTML's `id` — the same broad default the current implementation hardcodes, now
+visible and overridable.
 
 For resolution that is not attribute-based at all (C#'s `GetIdElement`
 override), pass a resolver:
@@ -1462,14 +1462,18 @@ HankoXml.valid?(signed, certificate: cert)  # => true
 Enveloped, whole document, RSA-SHA256, exclusive C14N, `<Signature>` appended to
 the root. No template, no keys manager, no algorithm URIs.
 
-### 8.2 Brazilian NFe (the driving use case)
+### 8.2 NFe-shaped fixture (legacy SHA-1 enveloped)
+
+A spec fixture in the XML-DSig shape used by Brazilian NF-e (enveloped, RSA-SHA1,
+SHA-1, C14N 1.0). Supporting that XML is a test-case requirement, not a product
+identity.
 
 ```ruby
 require "hanko_xml"
 
 bundle = HankoXml::Key.from_pkcs12("certificado_a1.pfx", password: ENV.fetch("PFX_PASSWORD"))
 
-# NFe requires SHA-1 and explicit configuration
+# This fixture uses SHA-1, C14N 1.0, and a sibling <Signature> — the NF-e XML-DSig subset.
 signer = HankoXml::Signer.new(
   key:                     bundle.key,
   certificates:            bundle.certificates,
@@ -1481,7 +1485,7 @@ signer = HankoXml::Signer.new(
   placement:               HankoXml::Placement.after("//ds:Signature")
 )
 
-signed = signer.sign(nfe_doc)
+signed = signer.sign(nfe_shaped_doc)
 ```
 
 Which is equivalent to writing this manually without the helper wrapper.

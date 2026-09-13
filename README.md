@@ -20,7 +20,7 @@ It tightly integrates with Nokogiri, allowing you to sign and verify documents d
 - **XSW Defense:** Provides a robust `Policy` engine and structural `signed?(node)` checks to defeat XML Signature Wrapping (XSW) attacks.
 - **Rust-Backed:** Memory-safe FFI boundaries, zero shell-outs to CLI binaries, and massive performance gains over pure-Ruby cryptography.
 
-A feature and security comparison with Python [SignXML](https://pypi.org/project/signxml/), including notes on interop tests, XAdES, and protocol targets (NF-e, SAML, WS-Security), lives in [`docs/src/content/guide/comparison-signxml.md`](docs/src/content/guide/comparison-signxml.md).
+A feature and security comparison with Python [SignXML](https://pypi.org/project/signxml/), including a plan to close the remaining gaps (XAdES first), lives in [`docs/src/content/guide/comparison-signxml.md`](docs/src/content/guide/comparison-signxml.md).
 
 ## Requirements
 

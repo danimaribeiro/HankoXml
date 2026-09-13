@@ -25,8 +25,8 @@ HankoXml::Key.from_pem(pem, password: nil)
 HankoXml::Key.from_der(der)
 HankoXml::Key.from_file(path, password: nil)
 
-# PKCS#12 — the common case for Brazilian NFe A1 certificates and for
-# Windows-exported keys. Returns key + leaf certificate + CA chain in one go.
+# PKCS#12 / PFX — Windows-exported keys and A1-style software certificates.
+# Returns key + leaf certificate + CA chain in one go.
 bundle = HankoXml::Key.from_pkcs12("cert.pfx", password: ENV["PFX_PASSWORD"])
 bundle.key           # => OpenSSL::PKey::RSA
 bundle.certificate   # => OpenSSL::X509::Certificate

@@ -1,14 +1,19 @@
 ---
-title: Brazilian NFe
-description: Signing and verifying documents for Brazil's Nota Fiscal Eletrônica, the driving use case for HankoXml.
+title: NFe-shaped fixture
+description: A test document in the XML-DSig shape used by Brazilian NF-e (legacy SHA-1, C14N, enveloped).
 order: 2
 ---
 
-# Brazilian NFe (the driving use case)
+# NFe-shaped fixture
 
-NFe (Nota Fiscal Eletrônica) requires SHA-1 and explicit configuration that differs from the strict,
-modern defaults — a good demonstration of overriding [`Policy`](/reference/policy) and
-[`Signer`](/reference/signer) options deliberately, rather than reaching for `permissive`.
+HankoXml is a general XML-DSig library. This page is only a **test case**: an XML document whose
+signature shape matches Brazilian NF-e (enveloped, RSA-SHA1, SHA-1 digest, C14N 1.0, `Id` on a child
+element). The suite keeps a fixture in that shape so the library can sign and verify it. It is not a
+product profile and not a reason to treat HankoXml as an NF-e toolkit.
+
+That shape needs SHA-1 and explicit configuration that differs from the strict, modern defaults — a
+demonstration of overriding [`Policy`](/reference/policy) and [`Signer`](/reference/signer)
+deliberately, rather than reaching for `permissive`.
 
 ## Signing
 
@@ -17,7 +22,7 @@ require "hanko_xml"
 
 bundle = HankoXml::Key.from_pkcs12("certificado_a1.pfx", password: ENV.fetch("PFX_PASSWORD"))
 
-# NFe requires SHA-1 and explicit configuration
+# This fixture uses SHA-1, C14N 1.0, and a sibling <Signature> — the NF-e XML-DSig subset.
 signer = HankoXml::Signer.new(
   key:                     bundle.key,
   certificates:            bundle.certificates,
@@ -26,25 +31,28 @@ signer = HankoXml::Signer.new(
   canonicalization_method: :c14n,
   id_attributes:           %w[Id],
   key_info:                [:x509_certificate],
-  placement:               HankoXml::Placement.after("//ds:Signature")
+  placement:               HankoXml::Placement.after("//ds:Signature"),
+  policy:                  HankoXml::Policy.legacy_sha1
 )
 
-signed = signer.sign(nfe_doc)
+signed = signer.sign(nfe_shaped_doc)
 ```
 
-`HankoXml::Key.from_pkcs12` handles the A1 certificate bundle (key + leaf certificate + CA chain) in
-one call — see the [Key reference](/reference/key) for details on PKCS#12 handling.
+`HankoXml::Key.from_pkcs12` unwraps a PKCS#12 / PFX bundle (key + leaf certificate + CA chain) in
+one call — see the [Key reference](/reference/key).
 
-Because NFe requires legacy SHA-1 algorithms, use `HankoXml::Policy.legacy_sha1` (or an explicit
-`Policy#with(...)` override) rather than the default `Policy.strict`, which would reject SHA-1 as a
-digest or signature method.
+`Policy.strict` rejects SHA-1. Use `HankoXml::Policy.legacy_sha1` (or an explicit `Policy#with(...)`)
+when a document genuinely uses that subset.
 
-## Verifying a fragment signature (SAML-style, same pattern applies to NFe sub-elements)
+## Verifying a fragment signature
+
+The same APIs apply to any fragment signature (SAML assertions, a signed child element, this
+fixture’s inf\* node):
 
 ```ruby
 v = HankoXml::Verifier.new(
   store:         idp_store,
-  policy:        HankoXml::Policy.strict.with(require_signed_root: false),
+  policy:        HankoXml::Policy.fragment,
   id_attributes: %w[ID],
   signature:     :only,
 ).verify(response_doc)
@@ -53,14 +61,11 @@ raise "invalid signature" unless v.valid?
 
 assertion = response_doc.at_xpath("//saml:Assertion", "saml" => SAML_NS)
 
-# THE line that C#'s CheckSignature does not make you write, and that every
-# SAML XSW CVE is the absence of:
 raise "assertion is not covered by the signature" unless v.signed?(assertion)
 
 subject = assertion.at_xpath(".//saml:NameID", "saml" => SAML_NS).text
 ```
 
-`require_signed_root: false` is necessary here because the signature covers the `<Assertion>`, not
-the `<Response>` — precisely the case where [`#signed?`](/reference/verification) becomes mandatory
-rather than merely advisory. See [XSW Defense](/guide/xsw-defense) for why this check exists and
-what it protects against.
+`Policy.fragment` drops `require_signed_root` because the signature covers a child, not the document
+element — precisely the case where [`#signed?`](/reference/verification) is mandatory. See
+[XSW Defense](/guide/xsw-defense).

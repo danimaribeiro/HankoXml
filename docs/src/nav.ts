@@ -26,5 +26,5 @@ export const yardIndexUrl = '/api/HankoXml.html';
 
 export const examplesNav = [
   { slug: 'simplest', title: 'The Simplest Thing' },
-  { slug: 'nfe-brazil', title: 'Brazilian NFe' },
+  { slug: 'nfe-brazil', title: 'NFe-shaped fixture' },
 ];

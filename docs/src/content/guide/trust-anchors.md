@@ -53,11 +53,11 @@ HankoXml::Verifier.new(store: store)
 Certificate validity (`notBefore`/`notAfter`) is checked against this `Time` instead of `Time.now`.
 Without it, every archived document becomes unverifiable the day its signing certificate expires —
 which is wrong: the question is whether the certificate was valid *when the document was signed*.
-Brazilian NFe (5-year retention, 1-3 year A1 certificates) and any long-lived SAML/contract archive
-need this.
+Long-lived archives (invoices, SAML assertions, contracts) whose signing certificate has since
+expired need this.
 
 ```ruby
-HankoXml::Verifier.new(store: store, verification_time: nfe.emission_time)
+HankoXml::Verifier.new(store: store, verification_time: archived_at)
 ```
 
 Setting `policy: policy.with(check_certificate_validity: false)` skips the window entirely.

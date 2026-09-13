@@ -1,6 +1,6 @@
 ---
 title: Comparison with SignXML
-description: Feature and security comparison of HankoXml and the Python SignXML library, plus notes on interop tests, XAdES, and protocol targets.
+description: Feature and security comparison of HankoXml and SignXML, plus a plan to close the remaining gaps (XAdES first).
 order: 8
 ---
 
@@ -17,7 +17,7 @@ This page compares HankoXml `0.1.0` with [SignXML](https://pypi.org/project/sign
 | Age / volume | First release 2026 (`0.1.0`) | Since 2014; high PyPI volume |
 | Default verify posture | Fail closed: exactly one trust source required | Fail open: system CA store if you pass no trust args |
 
-HankoXml’s first customer profile is Brazilian NF-e, plus general XML-DSig with an explicit XSW API. SignXML’s README lists SAML 2.0, XAdES, EBICS, and WS-Security as *applications of XML-DSig*, not as first-class protocol stacks. See [What each library is actually for](#what-each-library-is-actually-for).
+HankoXml is a general Ruby XML-DSig library with a strict policy and an XSW API. One spec fixture is NFe-shaped (legacy SHA-1 enveloped) so that XML subset is proven to sign and verify. SignXML’s README lists SAML 2.0, XAdES, EBICS, and WS-Security as *applications of XML-DSig*, not as first-class protocol stacks. See [What each library is actually for](#what-each-library-is-actually-for) and [Plan to close the gap](#plan-to-close-the-gap-with-signxml).
 
 ## Feature comparison
 
@@ -77,7 +77,7 @@ From `SECURITY_REVIEW.md` (still open or partial):
 | ID | Issue | Practical impact |
 |---|---|---|
 | S-06 | Many `Policy` fields are documented but unread: `require_signed_root`, `reject_duplicate_ids`, `max_document_size`, `min_rsa_key_bits`, `min_ec_key_bits`, `allow_hmac`, `clock_skew`, `allow_retrieval_method`, `allow_same_document_xpointer`, `schema` | `Policy.strict` does **not** reject fragment signatures, duplicate IDs, 1024-bit RSA, or huge docs. `Policy.strict.schema == :default` does not turn on XSD. HMAC is still blocked via `signature_methods`, not `allow_hmac`. |
-| S-07 | `verification_time:` on `certificate:` checks the **pinned** cert’s window, not xmlsec’s view of the signing cert | Archived NF-e / SAML with an expired leaf can fail even with a historical time; `clock_skew` is unused. |
+| S-07 | `verification_time:` on `certificate:` checks the **pinned** cert’s window, not xmlsec’s view of the signing cert | Archived documents with an expired leaf can fail even with a historical time; `clock_skew` is unused. |
 | S-09 | `#signed?` assumes the whole ID’d subtree; XPath/XSLT/Manifest not modeled | Safe under `Policy.strict` (those transforms denied). Unsafe if you use `Policy.permissive`. |
 | S-10 | Source gem inherits host xmlsec (often linked to libxslt) | Direct `Native.verify` / `Policy.permissive` can run XSLT. Public API + `Policy.strict` still deny it. |
 | S-11 | Default `signature: :first` | Extra wrapping signatures are ignored unless you use `:only` or `verify_all`. SignXML’s `location` is the analogous footgun. |
@@ -146,7 +146,7 @@ Not “pass every merlin file under `Policy.strict`.” That would force XPath/X
 4. Fail the spec on `PolicyError` vs `VerificationError` vs success — the interesting cases are “xmlsec would have accepted this, HankoXml’s policy or ID table did not.”
 5. Keep `Policy.strict` as the production default. Interop coverage is a *verifier compatibility* test, not a reason to loosen defaults.
 
-Until that exists, “we bind xmlsec” is evidence of *likely* c14n/crypto interop, not evidence that a SAML IdP or a .NET NF-e signer will verify.
+Until that exists, “we bind xmlsec” is evidence of *likely* c14n/crypto interop, not evidence that a foreign signer (SAML IdP, .NET, Java xmlsec) will verify.
 
 ---
 
@@ -166,7 +166,7 @@ HankoXml has no XAdES types, no `xades:` namespace helpers, and no second refere
 
 The digest/signature algorithms stay XML-DSig. A library that can already emit two references and an `<Object>` is most of the way to XAdES-B. Timestamps and revocation are a different product.
 
-### Does NF-e need it? No.
+### Does the NFe-shaped fixture need it? No.
 
 Brazilian NF-e / NFC-e / CT-e / MDF-e use a **tiny XML-DSig subset**, not XAdES:
 
@@ -176,7 +176,7 @@ Brazilian NF-e / NFC-e / CT-e / MDF-e use a **tiny XML-DSig subset**, not XAdES:
 - `X509Data` with the **end-entity only** (`EndCertOnly`)
 - signature placed after the infNFe / equivalent node (`Id` on that node)
 
-Nothing in that profile asks for `SignedProperties`, a signature policy OID, or a timestamp token. Adding XAdES to HankoXml would not make NF-e more correct.
+Nothing in that XML subset asks for `SignedProperties`, a signature policy OID, or a timestamp token.
 
 ### Where XAdES *does* matter
 
@@ -184,22 +184,12 @@ Nothing in that profile asks for `SignedProperties`, a signature policy OID, or 
 |---|---|
 | EU eIDAS advanced / qualified electronic signatures | Yes — this is the point of XAdES |
 | European e-invoicing (some EN 16931 / national profiles) | Often yes |
-| ICP-Brasil DOC-ICP-15 (AD-RB … AD-RA) | Yes, for *some* Brazilian documents — contracts and other “electronic documents,” **not** NF-e |
+| ICP-Brasil DOC-ICP-15 (AD-RB … AD-RA) | Yes, for some Brazilian *electronic documents* (contracts), not the NF-e XML-DSig subset |
 | SAML 2.0 | No — XML-DSig over `Assertion` |
 | WS-Security / SOAP | No — XML-DSig over the body / timestamp |
 | EBICS | XML-DSig; XAdES only if a specific order type says so |
 
-So SignXML listing XAdES as a target is real for EU legal signatures. It is not a missing NF-e feature.
-
-### Should HankoXml add it?
-
-Only as a **scoped product decision**, not as a security parity item:
-
-- **Skip** if the library stays “Ruby XML-DSig with a strict policy and an NF-e example.” NF-e, SAML, and WS-Security do not need it.
-- **Add XAdES-B** (signed properties + extra reference) if the goal is ICP-Brasil AD-RB or EU baseline signatures. HankoXml’s `Reference` / `Object` / `Placement` surface can grow into this without changing libxmlsec1.
-- **Do not start with XAdES-T/A.** Timestamps, OCSP, and archive validation are a PKI-lifetime product, not an XML-DSig gap versus SignXML.
-
-Until then the honest row is: *SignXML can emit/verify baseline XAdES qualifying properties; HankoXml cannot. That does not block NF-e. It does block eIDAS and ICP-Brasil AD-\* documents.*
+SignXML listing XAdES as a target is real for EU legal signatures. **XAdES is the largest feature gap versus SignXML.** SAML, WS-Security, and the NFe-shaped fixture do not need it.
 
 ---
 
@@ -207,25 +197,67 @@ Until then the honest row is: *SignXML can emit/verify baseline XAdES qualifying
 
 SignXML’s README sentence — “used to provide payload security in SAML 2.0, XAdES, EBICS, and WS-Security” — describes **where XML-DSig shows up in the world**, not four protocol implementations. SignXML does not parse SAML metadata, speak EBICS order types, or wrap SOAP `wsse:Security` headers. It signs and verifies the XML those protocols embed.
 
-HankoXml’s NF-e example is similarly a **profile**, not the whole product. The library is general XML-DSig. NF-e is the first profile that forced SHA-1, C14N 1.0, PKCS#12 A1 bundles, signature placement, and five-year archives with short-lived certificates.
+HankoXml is the same kind of library: general XML-DSig. The NFe-shaped spec fixture exists so a legacy enveloped SHA-1 / C14N 1.0 / sibling-`<Signature>` document round-trips. That is a test-case requirement, not the product.
 
-| Profile | What XML-DSig must do | HankoXml today | SignXML today |
+| XML shape | What XML-DSig must do | HankoXml today | SignXML today |
 |---|---|---|---|
-| **NF-e / NFC-e / CT-e / MDF-e** | Enveloped, RSA-SHA1, SHA-1, C14N, `X509Data` end-entity only, `Id` on the inf\* node, PKCS#12 | First-class example (`Policy.legacy_sha1`, `Key.from_pkcs12`, `Placement.after`) | Possible with a SHA-1 `SignatureConfiguration`; no PKCS#12 helper |
-| **SAML 2.0** | Enveloped **fragment** (Assertion, not Response), exclusive c14n, often **InclusiveNamespaces PrefixList**, Assertion `ID` | `Policy.fragment` + `#at_signed`; InclusiveNamespaces **missing**; `require_signed_root` still unenforced (S-06) so fragments verify under `strict` too | Documented; InclusiveNamespaces first-class; `location=` for the Assertion |
+| **NFe-shaped fixture** | Enveloped, RSA-SHA1, SHA-1, C14N, `X509Data` end-entity only, `Id` on a child, PKCS#12 | Supported (`Policy.legacy_sha1`, `Key.from_pkcs12`, `Placement.after`) | Possible with a SHA-1 `SignatureConfiguration` |
+| **SAML 2.0** | Enveloped **fragment** (Assertion, not Response), exclusive c14n, often **InclusiveNamespaces PrefixList**, Assertion `ID` | `Policy.fragment` + `#at_signed`; InclusiveNamespaces **missing**; `require_signed_root` still unenforced (S-06) | Documented; InclusiveNamespaces first-class; `location=` for the Assertion |
 | **WS-Security** | Sign SOAP Body / Timestamp; `wsu:Id`; sometimes STR-Transform / `BinarySecurityToken` | Custom `id_attributes` might cover `wsu:Id`; STR-Transform no | Some interop fixtures; not a WSS stack |
 | **EBICS** | XML-DSig over order data + X.509 | Generic XML-DSig | Generic XML-DSig |
 | **XAdES / eIDAS / ICP-Brasil AD-\*** | Extra signed properties, later timestamps/revocation | No | Baseline XAdES yes; archival incomplete |
 
-Two consequences for HankoXml’s positioning:
-
-1. **Do not market it as “an NF-e library.”** NF-e is the worked example that keeps SHA-1 and placement honest. The security story (`Policy`, `#signed?`, pinned trust) is aimed at every XML-DSig caller.
-2. **Do not treat SignXML’s protocol list as a backlog.** SAML is the one extra profile that is close: `Policy.fragment` already exists, and the real gap is InclusiveNamespaces plus a documented Assertion `location`/`#at_signed` recipe. EBICS and WS-Security are “can you sign this XML,” which both libraries already do. XAdES is a separate overlay, discussed above.
-
 ### Practical takeaway
 
-- **Ruby, NF-e, or “pin a cert then ask whether *this* node was signed”:** HankoXml. Use `signature: :only` (or `verify_all`) and `result.at_signed(...)` rather than trusting `valid?` alone. Several `Policy.strict` knobs are still documentation-ahead-of-code.
-- **Python, SAML with InclusiveNamespaces, XAdES, RSA-PSS, HMAC, or merlin/phaos interop:** SignXML. Always pass an explicit trust anchor, set `expect_config=SignatureConfiguration(location=...)` to the real signature parent, and only consume `verify().signed_xml`.
+- **Ruby XML-DSig with pinned trust and `#signed?(node)`:** HankoXml. Use `signature: :only` (or `verify_all`) and `result.at_signed(...)` rather than trusting `valid?` alone.
+- **Python, SAML with InclusiveNamespaces, XAdES, RSA-PSS, HMAC, or merlin/phaos interop:** SignXML. Always pass an explicit trust anchor, set `expect_config=SignatureConfiguration(location=...)`, and only consume `verify().signed_xml`.
 - **Do not treat either as a drop-in for the other.** HankoXml has no XAdES, no RSA-PSS/SHA3, no HMAC key, and no InclusiveNamespaces helper. SignXML has no Ruby/Nokogiri integration and a much looser default trust story.
 
-If HankoXml grows toward SignXML’s *protocol* list, the highest-leverage next steps are **foreign-signature interop vectors** and **InclusiveNamespaces** (SAML), not XAdES and not a SOAP stack.
+---
+
+## Plan to close the gap with SignXML
+
+The main **feature** gap is XAdES. SignXML can emit and verify baseline qualifying properties; HankoXml cannot. Closing that is the work that makes the two libraries comparable for EU eIDAS / ICP-Brasil AD-RB documents. Smaller XML-DSig 1.1 gaps (RSA-PSS, InclusiveNamespaces, interop vectors) support XAdES and SAML but are not the headline.
+
+Stay at **XAdES-B** (BES / baseline B) to match what SignXML actually ships. Do not start with XAdES-T/C/XL/A (RFC 3161 timestamps, OCSP, archive timestamps) — that is a PKI-lifetime product, not SignXML parity.
+
+### Phase 1 — XAdES-B sign and verify (parity with `XAdESSigner` / `XAdESVerifier`)
+
+1. Add `HankoXml::XAdES` (or `HankoXml::Xades::Signer` / `Verifier`) as a thin layer over `Signer` / `Verifier`, not a second crypto stack. libxmlsec1 already does the digests; Ruby builds the `xades:QualifyingProperties` `ds:Object` and the extra `ds:Reference` whose URI is `#…-signedprops`.
+2. Signed properties to implement, matching SignXML: `SigningTime`, `SigningCertificate` / `SigningCertificateV2` (cert digest), optional `SignaturePolicyIdentifier`, `SignerRole/ClaimedRoles`, `DataObjectFormat`.
+3. Policy: `max_references` already allows 8; XAdES-B needs at least two (payload + SignedProperties). Default `Policy.strict` must accept that extra same-document reference without `Policy.permissive`. `require_signed_root` stays a separate concern (payload may still be the root).
+4. Verification: check the SignedProperties digest, parse the signed properties into a result object (SignXML’s `XAdESVerifyResult.signed_properties`), and fail if the signing-certificate digest does not match the cert used to verify.
+5. Tests: round-trip HankoXml → HankoXml; **verify a document produced by SignXML’s `XAdESSigner`**; sign in HankoXml and verify in SignXML if a small Python helper is acceptable in CI. No NF-e fixtures in this suite.
+
+### Phase 2 — Algorithms XAdES documents actually use
+
+SignXML’s default allowlist includes RSA-PSS (MGF1) and SHA-3. EU XAdES profiles often want RSA-PSS SHA-256, not PKCS#1 v1.5.
+
+1. Register `:rsa_pss_sha256` (and SHA-384/512) and SHA-3 digests in `Algorithms` as first-class entries, not only via `Algorithms.register`.
+2. Keep them **out** of `Policy.strict` until opted in (`Policy.xades` or `Policy.strict.with(signature_methods: …)`), same pattern as `legacy_sha1`.
+3. Confirm libxmlsec1/OpenSSL in the vendored build actually implements `rsa-pss` for these URIs before advertising them.
+
+### Phase 3 — InclusiveNamespaces (SAML, some XAdES)
+
+`Transform.exc_c14n(inclusive_prefixes:)` is in `API_CONTRACT.md` and not on `Transform`. Implement `ec:InclusiveNamespaces PrefixList` on exclusive c14n transforms. Needed for many SAML signatures; some XAdES issuers emit it too. This is the next XML-DSig gap after XAdES-B, not a substitute for it.
+
+### Phase 4 — Foreign-signature interop (not a protocol)
+
+Vendor merlin-twenty-three / phaos-three under `spec/interop/`. Verify with `Policy.interop` (or `legacy_sha1` plus HMAC/DSA as needed). Skip XPath / XSLT / XPointer the way SignXML does. Keep `Policy.strict` as the production default.
+
+### Out of scope for SignXML parity
+
+| Item | Why not in this plan |
+|---|---|
+| XAdES-T / C / XL / A | SignXML does not really ship archival XAdES either |
+| HMAC `key:` path | SignXML has it; HankoXml’s default deny is a security choice, not a missing XAdES feature |
+| SOAP / EBICS / SAML stacks | Neither library is a protocol implementation |
+| `lib/hanko_xml/profiles/nfe.rb` | Do not add an NF-e product profile. The existing XML fixture is enough |
+
+### Suggested order of PRs
+
+1. XAdES-B types + template (`QualifyingProperties` + second Reference) + sign/verify round-trip
+2. Cross-check against SignXML-produced XAdES-B XML
+3. RSA-PSS (and SHA-3 if xmlsec supports it) behind `Policy.xades`
+4. InclusiveNamespaces on exclusive c14n
+5. merlin/phaos interop corpus under `Policy.interop`

@@ -29,7 +29,7 @@ HankoXml::Key.from_file(path, password: nil)
 
 ## PKCS#12 bundles
 
-The common case for Brazilian NFe A1 certificates and for Windows-exported keys. Returns key + leaf
+PKCS#12 / PFX bundles (Windows-exported keys, A1-style software certificates). Returns key + leaf
 certificate + CA chain in one go.
 
 ```ruby
