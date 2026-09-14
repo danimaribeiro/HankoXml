@@ -168,6 +168,21 @@ HankoXml.verify!(
 
 Bug reports and pull requests are welcome on GitHub at https://github.com/danimaribeiro/HankoXml.
 
+`bundle exec rake compile spec` by default builds the Rust extension against
+your system's `libxmlsec1` (see "Building from source" above), which is fine
+for day-to-day development. But the system library's build configuration can
+differ from the pinned, vendored `libxmlsec1` that CI and the released gem
+actually use — on macOS with Homebrew's `libxmlsec1`, this has been observed
+to make some native URI-restriction and `KeyValue` specs fail or hang. Before
+relying on a full local `bundle exec rspec` run (e.g. to validate a security
+fix), rebuild against the vendored library instead:
+
+```sh
+HANKO_XML_VENDOR=1 bundle exec rake compile spec
+```
+
+See [VENDORING.md](VENDORING.md) for details on what gets vendored and why.
+
 ## License
 
 The gem is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
