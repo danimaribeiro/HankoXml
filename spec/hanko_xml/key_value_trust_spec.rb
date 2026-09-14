@@ -183,7 +183,10 @@ RSpec.describe "S-01 KeyValue trust" do
     end
 
     it "still accepts a genuine signature via certificate:" do
-      signed = sign_with(key_value_template, signer_key_pem)
+      # no_keyinfo_template, not key_value_template: an empty <KeyValue/>
+      # (deliberately incomplete -- this test only cares about trust, not
+      # KeyInfo shape) fails XSD schema validation (Policy.strict.schema).
+      signed = sign_with(no_keyinfo_template, signer_key_pem)
 
       expect(HankoXml.verify(signed, certificate: signer_cert_pem).valid?).to be true
     end

@@ -114,6 +114,54 @@ RSpec.describe HankoXml::Policy do
 
       expect(described_class.strict.violations(info).map(&:message).join).to match(/max_references/)
     end
+
+    # S-06: fields that only need signature_info (no DOM/key material).
+    it "flags an HMAC signature method regardless of signature_methods (allow_hmac)" do
+      info = HankoXml::SignatureInfo.new(
+        signature_method: "http://www.w3.org/2001/04/xmldsig-more#hmac-sha256",
+        canonicalization_method: "http://www.w3.org/2001/10/xml-exc-c14n#",
+        references: [{ uri: "", digest_method: "http://www.w3.org/2001/04/xmlenc#sha256", transforms: [] }]
+      )
+      policy = described_class.strict.with(signature_methods: described_class.strict.signature_methods + [:hmac_sha256])
+
+      expect(policy.violations(info).map(&:message).join).to match(/allow_hmac/)
+    end
+
+    it "allows HMAC when allow_hmac is true" do
+      info = HankoXml::SignatureInfo.new(
+        signature_method: "http://www.w3.org/2001/04/xmldsig-more#hmac-sha256",
+        canonicalization_method: "http://www.w3.org/2001/10/xml-exc-c14n#",
+        references: [{ uri: "", digest_method: "http://www.w3.org/2001/04/xmlenc#sha256", transforms: [] }]
+      )
+      policy = described_class.strict.with(
+        signature_methods: described_class.strict.signature_methods + [:hmac_sha256],
+        allow_hmac: true
+      )
+
+      expect(policy.violations(info)).to be_empty
+    end
+
+    it "flags a RetrievalMethod in KeyInfo when allow_retrieval_method is false" do
+      info = HankoXml::SignatureInfo.new(
+        signature_method: "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
+        canonicalization_method: "http://www.w3.org/2001/10/xml-exc-c14n#",
+        references: [{ uri: "", digest_method: "http://www.w3.org/2001/04/xmlenc#sha256", transforms: [] }],
+        has_retrieval_method: true
+      )
+
+      expect(described_class.strict.violations(info).map(&:message).join).to match(/RetrievalMethod/)
+    end
+
+    it "flags a same-document XPointer reference when allow_same_document_xpointer is false" do
+      info = HankoXml::SignatureInfo.new(
+        signature_method: "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
+        canonicalization_method: "http://www.w3.org/2001/10/xml-exc-c14n#",
+        references: [{ uri: "#xpointer(/)", digest_method: "http://www.w3.org/2001/04/xmlenc#sha256",
+                       transforms: [] }]
+      )
+
+      expect(described_class.strict.violations(info).map(&:message).join).to match(/allow_same_document_xpointer/)
+    end
   end
 
   describe "#enforce!" do

@@ -43,7 +43,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-03 | **High** | Verification | Fragment-reference resolution disagrees between xmlsec (libxml2 ID table: DTD- and `xml:id`-aware, namespace-agnostic) and `Verification#signed?` (XPath over configured attribute names, no-namespace only). A DTD internal subset lets an attacker make `signed?` bless an unsigned node while the signature stays valid | **fixed** (#28/#34) | confirmed (spec X1/X3) |
 | S-04 | **High** | Verifier / native | Policy is enforced *after* `Native.verify`, so external `Reference URI="file://…"`/`http://…` are dereferenced by xmlsec before `allow_external_references: false` rejects them (local-file digest oracle, SSRF) | **fixed** | confirmed (spec R1/R2/R6/R8) |
 | S-05 | **High** | Signer | `Signer#sign!` (default `template: :adopt`) signs any pre-existing `<Signature>` template in the input with the caller's key and never enforces `Signer#policy`: a signing oracle for attacker-chosen algorithms, references and external URIs | **fixed** | confirmed (spec R3/R4/R5) |
-| S-06 | **Medium** | Policy | 11 of 18 `Policy` fields were declared and documented as enforced but never checked. After #30, `check_certificate_validity` is honored on the `store:` path only; the other ten fields are still unread. | **partial** (#30) | confirmed (grep), re-checked |
+| S-06 | **Medium** | Policy | 11 of 18 `Policy` fields were declared and documented as enforced but never checked. After #30, `check_certificate_validity` is honored on the `store:` path only; the other ten fields are still unread. | **fixed** | confirmed (grep), re-checked |
 | S-07 | **Medium** | Verifier | `verification_time:` validates only the *trusted* certificates' validity window, never the signing certificate; `check_certificate_validity: false` has no effect. After #30, `store:` applies both knobs to the signing cert via `StoreContext`; `certificate:` is unchanged. | **partial** (#30) | confirmed, re-checked |
 | S-08 | **Medium** | Verifier | `keys:` with a public key (not a certificate) produces an empty trust set. After #30, key-valued entries pass `to_pem` and pin `signKey`. Cert-valued entries still hit S-01. | **fixed** (#30) | confirmed, then re-checked |
 | S-09 | **Medium** | Verification | `Reference#valid?` is just `Verification#valid?`; per-reference status, `Manifest`, `RetrievalMethod` and `Object` semantics are not surfaced, so `signed?` over-approximates for anything but the simplest shapes | **fixed** | code review |
@@ -83,7 +83,7 @@ trust source → `ConfigurationError`).
       `reference_element_indexes` (#28)
 - [x] **S-04** (#35) policy before crypto; do not dereference external URIs first
 - [x] **S-05** (#36) `template: :adopt` signing oracle; enforce Signer policy
-- [ ] **S-06** (#37) remaining unenforced Policy fields
+- [x] **S-06** (#37) remaining unenforced Policy fields
 - [ ] **S-07** (#38) remaining: `certificate:` path + native `certsVerificationTime`
 - [x] **S-09** (#39) per-reference validity / `signed?` over-approximation
 - [ ] **S-10** (#40) restrict transforms/URIs regardless of host xmlsec build
@@ -162,7 +162,9 @@ is superseded by #30.
 from libxml2's ID table (`xmlGetID`) after verification; `Verification` maps
 those indexes onto the caller's DOM. Specs X1 (DTD) and X3 (`xml:id`) in
 `spec/hanko_xml/id_resolution_spec.rb` pass. Remaining related work: S-20
-(root-element Id registration, #50) and unused `reject_duplicate_ids` (S-06).
+(root-element Id registration, #50). `reject_duplicate_ids` is now enforced
+(S-06); those two specs deliberately construct duplicate-ID documents to
+exercise this resolution mismatch, so they opt out of it explicitly.
 
 Two independent resolvers ~~decide~~ decided which node `URI="#id"` denotes:
 
@@ -254,33 +256,61 @@ fetch is still blocked natively (S-04). Transform registration on a direct
 
 Do not re-open the adopt-side oracle.
 
-### S-06 -- Unenforced `Policy` fields  [confirmed, Medium, **partial**]
+### S-06 -- Unenforced `Policy` fields  [confirmed, Medium, **fixed**]
 
-**Disposition:** `check_certificate_validity` is now read on the `store:`
-path (`StoreContext` + `V_FLAG_NO_CHECK_TIME`). Every other listed field is
-still unread. `Policy#violations` is unchanged.
+**Disposition:** fixed. All ten previously-unread fields are now checked.
 
-`Policy#violations` checks `signature_methods`, `canonicalization_methods`,
-`digest_methods`, `transforms`, `max_references`, `require_references`,
-`max_transforms_per_reference`, `allow_external_references`. It never reads:
+`Policy#violations(signature_info, document:, sig_node:, id_attributes:,
+xml_bytes:, check_root_signed:)` now additionally checks:
 
-`allow_retrieval_method`, `allow_same_document_xpointer`,
-`require_signed_root`, `reject_duplicate_ids`, `max_document_size`,
-`min_rsa_key_bits`, `min_ec_key_bits`, `allow_hmac`,
-`clock_skew`, `schema`.
+- `allow_retrieval_method` -- `inspect_document` (Rust) now reports whether
+  `<KeyInfo>` contains a `<RetrievalMethod>`, checked structurally, before
+  any dereferencing (same defense-in-depth posture as S-04's URI checks).
+- `allow_same_document_xpointer` -- `ReferenceInfo#same_document_xpointer?`
+  (a bare `#xpointer(...)` URI, not a plain `#id` fragment).
+- `allow_hmac` -- rejects an HMAC `SignatureMethod` regardless of what a
+  customized `signature_methods` allowlist permits.
+- `require_signed_root` -- a structural pre-crypto check: does any Reference
+  have `URI=""` or `URI="#" + <one of the root element's own id_attributes>`?
+  Mirrors the same "" == whole-document convention `dsig.rs` and
+  `Verification#resolve_reference` already use. **Verifier only** --
+  `require_signed_root` is a verification-time XSW defence
+  (API_CONTRACT.md §5.8.1), not a constraint on what is legitimate to sign,
+  so `Signer#sign!` passes `check_root_signed: false` and still signs a
+  caller-chosen fragment (R5) under `Policy.strict`.
+- `reject_duplicate_ids` -- a whole-document scan for more than one element
+  sharing an id_attributes value, at both sign and verify time. As coarse as
+  `xmlSecAddIDs` itself (S-03): unqualified attribute name only, no
+  namespace.
+- `max_document_size` -- checked against the serialized byte size, at both
+  sign and verify time, before `Native.verify`/`Native.sign`.
+- `schema` -- `Verifier#schema` now defaults to `policy.schema` instead of
+  `nil` (a new `schema:` kwarg default lets `schema: nil` still opt out
+  explicitly). `Policy.strict.schema == :default` now actually turns on XSD
+  validation without the caller passing `schema:`.
 
-`check_certificate_validity` is no longer "only in `policy.rb`": `Verifier`
-uses it for `store:`. Effects a consumer would reasonably rely on and does
-not get: a 1024-bit RSA key verifies under `Policy.strict`; a fragment-only
-signature verifies under `Policy.strict` (`require_signed_root: true`) unless
-the caller checks `covers_root?` themselves; `Policy.strict.schema == :default`
-does not turn on XSD validation (only `Verifier.new(schema: :default)` does);
-duplicate IDs are never rejected (S-03); `max_document_size` never bounds the
-FFI input (S-12); `check_certificate_validity: false` still cannot disable
-xmlsec's time check on the `certificate:` path (S-07).
+`min_rsa_key_bits` / `min_ec_key_bits` are checked by a separate
+`Policy#enforce_key_size!(keys)`, not `#violations`/`#enforce!`: the real
+signing/trust key is only known once Signer has its own key, or Verifier has
+resolved trust material (after the SignatureInfo-only checks already ran).
+Signer checks its own key once per `#sign!` call; Verifier checks every
+`collect_trust`-resolved PEM before `Native.verify`.
 
-`Policy.permissive`'s doc comment ("Everything libxmlsec1 supports") and the
-docs site reference pages describe these as live controls.
+`clock_skew` widens the `verification_time` certificate-expiry window (both
+ends) in `Verifier#verify_single`, where that check already lived (S-07
+still tracks the rest of that block: `check_certificate_validity` /
+`verification_time` not applying on the `certificate:` path).
+
+`check_certificate_validity` on `store:` (from #30) is unchanged.
+
+Not done, deliberately out of scope: a `Verifier.new`-time guard rejecting
+`allow_hmac: true` combined with `certificate:`/`certificates:`/`store:`
+trust (an HMAC-confusion defense API_CONTRACT.md §5.8 describes). It was
+tried and reverted -- it directly conflicts with `Policy.permissive` (which
+sets `allow_hmac: true`) being usable with `certificate:` trust at all,
+which existing tests and `HankoXml.validate`'s documented `Policy.permissive`
+forwarding both rely on. Fixing that contradiction is a separate decision,
+not a mechanical enforcement gap.
 
 ### S-07 -- `verification_time:` checks the wrong certificates  [confirmed, Medium, **partial**]
 

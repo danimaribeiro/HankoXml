@@ -131,7 +131,12 @@ RSpec.describe "S-05 Signer policy before Native.sign" do
       references: ["#payload-1"]
     )
 
-    expect(HankoXml.verify(signed.to_xml, certificate: signer_cert_pem).valid?).to be true
+    # A fragment signature does not cover the document root; require_signed_root
+    # (a verification-time XSW defence, not a signing constraint -- S-06) does
+    # not apply to Signer (that is the whole point of this test), but Verifier
+    # still enforces it by default, so verifying it needs the explicit opt-out.
+    policy = HankoXml::Policy.strict.with(require_signed_root: false)
+    expect(HankoXml.verify(signed.to_xml, certificate: signer_cert_pem, policy: policy).valid?).to be true
   end
 
   it "rejects a Signer-configured file:// reference before Native.sign (H7/C15)" do

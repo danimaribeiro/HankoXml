@@ -30,20 +30,33 @@ module HankoXml
       def external?
         !(uri.to_s.empty? || fragment?)
       end
+
+      # Same-document XPointer, e.g. `#xpointer(/)` or `#xpointer(id('x'))` --
+      # not a bare `#id` fragment (S-06, `allow_same_document_xpointer`).
+      def same_document_xpointer?
+        fragment? && uri[1..].to_s.include?("(")
+      end
     end
 
     attr_reader :signature_method, :canonicalization_method, :signature_count,
                 :key_names, :certificates, :references
 
     def initialize(signature_method:, canonicalization_method:, references:,
-                   signature_count: 1, key_names: [], certificates: [])
+                   signature_count: 1, key_names: [], certificates: [], has_retrieval_method: false)
       @signature_method = signature_method
       @canonicalization_method = canonicalization_method
       @signature_count = signature_count
       @key_names = key_names.freeze
       @certificates = certificates.freeze
       @references = references.map { |r| r.is_a?(ReferenceInfo) ? r : ReferenceInfo.new(**r) }.freeze
+      @has_retrieval_method = has_retrieval_method
       freeze
+    end
+
+    # Whether `<KeyInfo>` contains a `<RetrievalMethod>` (S-06,
+    # `allow_retrieval_method`).
+    def retrieval_method?
+      @has_retrieval_method
     end
 
     def signature_method_name
@@ -58,13 +71,19 @@ module HankoXml
     # (String keys/URIs throughout).
     def self.from_native(hash)
       new(
-        signature_method: hash[:signature_method] || hash["signature_method"],
-        canonicalization_method: hash[:canonicalization_method] || hash["canonicalization_method"],
-        signature_count: hash[:signature_count] || hash["signature_count"] || 1,
-        key_names: hash[:key_names] || hash["key_names"] || [],
-        certificates: hash[:certificates] || hash["certificates"] || [],
-        references: hash[:references] || hash["references"] || []
+        signature_method: fetch(hash, :signature_method),
+        canonicalization_method: fetch(hash, :canonicalization_method),
+        signature_count: fetch(hash, :signature_count) || 1,
+        key_names: fetch(hash, :key_names) || [],
+        certificates: fetch(hash, :certificates) || [],
+        references: fetch(hash, :references) || [],
+        has_retrieval_method: fetch(hash, :has_retrieval_method) || false
       )
     end
+
+    def self.fetch(hash, key)
+      hash[key] || hash[key.to_s]
+    end
+    private_class_method :fetch
   end
 end

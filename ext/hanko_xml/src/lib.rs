@@ -323,6 +323,12 @@ fn native_inspect(
             hash.aset(ruby.to_symbol("references"), refs)
                 .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
 
+            hash.aset(
+                ruby.to_symbol("has_retrieval_method"),
+                result.has_retrieval_method.into_value_with(ruby),
+            )
+            .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
+
             Ok(hash)
         }
         Err(msg) => {

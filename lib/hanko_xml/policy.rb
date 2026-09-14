@@ -1,9 +1,11 @@
 # frozen_string_literal: true
 
+require "openssl"
+
 module HankoXml
   # A frozen allowlist, enforced in Ruby before anything reaches
   # libxmlsec1, on both signing and verification. See API_CONTRACT.md §5.8.
-  class Policy
+  class Policy # rubocop:disable Metrics/ClassLength
     FIELDS = %i[
       signature_methods digest_methods canonicalization_methods transforms
       allow_external_references allow_retrieval_method allow_same_document_xpointer
@@ -107,13 +109,41 @@ module HankoXml
     # Validates +signature_info+ (a SignatureInfo) against this policy.
     # Returns an Array<HankoXml::PolicyError>, empty when compliant. Never
     # raises for a policy violation -- that is #enforce!'s job.
-    def violations(signature_info)
+    #
+    # +signature_info+ alone is enough for every algorithm/structural check
+    # (works without a DOM, per API_CONTRACT.md §6.1). The keyword
+    # arguments are optional context that only Signer/Verifier -- which
+    # always have a DOM and trust material -- can supply, for the handful
+    # of fields that genuinely need it (S-06):
+    #
+    # @param document [Nokogiri::XML::Document, nil] enables
+    #   +require_signed_root+ / +reject_duplicate_ids+.
+    # @param sig_node [Nokogiri::XML::Node, nil] the `<Signature>` being
+    #   checked, alongside +document+.
+    # @param id_attributes [Array<String>, nil] the caller's `id_attributes:`,
+    #   alongside +document+.
+    # @param xml_bytes [String, nil] the serialized document, for
+    #   +max_document_size+.
+    # @param check_root_signed [Boolean] whether to apply
+    #   +require_signed_root+ here. `require_signed_root` (API_CONTRACT.md
+    #   §5.8.1) is a *verification*-time XSW defence -- it says nothing
+    #   about what is legitimate to produce, so {Signer} deliberately signs
+    #   a caller-chosen fragment (opted into via `references:`, R5) without
+    #   tripping it; only {Verifier} checks it.
+    #
+    # +min_rsa_key_bits+ / +min_ec_key_bits+ are not checked here -- they
+    # need the actual signing/trust key material, which is only available
+    # once Signer/Verifier have resolved it. See #enforce_key_size!.
+    def violations(signature_info, document: nil, sig_node: nil, id_attributes: nil, xml_bytes: nil,
+                   check_root_signed: true)
       errors = []
 
       errors << algorithm_violation(:signature, signature_methods, signature_info.signature_method,
                                     "signature_methods")
       errors << algorithm_violation(:canonicalization, canonicalization_methods,
                                     signature_info.canonicalization_method, "canonicalization_methods")
+      errors << hmac_violation(signature_info)
+      errors << retrieval_method_violation(signature_info)
 
       if require_references && signature_info.references.empty?
         errors << HankoXml::PolicyError.new(
@@ -129,9 +159,47 @@ module HankoXml
         )
       end
 
-      signature_info.references.each do |ref|
-        errors << algorithm_violation(:digest, digest_methods, ref.digest_method, "digest_methods",
-                                      reference_uri: ref.uri)
+      errors.concat(reference_violations(signature_info.references))
+      errors << root_signed_violation(document, sig_node, signature_info, id_attributes) if check_root_signed
+      errors << duplicate_id_violation(document, id_attributes)
+      errors << document_size_violation(xml_bytes)
+
+      errors.compact
+    end
+
+    # Raises HankoXml::PolicyError (with all violations joined into the
+    # message) if +signature_info+ violates this policy. Accepts the same
+    # optional context keywords as #violations.
+    def enforce!(signature_info, document: nil, sig_node: nil, id_attributes: nil, xml_bytes: nil,
+                 check_root_signed: true)
+      errors = violations(signature_info, document: document, sig_node: sig_node, id_attributes: id_attributes,
+                                          xml_bytes: xml_bytes, check_root_signed: check_root_signed)
+      return if errors.empty?
+
+      raise HankoXml::PolicyError, errors.map(&:message).join("; ")
+    end
+
+    # Raises HankoXml::PolicyError if any of +keys+
+    # (OpenSSL::PKey::PKey / OpenSSL::X509::Certificate) is smaller than
+    # this policy's min_rsa_key_bits / min_ec_key_bits (S-06). Separate from
+    # #enforce! because the real signing/trust key is only known once
+    # Signer/Verifier have resolved it (Signer's own key; Verifier's
+    # resolved trust material) -- after SignatureInfo has already been
+    # policy-checked.
+    def enforce_key_size!(keys)
+      errors = Array(keys).filter_map { |key| key_size_violation(key) }
+      return if errors.empty?
+
+      raise HankoXml::PolicyError, errors.map(&:message).join("; ")
+    end
+
+    private
+
+    def reference_violations(references)
+      references.flat_map do |ref|
+        errors = [
+          algorithm_violation(:digest, digest_methods, ref.digest_method, "digest_methods", reference_uri: ref.uri)
+        ]
 
         if ref.transforms.size > max_transforms_per_reference
           errors << HankoXml::PolicyError.new(
@@ -145,26 +213,130 @@ module HankoXml
                                         reference_uri: ref.uri)
         end
 
-        next unless !allow_external_references && ref.external?
+        if !allow_external_references && ref.external?
+          errors << HankoXml::PolicyError.new(
+            "reference URI #{ref.uri.inspect} is external, and allow_external_references is false"
+          )
+        end
 
-        errors << HankoXml::PolicyError.new(
-          "reference URI #{ref.uri.inspect} is external, and allow_external_references is false"
-        )
+        if !allow_same_document_xpointer && ref.same_document_xpointer?
+          errors << HankoXml::PolicyError.new(
+            "reference URI #{ref.uri.inspect} is a same-document XPointer, and " \
+            "allow_same_document_xpointer is false"
+          )
+        end
+
+        errors
       end
-
-      errors.compact
     end
 
-    # Raises HankoXml::PolicyError (with all violations joined into the
-    # message) if +signature_info+ violates this policy.
-    def enforce!(signature_info)
-      errors = violations(signature_info)
-      return if errors.empty?
+    def hmac_violation(signature_info)
+      return nil if allow_hmac
 
-      raise HankoXml::PolicyError, errors.map(&:message).join("; ")
+      name = Algorithms.name_for(:signature, signature_info.signature_method)
+      return nil unless name.to_s.start_with?("hmac")
+
+      HankoXml::PolicyError.new(
+        "signature method #{signature_info.signature_method} (#{name.inspect}) is HMAC-based, " \
+        "and allow_hmac is false"
+      )
     end
 
-    private
+    def retrieval_method_violation(signature_info)
+      return nil if allow_retrieval_method
+      return nil unless signature_info.retrieval_method?
+
+      HankoXml::PolicyError.new(
+        "<KeyInfo> contains a <RetrievalMethod>, and allow_retrieval_method is false"
+      )
+    end
+
+    # Structural check: does any Reference cover the document root? Mirrors
+    # the same "" == whole document convention `dsig.rs` and
+    # `Verification#resolve_reference` already use, plus a bare `#id`
+    # matching one of the root element's own id_attributes. This runs
+    # before any cryptography -- it does not need (and does not wait for)
+    # a real Verification#covers_root? (S-06).
+    def root_signed_violation(document, sig_node, signature_info, id_attributes)
+      return nil unless require_signed_root
+      return nil if document.nil? || sig_node.nil? # no DOM context: cannot check, so don't fail closed here
+      return nil if signature_info.references.any? { |ref| ref.uri.to_s.empty? }
+
+      root_ids = root_id_values(document, id_attributes)
+      return nil if signature_info.references.any? { |ref| ref.fragment? && root_ids.include?(ref.uri[1..]) }
+
+      HankoXml::PolicyError.new(
+        "this policy requires the root element to be signed (require_signed_root), but no " \
+        "<Reference> covers it"
+      )
+    end
+
+    def root_id_values(document, id_attributes)
+      root = document.root
+      return [] if root.nil? || id_attributes.nil?
+
+      id_attributes.filter_map { |attr| root[attr.is_a?(Array) ? attr[1].to_s : attr.to_s] }
+    end
+
+    # Whole-document duplicate-ID scan (S-06). Deliberately as coarse as
+    # xmlSecAddIDs itself (S-03): matches by unqualified attribute name
+    # only, ignoring namespace.
+    def duplicate_id_violation(document, id_attributes)
+      return nil unless reject_duplicate_ids
+      return nil if document.nil? || id_attributes.nil? || id_attributes.empty?
+
+      names = id_attributes.map { |attr| attr.is_a?(Array) ? attr[1].to_s : attr.to_s }
+      seen = Hash.new(0)
+      document.traverse do |node|
+        next unless node.element?
+
+        names.each do |name|
+          value = node[name]
+          seen[value] += 1 if value
+        end
+      end
+      return nil unless seen.any? { |_, count| count > 1 }
+
+      HankoXml::PolicyError.new(
+        "document has more than one element with the same ID attribute value, and " \
+        "reject_duplicate_ids is true"
+      )
+    end
+
+    def document_size_violation(xml_bytes)
+      return nil if xml_bytes.nil?
+      return nil if xml_bytes.bytesize <= max_document_size
+
+      HankoXml::PolicyError.new(
+        "document is #{xml_bytes.bytesize} bytes, more than this policy's max_document_size " \
+        "(#{max_document_size})"
+      )
+    end
+
+    def key_size_violation(key)
+      kind, bits = key_bits(key)
+      return nil if kind.nil?
+
+      minimum = kind == :rsa ? min_rsa_key_bits : min_ec_key_bits
+      return nil if bits >= minimum
+
+      HankoXml::PolicyError.new(
+        "#{kind} key is #{bits} bits, less than this policy's " \
+        "#{kind == :rsa ? "min_rsa_key_bits" : "min_ec_key_bits"} (#{minimum})"
+      )
+    end
+
+    def key_bits(key)
+      public_key = key.is_a?(::OpenSSL::X509::Certificate) ? key.public_key : key
+      case public_key
+      when ::OpenSSL::PKey::RSA
+        [:rsa, public_key.n.num_bits]
+      when ::OpenSSL::PKey::EC
+        [:ec, public_key.group.degree]
+      else
+        [nil, nil]
+      end
+    end
 
     def algorithm_violation(slot, allowlist, uri_or_name, field_name, reference_uri: nil)
       return nil if uri_or_name.nil?

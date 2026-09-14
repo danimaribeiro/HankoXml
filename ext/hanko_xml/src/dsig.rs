@@ -656,6 +656,10 @@ pub struct InspectResult {
     pub key_names: Vec<String>,
     pub certificates: Vec<String>,
     pub references: Vec<InspectReference>,
+    /// Whether `<KeyInfo>` contains a `<RetrievalMethod>` (S-06,
+    /// `allow_retrieval_method`) -- checked structurally, before any
+    /// dereferencing, the same way S-04 checks Reference URIs.
+    pub has_retrieval_method: bool,
 }
 
 #[derive(Debug)]
@@ -749,9 +753,10 @@ pub fn inspect_document(
         });
     }
 
-    // KeyInfo — KeyName and X509Certificate
+    // KeyInfo — KeyName, X509Certificate, and RetrievalMethod presence
     let mut key_names = Vec::new();
     let mut certificates = Vec::new();
+    let mut has_retrieval_method = false;
     if let Some(key_info) = unsafe { find_child(sig_node, "KeyInfo", DSIG_NS) } {
         // KeyName elements
         let key_name_nodes = unsafe { find_children(key_info, "KeyName", DSIG_NS) };
@@ -775,6 +780,9 @@ pub fn inspect_document(
                 }
             }
         }
+
+        has_retrieval_method =
+            unsafe { find_child(key_info, "RetrievalMethod", DSIG_NS) }.is_some();
     }
 
     Ok(InspectResult {
@@ -784,6 +792,7 @@ pub fn inspect_document(
         key_names,
         certificates,
         references,
+        has_retrieval_method,
     })
 }
 

@@ -90,8 +90,18 @@ RSpec.describe HankoXml do
         it "validates a #{description} signature" do
           xml = fixtures.join(filename).read
 
-          # NFe uses SHA-1, which strict policy rejects
-          policy = filename == "signed_nfe.xml" ? HankoXml::Policy.legacy_sha1 : HankoXml::Policy.strict
+          # NFe uses SHA-1, which strict policy rejects. "enveloping" and
+          # "detached" sign a fragment (an <Object> / sibling element, not
+          # the document root), so require_signed_root -- a verification-time
+          # XSW defence, not a format constraint -- does not apply (S-06).
+          policy = case filename
+                   when "signed_nfe.xml"
+                     HankoXml::Policy.legacy_sha1.with(require_signed_root: false)
+                   when "signed_enveloping.xml", "signed_detached.xml"
+                     HankoXml::Policy.strict.with(require_signed_root: false)
+                   else
+                     HankoXml::Policy.strict
+                   end
 
           expect(described_class.verify(xml, certificate: signer_cert_pem, policy: policy).valid?).to be true
           expect(described_class.verify(xml, certificate: other_cert_pem, policy: policy).valid?).to be false

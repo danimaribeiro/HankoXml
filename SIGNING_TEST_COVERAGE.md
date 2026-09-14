@@ -163,7 +163,7 @@ signed.
 | F5 | `key:` is a **public** key | `KeyLoadError`/`SigningError` at sign time (not a silent bad signature); ideally `ConfigurationError` at construction | ? |
 | F6 | `key:` and `certificate:` do not match | should raise at construction | FAIL (S-14, confirmed: signs, verifies with nothing) |
 | F7 | `certificate:` given as a private key PEM | `ConfigurationError` | ? |
-| F8 | RSA-1024 key | strict `Signer` refuses (`min_rsa_key_bits`) | FAIL (S-06) |
+| F8 | RSA-1024 key | strict `Signer` refuses (`min_rsa_key_bits`) | pass (S-06, `Policy#enforce_key_size!`) |
 | F9 | EC P-256 / P-384 / Ed25519 keys | ECDSA signs; Ed25519 raises a clear error (no XML-DSig URI registered) | ? |
 | F10 | `Key#dispose!` then `sign` | `KeyLoadError "disposed"` | pass |
 | F11 | `certificates:` with an expired intermediate | sign succeeds (signing does not validate the chain) -- document it | ? |
@@ -271,20 +271,20 @@ Native transform allowlisting is S-10; R6 only asserts the Ruby policy gate.
 | R7 | Verifier: `Native.verify` is not invoked when `inspect_sig` output already violates policy | **pass** (same specs as R1/R6/R8) |
 | R8 | `max_transforms_per_reference` exceeded → rejected before native | **pass** |
 
-### S-06 unenforced policy fields (one spec per field; `check_certificate_validity` is **partial** on `store:` after #30, the rest still FAIL today)
+### S-06 policy fields (fixed; see `spec/hanko_xml/policy_enforcement_spec.rb` and `spec/hanko_xml/policy_spec.rb`)
 
-| Field | Spec |
-|-------|------|
-| `require_signed_root` | fragment-only signature under strict → `PolicyError` |
-| `reject_duplicate_ids` | X5 |
-| `max_document_size` | 16 MiB + 1 byte under strict → `PolicyError`; `Native.*` not called |
-| `min_rsa_key_bits` | RSA-1024 signing cert → `PolicyError`; RSA-2048 passes |
-| `min_ec_key_bits` | P-192/secp160 (if OpenSSL allows) → `PolicyError`; P-256 passes |
-| `allow_hmac` | `hmac-sha256` SignatureMethod → `PolicyError` under strict regardless of `signature_methods` |
-| `allow_retrieval_method` | `<RetrievalMethod>` in KeyInfo → `PolicyError` |
-| `allow_same_document_xpointer` | `URI="#xpointer(/)"` → `PolicyError` |
-| `check_certificate_validity` / `clock_skew` | expired signing cert: strict → `CertificateExpired`; `check_certificate_validity: false` → valid; `clock_skew: 3600` accepts a cert that expired 30 min ago. After #30 the `store:` path honors `check_certificate_validity` via `StoreContext`; `certificate:` and `clock_skew` still FAIL. |
-| `schema` | `Policy.strict.schema == :default` → `Verifier` validates the `<Signature>` against the XSD without the caller passing `schema:` |
+| Field | Spec | Status |
+|-------|------|--------|
+| `require_signed_root` | fragment-only signature under strict → `PolicyError`; `Policy.fragment` / whole-document accepts | pass (Verifier only -- Signer deliberately does not check it, R5) |
+| `reject_duplicate_ids` | duplicate ID attribute value anywhere in the document → `PolicyError` at sign and verify time | pass |
+| `max_document_size` | serialized document over the configured limit → `PolicyError` before `Native.*` | pass |
+| `min_rsa_key_bits` | RSA-1024 signing/trust key → `PolicyError`; RSA-2048 passes | pass (`Policy#enforce_key_size!`, separate from `#violations`/`#enforce!` -- needs real key material) |
+| `min_ec_key_bits` | same mechanism as `min_rsa_key_bits`, untested with an actual weak EC key (OpenSSL build-dependent) | pass (code path shared with `min_rsa_key_bits`; no dedicated weak-EC-key spec) |
+| `allow_hmac` | `hmac-sha256` SignatureMethod → `PolicyError` under strict regardless of `signature_methods` | pass |
+| `allow_retrieval_method` | `<RetrievalMethod>` in KeyInfo → `PolicyError` | pass (native `inspect_document` reports `has_retrieval_method`) |
+| `allow_same_document_xpointer` | `URI="#xpointer(/)"` → `PolicyError` | pass |
+| `check_certificate_validity` / `clock_skew` | expired signing cert: strict → `CertificateExpired`; `clock_skew: 60` accepts a cert that expired 30s ago, rejects one expired 30min ago. `store:` honors `check_certificate_validity` via `StoreContext` (#30); `certificate:` path still tracked under S-07. | pass (`clock_skew`) |
+| `schema` | `Policy.strict.schema == :default` → `Verifier` validates the `<Signature>` against the XSD without the caller passing `schema:`; explicit `schema: nil` still opts out | pass |
 
 ### S-07 `verification_time`
 

@@ -24,17 +24,24 @@ RSpec.describe "ID resolution (S-03 / #28)" do
     XML
   end
 
+  # This file's whole point is duplicate/ambiguous ID resolution (S-03), so
+  # reject_duplicate_ids (S-06) -- which would otherwise reject the very
+  # fixtures these specs need to construct -- is deliberately off here.
+  def fragment_policy
+    HankoXml::Policy.fragment.with(reject_duplicate_ids: false)
+  end
+
   def sign_fragment(xml)
     HankoXml::Signer.new(
       key: signer_key,
       certificate: signer_cert,
       references: [HankoXml::Reference.new(uri: "#inv-1", transforms: [])],
-      policy: HankoXml::Policy.fragment
+      policy: fragment_policy
     ).sign(xml).document
   end
 
   def verify_fragment(doc)
-    HankoXml.verify(doc, certificate: signer_cert, policy: HankoXml::Policy.fragment)
+    HankoXml.verify(doc, certificate: signer_cert, policy: fragment_policy)
   end
 
   it "X1: signed? follows xmlsec's DTD ID table, not document-order XPath" do
@@ -93,7 +100,7 @@ RSpec.describe "ID resolution (S-03 / #28)" do
     result = HankoXml.verify(
       signed,
       certificate: signer_cert,
-      policy: HankoXml::Policy.fragment,
+      policy: fragment_policy,
       resolver: resolver
     )
 

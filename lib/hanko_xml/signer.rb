@@ -158,6 +158,7 @@ module HankoXml
       return doc if signatures_to_sign.empty?
 
       xml_bytes = HankoXml.serialize(doc)
+      @policy.enforce_key_size!([@key.to_openssl])
 
       # Policy + reference-URI checks run on every template before any
       # Native.sign (S-05). inspect_sig does not fetch; Native.sign would.
@@ -166,7 +167,7 @@ module HankoXml
       # rubocop:disable Style/CombinableLoops
       signatures_to_sign.each do |sig_node|
         index = all_sigs_in_order.index(sig_node)
-        enforce_before_native_sign!(xml_bytes, index, adopted: adopted)
+        enforce_before_native_sign!(doc, xml_bytes, index, sig_node: sig_node, adopted: adopted)
       end
 
       signatures_to_sign.each do |sig_node|
@@ -223,9 +224,14 @@ module HankoXml
     # template's Reference URIs must also match this Signer's references
     # (empty references means whole-document URI=""); that is the
     # chosen-message opt-in.
-    def enforce_before_native_sign!(xml_bytes, index, adopted:)
+    def enforce_before_native_sign!(doc, xml_bytes, index, sig_node:, adopted:)
       sig_info = HankoXml::SignatureInfo.from_native(Native.inspect_sig(xml_bytes, index))
-      @policy.enforce!(sig_info)
+      # require_signed_root is a verification-time XSW defence, not a
+      # constraint on what is legitimate to sign (see Policy#violations) --
+      # Signer deliberately does not check it, so a caller-chosen fragment
+      # signature (references:, R5) still signs under Policy.strict.
+      @policy.enforce!(sig_info, document: doc, sig_node: sig_node, id_attributes: @id_attributes,
+                                 xml_bytes: xml_bytes, check_root_signed: false)
       ensure_adopted_references_match!(sig_info) if adopted
     end
 

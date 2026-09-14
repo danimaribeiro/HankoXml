@@ -12,6 +12,10 @@ RSpec.describe "S-11 multiple signatures" do
   let(:two_targets_xml) do
     %(<Envelope xmlns="urn:hanko_xml:example"><Data Id="a">A</Data><Data Id="b">B</Data></Envelope>)
   end
+  # Neither signature covers the document root (each is a detached-style
+  # fragment signature over #a/#b); require_signed_root (S-06) is not what
+  # these specs are about, so it is explicitly off.
+  let(:fragment_policy) { HankoXml::Policy.strict.with(require_signed_root: false) }
 
   # Builds a document with two independent, detached-style signatures: one
   # over #a, one over #b. Each is a separate Signer#sign call so the two
@@ -57,7 +61,7 @@ RSpec.describe "S-11 multiple signatures" do
 
     it "signature: :first is still available as an explicit, unsafe opt-in" do
       doc = two_signature_doc
-      verifier = HankoXml::Verifier.new(certificate: signer_cert_pem, signature: :first)
+      verifier = HankoXml::Verifier.new(certificate: signer_cert_pem, signature: :first, policy: fragment_policy)
 
       expect(verifier.verify(doc).valid?).to be true
     end
@@ -66,7 +70,7 @@ RSpec.describe "S-11 multiple signatures" do
   describe "M3/M4: selecting a specific signature" do
     it "signature: 1 (Integer, document order) selects the second signature" do
       doc = two_signature_doc
-      verifier = HankoXml::Verifier.new(certificate: signer_cert_pem, signature: 1)
+      verifier = HankoXml::Verifier.new(certificate: signer_cert_pem, signature: 1, policy: fragment_policy)
       result = verifier.verify(doc)
 
       expect(result.valid?).to be true
@@ -75,7 +79,7 @@ RSpec.describe "S-11 multiple signatures" do
 
     it "verify_all returns one Verification per signature, in document order (M4)" do
       doc = two_signature_doc
-      verifier = HankoXml::Verifier.new(certificate: signer_cert_pem)
+      verifier = HankoXml::Verifier.new(certificate: signer_cert_pem, policy: fragment_policy)
       results = verifier.verify_all(doc)
 
       expect(results.size).to eq(2)

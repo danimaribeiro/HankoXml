@@ -8,6 +8,12 @@ module HankoXml
     attr_reader :policy, :id_attributes, :namespaces, :signature, :verification_time, :schema, :referenced_documents,
                 :resolver
 
+    # Distinguishes "caller did not pass schema:" from "caller explicitly
+    # passed schema: nil" so schema: can default to policy.schema (S-06)
+    # without losing the ability to explicitly opt out.
+    UNSET_SCHEMA = Object.new.freeze
+    private_constant :UNSET_SCHEMA
+
     # Creates a new Verifier with the given trust anchors and configuration.
     # Exactly one trust source must be specified.
     #
@@ -31,12 +37,15 @@ module HankoXml
     #   pass `:first` to opt into the old unsafe default explicitly.
     # @param verification_time [Time, nil] The time to use for checking certificate expiration bounds.
     # @param schema [Symbol, String, Nokogiri::XML::Schema, nil] An XSD schema to
-    #   pre-validate the signature node (e.g. `:default`).
+    #   pre-validate the signature node (e.g. `:default`). Defaults to
+    #   `policy.schema` (S-06): `Policy.strict.schema == :default` turns on
+    #   XSD validation without the caller passing `schema:` explicitly. Pass
+    #   `schema: nil` explicitly to opt out regardless of the policy.
     # @param referenced_documents [Hash<String, Nokogiri::XML::Document>] Documents to resolve external references.
     def initialize(certificate: nil, certificates: nil, store: nil, key: nil, keys: nil,
                    policy: HankoXml::Policy.strict, id_attributes: %w[Id ID id], resolver: nil,
                    namespaces: {}, signature: nil, verification_time: nil,
-                   schema: nil, referenced_documents: {})
+                   schema: UNSET_SCHEMA, referenced_documents: {})
       supplied_trusts = [certificate, certificates, store, key, keys].compact
       if supplied_trusts.size != 1
         raise HankoXml::ConfigurationError,
@@ -55,7 +64,7 @@ module HankoXml
       @namespaces = namespaces
       @signature = signature
       @verification_time = verification_time
-      @schema = schema
+      @schema = schema.equal?(UNSET_SCHEMA) ? policy.schema : schema
       @referenced_documents = referenced_documents
 
       freeze
@@ -184,7 +193,7 @@ module HankoXml
     # state as it goes. Splitting it would thread that state through helpers
     # rather than genuinely simplify it, so the metrics cops are waived here
     # pending a deliberate refactor.
-    # rubocop:disable Metrics/CyclomaticComplexity
+    # rubocop:disable Metrics/CyclomaticComplexity, Metrics/AbcSize
     # rubocop:disable Metrics/MethodLength, Metrics/PerceivedComplexity
     def verify_single(doc, sig_node, index)
       # Schema validation before any crypto
@@ -233,9 +242,12 @@ module HankoXml
       # Policy is a structural allowlist over inspect_sig output. Enforce it
       # before Native.verify so a file:// or http:// Reference is never
       # handed to libxml2 I/O (S-04). Native.verify also restricts
-      # enabledReferenceUris as defense in depth.
+      # enabledReferenceUris as defense in depth. document:/sig_node:/
+      # id_attributes:/xml_bytes: additionally enable require_signed_root,
+      # reject_duplicate_ids, and max_document_size (S-06).
       begin
-        @policy.enforce!(sig_info)
+        @policy.enforce!(sig_info, document: doc, sig_node: sig_node, id_attributes: @id_attributes,
+                                   xml_bytes: xml_bytes)
       rescue HankoXml::PolicyError => e
         return failed_verification(doc, sig_node, [e], signature_info: sig_info)
       end
@@ -244,6 +256,16 @@ module HankoXml
       trusted, untrusted, trust_error = collect_trust(sig_info)
       return failed_verification(doc, sig_node, [trust_error], signature_info: sig_info) if trust_error
 
+      # min_rsa_key_bits / min_ec_key_bits (S-06): only the actually
+      # resolved trust material can be checked, so this runs after
+      # collect_trust rather than as part of the sig_info-only enforce!
+      # above.
+      begin
+        @policy.enforce_key_size!(parsed_trust_keys(trusted))
+      rescue HankoXml::PolicyError => e
+        return failed_verification(doc, sig_node, [e], signature_info: sig_info)
+      end
+
       # Check certificate expiration in Ruby if verification_time is set
       # (Ideally, we pass time to native store, but for now we do it here if possible)
       if @verification_time
@@ -251,12 +273,14 @@ module HankoXml
         # If any is out of bounds, we could fail early or let xmlsec fail.
         # But xmlsec1 doesn't accept a time parameter in our API yet.
         # So we validate the parsed certs here. Key PEMs are skipped: they have
-        # no notBefore/notAfter.
+        # no notBefore/notAfter. clock_skew (S-06) widens the window on both
+        # ends, the same way NTP-adjacent clock drift is usually tolerated.
+        skew = @policy.clock_skew
         trusted.each do |pem|
           next unless certificate_pem?(pem)
 
           cert = OpenSSL::X509::Certificate.new(pem)
-          if @verification_time < cert.not_before || @verification_time > cert.not_after
+          if @verification_time < (cert.not_before - skew) || @verification_time > (cert.not_after + skew)
             return failed_verification(
               doc,
               sig_node,
@@ -301,7 +325,7 @@ module HankoXml
         reference_valid: verify_result[:reference_valid]
       )
     end
-    # rubocop:enable Metrics/CyclomaticComplexity
+    # rubocop:enable Metrics/CyclomaticComplexity, Metrics/AbcSize
     # rubocop:enable Metrics/MethodLength, Metrics/PerceivedComplexity
 
     def failed_verification(doc, sig_node, errors, signature_info: nil)
@@ -415,6 +439,22 @@ module HankoXml
 
     def certificate_pem?(pem)
       pem.include?("BEGIN CERTIFICATE")
+    end
+
+    # Parses collect_trust's PEM Strings into OpenSSL objects for
+    # Policy#enforce_key_size! (S-06). A PEM that fails to parse here would
+    # already have failed identically inside Native.verify; skip it rather
+    # than raise a second, redundant error.
+    def parsed_trust_keys(trusted)
+      trusted.filter_map do |pem|
+        if certificate_pem?(pem)
+          OpenSSL::X509::Certificate.new(pem)
+        else
+          OpenSSL::PKey.read(pem)
+        end
+      rescue OpenSSL::OpenSSLError
+        nil
+      end
     end
   end
 end

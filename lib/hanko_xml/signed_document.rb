@@ -56,15 +56,11 @@ module HankoXml
 
     # Verifies the signatures against a given trust source.
     #
-    # @param certificate [Key, String, Pathname] The trusted certificate.
-    # @param certificates [Array] A list of trusted certificates.
-    # @param store [OpenSSL::X509::Store] The trusted certificate store.
-    # @param key [Key, String, Pathname] The trusted key.
-    # @param keys [Hash] Key lookup hash.
+    # @param kwargs [Hash] Configuration options passed to {Verifier#initialize}
+    #   (certificate:, certificates:, store:, key:, keys:, policy:, etc).
     # @return [Boolean] True if the signature is valid.
-    def valid?(certificate: nil, certificates: nil, store: nil, key: nil, keys: nil)
-      HankoXml.verify(@document, certificate: certificate, certificates: certificates, store: store, key: key,
-                                 keys: keys).valid?
+    def valid?(**kwargs)
+      HankoXml.verify(@document, **kwargs).valid?
     end
 
     def inspect

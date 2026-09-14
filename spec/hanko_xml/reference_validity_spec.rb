@@ -14,6 +14,10 @@ RSpec.describe "S-09 per-reference validity" do
   let(:two_targets_xml) do
     %(<Envelope xmlns="urn:hanko_xml:example"><Data Id="a">A</Data><Data Id="b">B</Data></Envelope>)
   end
+  # Neither reference covers the document root; require_signed_root (S-06) is
+  # not what this file is about; disabling it lets verification actually
+  # reach Native.verify so the per-reference divergence below is real.
+  let(:fragment_policy) { HankoXml::Policy.strict.with(require_signed_root: false) }
 
   def tamper_digest!(doc, reference_index)
     digest_value = doc.xpath(".//ds:Reference", HankoXml::NS)[reference_index]
@@ -27,7 +31,7 @@ RSpec.describe "S-09 per-reference validity" do
     doc = signed.document
     tamper_digest!(doc, 1)
 
-    result = HankoXml.verify(HankoXml.serialize(doc), certificate: signer_cert_pem)
+    result = HankoXml.verify(HankoXml.serialize(doc), certificate: signer_cert_pem, policy: fragment_policy)
 
     expect(result.valid?).to be false
     expect(result.references[0]).to be_valid
@@ -38,7 +42,7 @@ RSpec.describe "S-09 per-reference validity" do
     signed = HankoXml.sign(two_targets_xml, key: signer_key_pem, certificate: signer_cert_pem,
                                             references: ["#a", "#b"])
 
-    result = HankoXml.verify(signed.to_s, certificate: signer_cert_pem)
+    result = HankoXml.verify(signed.to_s, certificate: signer_cert_pem, policy: fragment_policy)
 
     expect(result.valid?).to be true
     expect(result.references.map(&:valid?)).to eq([true, true])
