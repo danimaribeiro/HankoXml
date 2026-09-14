@@ -46,7 +46,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-06 | **Medium** | Policy | 11 of 18 `Policy` fields were declared and documented as enforced but never checked. After #30, `check_certificate_validity` is honored on the `store:` path only; the other ten fields are still unread. | **partial** (#30) | confirmed (grep), re-checked |
 | S-07 | **Medium** | Verifier | `verification_time:` validates only the *trusted* certificates' validity window, never the signing certificate; `check_certificate_validity: false` has no effect. After #30, `store:` applies both knobs to the signing cert via `StoreContext`; `certificate:` is unchanged. | **partial** (#30) | confirmed, re-checked |
 | S-08 | **Medium** | Verifier | `keys:` with a public key (not a certificate) produces an empty trust set. After #30, key-valued entries pass `to_pem` and pin `signKey`. Cert-valued entries still hit S-01. | **fixed** (#30) | confirmed, then re-checked |
-| S-09 | **Medium** | Verification | `Reference#valid?` is just `Verification#valid?`; per-reference status, `Manifest`, `RetrievalMethod` and `Object` semantics are not surfaced, so `signed?` over-approximates for anything but the simplest shapes | **open** | code review |
+| S-09 | **Medium** | Verification | `Reference#valid?` is just `Verification#valid?`; per-reference status, `Manifest`, `RetrievalMethod` and `Object` semantics are not surfaced, so `signed?` over-approximates for anything but the simplest shapes | **fixed** | code review |
 | S-10 | **Medium** | Native | Transform surface is whatever libxmlsec1 was built with; the source gem on a host whose xmlsec links libxslt (this checkout does) enables the XSLT transform, and policy blocks it only after it has run (S-04) | **open** | confirmed (ldd) |
 | S-11 | **Medium** | Verifier | `signature: :first` default: with several `<Signature>` elements only the first is verified and the result is reported for the whole document | **open** | code review |
 | S-12 | **Low** | Native | `xml.len() as i32` in `OwnedXmlDoc::parse` truncates documents over 2 GiB; no size guard before the FFI boundary and `max_document_size` is unenforced | **open** | code review |
@@ -85,7 +85,7 @@ trust source → `ConfigurationError`).
 - [x] **S-05** (#36) `template: :adopt` signing oracle; enforce Signer policy
 - [ ] **S-06** (#37) remaining unenforced Policy fields
 - [ ] **S-07** (#38) remaining: `certificate:` path + native `certsVerificationTime`
-- [ ] **S-09** (#39) per-reference validity / `signed?` over-approximation
+- [x] **S-09** (#39) per-reference validity / `signed?` over-approximation
 - [ ] **S-10** (#40) restrict transforms/URIs regardless of host xmlsec build
 - [x] **S-11** (#41) `signature: :first` and Signer/Verifier index disagreement
 - [ ] **S-12** (#42) `xml.len() as i32` + `max_document_size`
@@ -326,18 +326,32 @@ forged KeyValue, keys: {alice => signer_pubkey} -> valid?: false
 forged KeyValue, keys: {alice => signer.crt}    -> valid?: false
 ```
 
-### S-09 -- Per-reference validity and non-trivial shapes  [code review, Medium, **open**]
+### S-09 -- Per-reference validity and non-trivial shapes  [code review, Medium, **fixed**]
 
-**Disposition:** still open. `build_references` still sets `valid?: valid?`.
+**Disposition:** fixed for the headline complaint (per-reference validity is
+now real); the non-trivial-shape half is unchanged because it was already
+fail-safe, not fail-open.
 
-`Verification#build_references` sets `valid?: valid?` for every reference and
-`errors: []`. `resolve_reference` handles only `""` and `#id`; anything else
-(`Manifest`, `RetrievalMethod`, `#xpointer(...)`, external) yields
-`node: nil`, which `signed?` treats as "covers nothing" -- but `valid?` stays
-true if xmlsec accepted it. XPath / XPath Filter 2 transforms change what was
-actually digested, yet `signed?` assumes the whole ID'd subtree. `Policy.strict`
-disallows those transforms, but only after verification (S-04) and only if the
-caller checks `valid?` before `signed?`.
+`verify_document` now reads `xmlSecDSigCtx.signedInfoReferences` after
+`xmlSecDSigCtxVerify` and returns each `<SignedInfo><Reference>`'s own digest
+status (`reference_valid: Array<true|false|nil>`, same indexing as the
+existing `reference_element_indexes`) alongside the overall result --
+independent of it, since xmlsec digest-checks every Reference before it
+evaluates `SignatureValue`. `Verification#build_references` now sets
+`valid?` from that per-reference status (falling back to the overall
+`valid?` only when there is no real answer: a `Verification` built directly,
+or a reference xmlsec never reached because verification aborted earlier),
+instead of copying the overall result onto every `Reference`. A
+harmless-fragment Reference and a tampered payload Reference in the same
+`SignedInfo` now disagree correctly.
+
+The second remaining-work item -- `Manifest`, `RetrievalMethod`,
+`#xpointer(...)` and external references -- is unchanged: `resolve_reference`
+still only handles `""` and `#id`, so those still resolve to `node: nil`.
+That was already the safe direction (`signed?` treats `node: nil` as "covers
+nothing," so it cannot be used to over-claim coverage), just not an accurate
+one; genuine support for those shapes remains future work, now tracked
+separately if picked up.
 
 ### S-10 -- Transform/URI surface depends on the host build  [confirmed by `ldd`, Medium, **open**]
 

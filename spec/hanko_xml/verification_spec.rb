@@ -130,4 +130,47 @@ RSpec.describe HankoXml::Verification do
 
     expect(verification).not_to be_signed(doc.at_xpath("//signed"))
   end
+
+  describe "#reference_valid (S-09)" do
+    def build_multi_ref_verification(valid:, reference_valid:)
+      doc = Nokogiri::XML("<root><a Id=\"a\"/><b Id=\"b\"/></root>")
+      described_class.new(
+        valid: valid,
+        errors: valid ? [] : [HankoXml::VerificationError.new("nope")],
+        signature_info: HankoXml::SignatureInfo.new(
+          signature_method: signature_method,
+          canonicalization_method: canonicalization_method,
+          references: [
+            { uri: "#a", digest_method: digest_method, transforms: [] },
+            { uri: "#b", digest_method: digest_method, transforms: [] }
+          ]
+        ),
+        signature_node: nil,
+        document: doc,
+        id_attributes: ["Id"],
+        reference_valid: reference_valid
+      )
+    end
+
+    it "surfaces each reference's own status instead of approximating from the overall result" do
+      verification = build_multi_ref_verification(valid: false, reference_valid: [true, false])
+
+      expect(verification.references[0]).to be_valid
+      expect(verification.references[1]).not_to be_valid
+    end
+
+    it "falls back to the overall result for a reference xmlsec never reached (nil entry)" do
+      verification = build_multi_ref_verification(valid: false, reference_valid: [true, nil])
+
+      expect(verification.references[0]).to be_valid
+      expect(verification.references[1]).not_to be_valid
+    end
+
+    it "falls back to the overall result when no per-reference data was supplied at all" do
+      verification = build_multi_ref_verification(valid: true, reference_valid: nil)
+
+      expect(verification.references[0]).to be_valid
+      expect(verification.references[1]).to be_valid
+    end
+  end
 end

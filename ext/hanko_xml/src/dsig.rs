@@ -576,6 +576,47 @@ impl<'mngr> DsigCtx<'mngr> {
             _ => VerifyStatus::Unknown,
         }
     }
+
+    /// Per-`<SignedInfo><Reference>` digest verification status, in document
+    /// order, after `verify()` has run (S-09). `xmlSecDSigCtxVerify`
+    /// processes and digest-checks every SignedInfo Reference before it ever
+    /// looks at the overall `SignatureValue` (see xmldsig.c), so this is
+    /// independent of the overall `signKey`/`SignatureValue` outcome: a
+    /// harmless-fragment Reference and the payload Reference in a
+    /// multi-Reference signature can genuinely disagree.
+    ///
+    /// `Some(true)`/`Some(false)` is a completed status; `None` means the
+    /// reference was never processed (verification aborted earlier, e.g. a
+    /// malformed `SignedInfo`) and the caller has no real answer to give.
+    /// `<Manifest>` references are not read here -- this library does not
+    /// otherwise resolve or expose Manifest semantics.
+    fn reference_statuses(&self) -> Vec<Option<bool>> {
+        // SAFETY: self.ptr is a live xmlSecDSigCtx; signedInfoReferences is
+        // an embedded xmlSecPtrList (not a pointer) that verify() populated.
+        let list = unsafe { ptr::addr_of!((*self.ptr).signedInfoReferences) as sys::xmlSecPtrListPtr };
+        // SAFETY: list points at a valid, initialized xmlSecPtrList for the
+        // lifetime of self.
+        let size = unsafe { sys::xmlSecPtrListGetSize(list) };
+        (0..size)
+            .map(|pos| {
+                // SAFETY: pos is in [0, size), so GetItem returns one of the
+                // list's own xmlSecDSigReferenceCtxPtr entries.
+                let item = unsafe { sys::xmlSecPtrListGetItem(list, pos) };
+                if item.is_null() {
+                    return None;
+                }
+                let reference_ctx = item as sys::xmlSecDSigReferenceCtxPtr;
+                // SAFETY: reference_ctx is a live xmlSecDSigReferenceCtx
+                // owned by the list; status is a plain enum field.
+                let status = unsafe { (*reference_ctx).status };
+                match status {
+                    s if s == sys::DSIG_STATUS_SUCCEEDED => Some(true),
+                    s if s == sys::DSIG_STATUS_INVALID => Some(false),
+                    _ => None,
+                }
+            })
+            .collect()
+    }
 }
 
 impl Drop for DsigCtx<'_> {
@@ -635,6 +676,12 @@ pub struct VerifyResult {
     /// node xmlsec's ID table resolved (same table `#id` verification used).
     /// Empty URI → root element's index. Unresolved / non-fragment → `None`.
     pub reference_element_indexes: Vec<Option<usize>>,
+    /// Per SignedInfo `<Reference>`, its own digest verification status --
+    /// independent of the overall signature/key outcome (S-09). Same
+    /// indexing/order as `reference_element_indexes`. `None` when the
+    /// reference was never processed (verification aborted before reaching
+    /// it), not when we simply do not know.
+    pub reference_valid: Vec<Option<bool>>,
 }
 
 const DSIG_NS: &str = "http://www.w3.org/2000/09/xmldsig#";
@@ -844,17 +891,20 @@ pub fn verify_document(
         return Ok(VerifyResult {
             status: VerifyStatus::Invalid,
             errors: vec!["no trusted key or certificate provided".into()],
+            reference_valid: vec![None; reference_element_indexes.len()],
             reference_element_indexes,
         });
     }
 
     let mut status = VerifyStatus::Invalid;
     let mut captured_errors = Vec::new();
+    let mut reference_valid = Vec::new();
     for key in keys_to_try {
         errors::clear_errors();
         let mut ctx = DsigCtx::for_signing(&mngr, key).map_err(format_error)?;
         status = ctx.verify(sig_node);
         captured_errors = errors::drain_errors();
+        reference_valid = ctx.reference_statuses();
         if status == VerifyStatus::Succeeded {
             break;
         }
@@ -864,6 +914,7 @@ pub fn verify_document(
         status,
         errors: captured_errors,
         reference_element_indexes,
+        reference_valid,
     })
 }
 

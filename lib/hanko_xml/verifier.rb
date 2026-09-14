@@ -297,7 +297,8 @@ module HankoXml
         document: doc,
         id_attributes: @id_attributes,
         resolver: @resolver,
-        reference_element_indexes: verify_result[:reference_element_indexes]
+        reference_element_indexes: verify_result[:reference_element_indexes],
+        reference_valid: verify_result[:reference_valid]
       )
     end
     # rubocop:enable Metrics/CyclomaticComplexity

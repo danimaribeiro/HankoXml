@@ -15,10 +15,11 @@ module HankoXml
     end
 
     attr_reader :valid, :errors, :signature_info, :signature_node, :document, :certificate, :id_attributes, :resolver,
-                :references, :reference_element_indexes
+                :references, :reference_element_indexes, :reference_valid
 
     def initialize(valid:, errors:, signature_info:, signature_node:, document:, certificate: nil,
-                   id_attributes: %w[Id ID id], resolver: nil, reference_element_indexes: nil)
+                   id_attributes: %w[Id ID id], resolver: nil, reference_element_indexes: nil,
+                   reference_valid: nil)
       @valid = valid
       @errors = errors.dup
       @signature_info = signature_info
@@ -32,6 +33,9 @@ module HankoXml
       # authoritative for #references[].node / #signed? — Ruby does not
       # re-resolve IDs (issues #28 / #34 / S-03).
       @reference_element_indexes = reference_element_indexes&.dup&.freeze
+      # Native.verify's per-Reference digest status (S-09) -- authoritative
+      # when present. See #reference_valid_for.
+      @reference_valid = reference_valid&.dup&.freeze
       # Resolution must happen, and #errors/#valid must be able to react to it
       # (see detect_resolution_mismatches!), before we freeze below -- the object
       # is immutable from here on, so #references can't be computed lazily on
@@ -122,19 +126,30 @@ module HankoXml
       signature_info.references.map.with_index do |ref, index|
         target_node = resolve_reference(ref, index)
 
-        # For now, we assume if the overall signature is valid, the reference is valid.
-        # xmlsec1 doesn't tell us which reference failed in the struct yet, but we can look at the errors array.
-        ref_valid = valid? # Approximation for Phase 3
-
         Reference.new(
           uri: ref.uri,
           node: target_node,
           digest_method: ref.digest_method_name,
           transforms: ref.transform_names,
-          valid?: ref_valid,
+          valid?: reference_valid_for(index),
           errors: []
         ).freeze
       end
+    end
+
+    # Native.verify reports each SignedInfo Reference's own digest status,
+    # independent of the overall signature/key outcome (S-09): a
+    # harmless-fragment Reference and the payload Reference can genuinely
+    # disagree, so "the whole signature is valid" cannot stand in for "this
+    # Reference's digest matched". Falls back to the overall result only when
+    # there is no real per-reference answer -- a Verification built directly
+    # (specs, error paths that never reached crypto) or a reference xmlsec
+    # never got to because verification aborted earlier.
+    def reference_valid_for(index)
+      return valid? unless @reference_valid
+
+      status = @reference_valid[index]
+      status.nil? ? valid? : status
     end
 
     # When Native.verify supplied element indexes, those are the authority.

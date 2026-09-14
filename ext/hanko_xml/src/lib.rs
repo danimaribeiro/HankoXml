@@ -9,7 +9,7 @@ mod errors;
 mod sys;
 
 use magnus::{
-    function, prelude::*, Error, ExceptionClass, RArray, RHash, RModule, RString,
+    function, prelude::*, Error, ExceptionClass, IntoValue, RArray, RHash, RModule, RString,
     Ruby, TryConvert,
 };
 use std::sync::Once;
@@ -156,12 +156,19 @@ fn native_sign(
 /// `HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signature_index)`
 ///
 /// Verifies the nth `<ds:Signature>` and returns a Hash:
-/// `{ status:, errors:, reference_element_indexes: Array<Integer|nil> }`
+/// `{ status:, errors:, reference_element_indexes: Array<Integer|nil>,
+///   reference_valid: Array<true|false|nil> }`
 ///
 /// `reference_element_indexes` is the document-order element index of each
 /// SignedInfo Reference's target as resolved by libxml2's ID table (the same
 /// table xmlsec used for `#id` verification). Empty-URI references report the
 /// root. Unresolved / non-fragment URIs are `nil`.
+///
+/// `reference_valid` is each SignedInfo Reference's own digest verification
+/// status, same order, independent of the overall signature/key outcome
+/// (S-09): a harmless-fragment Reference and the payload Reference can
+/// genuinely disagree. `nil` means the reference was never processed
+/// (verification aborted before reaching it).
 ///
 /// Only raises for conditions that are not a verification verdict.
 fn native_verify(
@@ -201,6 +208,19 @@ fn native_verify(
                     .map_err(|e| native_error(ruby, format!("array error: {e}")))?;
             }
             hash.aset(ruby.to_symbol("reference_element_indexes"), indexes)
+                .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
+
+            let reference_valid = ruby.ary_new();
+            for entry in &result.reference_valid {
+                let value = match entry {
+                    Some(valid) => valid.into_value_with(ruby),
+                    None => ruby.qnil().as_value(),
+                };
+                reference_valid
+                    .push(value)
+                    .map_err(|e| native_error(ruby, format!("array error: {e}")))?;
+            }
+            hash.aset(ruby.to_symbol("reference_valid"), reference_valid)
                 .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
 
             Ok(hash)
