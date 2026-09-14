@@ -370,7 +370,7 @@ verifier = HankoXml::Verifier.new(
   policy:        HankoXml::Policy.strict,  # default, §5.8
   id_attributes: %w[Id ID id],
   namespaces:    {},
-  signature:     :first,   # :first | :only | :all | Integer index | XPath String
+  signature:     nil,      # nil (default) | :first | :only | :all | Integer index | XPath String
 
   verification_time:    nil,   # Time — evaluate certificate validity as of then
   schema:               nil,   # validate <Signature> against an XSD first
@@ -428,9 +428,10 @@ hidden behind an empty array.
 
 | Value | Meaning |
 | --- | --- |
-| `:first` (default) | verify the first `<ds:Signature>` in document order |
-| `:only` | as `:first`, but raise `MultipleSignatures` if the document has more than one — the safest choice for protocols that expect exactly one |
-| `Integer` | the nth signature, document order, 0-based |
+| `nil` (default) | verify the one `<ds:Signature>` in the document; raise `MultipleSignatures` if there is more than one (same as `:only`) — fails closed instead of silently ignoring extra signatures |
+| `:first` | verify the first `<ds:Signature>` in document order, even if others exist — an explicit, unsafe opt-in |
+| `:only` | same as the default: raise `MultipleSignatures` if the document has more than one |
+| `Integer` | the nth signature, document order, 0-based — matches `Signer#sign!`'s `signature:` index |
 | `String` | an XPath selecting exactly one `<ds:Signature>` |
 
 Methods:

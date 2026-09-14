@@ -128,8 +128,8 @@ with `Native.verify` **and** `HankoXml.verify` (strict or `legacy_sha1`).
 | D4 | `template: :require` on a doc with an empty template | signs it | pass |
 | D5 | `template: :adopt` (default) with two unsigned templates | both signed, innermost first; both verify with `verify_all` | pass |
 | D6 | Nested signatures (outer envelopes inner `<Signature>`) | inner signed first, then outer covers it; both verify | pass (depth sort exists for this; untested) |
-| D7 | `signature: 0` selects which template to sign | **depth-sorted** index (Signer) vs **document-order** index (Verifier) -- spec documents the discrepancy (S-11) | FAIL or pin |
-| D8 | `signature: 99` out of range | returns doc unchanged? raises? pin | ? |
+| D7 | `signature: 0` selects which template to sign | document-order index, agreeing with Verifier's `signature: n` (S-11) | pass |
+| D8 | `signature: 99` out of range | `ConfigurationError` (S-11) | pass |
 | D9 | Adopted template whose algorithms differ from the Signer's configuration | Signer's `signature_method: :rsa_sha256` but template says rsa-sha1 → `PolicyError` under strict | **pass** (S-05 R4) |
 | D10 | Adopted template with `KeyInfo` shapes: none / `X509Data` empty / `X509Data` with stale cert / `KeyValue` / `KeyName` | see E-group | mixed |
 
@@ -294,15 +294,16 @@ Native transform allowlisting is S-10; R6 only asserts the Ruby policy gate.
 | V2 | Same, `verification_time: nil` (now) → `CertificateExpired` |
 | V3 | Trusted anchor expired but signing cert fine, `verification_time` within the anchor's window → valid; outside → `CertificateExpired` naming which cert |
 
-### S-11 multiple signatures
+### S-11 multiple signatures (fixed; see `spec/hanko_xml/multi_signature_spec.rb`)
 
-| # | Spec |
-|---|------|
-| M1 | Two signatures, first valid over a decoy fragment, second invalid over the payload: `verify` (`:first`) must not report the document as valid, or `require_signed_root` must catch it |
-| M2 | `signature: :only` with two → `MultipleSignatures` (exists in code, no spec) |
-| M3 | `signature: 1`, `signature: "//ds:Signature[2]"` select the right one |
-| M4 | `verify_all` returns one `Verification` per signature, in document order |
-| M5 | Signer `signature: n` and Verifier `signature: n` refer to the same node |
+| # | Spec | Status |
+|---|------|--------|
+| M1 | Default `signature:` (`nil`) with two signatures raises `MultipleSignatures` instead of silently verifying only the first | pass |
+| M2 | `signature: :only` with two → `MultipleSignatures` | pass |
+| M3 | `signature: 1` selects the right one (document order) | pass |
+| M4 | `verify_all` returns one `Verification` per signature, in document order | pass |
+| M5 | Signer `signature: n` and Verifier `signature: n` refer to the same node | pass |
+| M6 | `signature: :first` remains available as an explicit, unsafe opt-in | pass |
 
 ### S-12 / S-13 native robustness
 

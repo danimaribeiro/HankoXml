@@ -125,21 +125,32 @@ module HankoXml
     #
     # @param doc_or_xml [Nokogiri::XML::Node, Nokogiri::XML::Document] The document to mutate.
     # @param force [Boolean] Whether to re-sign already signed signatures.
-    # @param signature [Symbol, Integer, String, nil] The target signature to sign (defaults to all).
+    # @param signature [Symbol, Integer, String, nil] The target signature to sign
+    #   (defaults to all). An Integer indexes document order, matching
+    #   {Verifier}'s `signature:` Integer index (S-11).
     # @return [Nokogiri::XML::Node, Nokogiri::XML::Document] The mutated document.
     def sign!(doc_or_xml, force: false, signature: nil)
       doc = HankoXml.coerce_document(doc_or_xml)
       Dom.require!("HankoXml::Signer#sign!")
 
       signatures, adopted = find_or_build_signatures(doc)
+      all_sigs_in_order = doc.xpath(".//ds:Signature", ds: NS["ds"])
 
-      # Sort by depth descending (innermost first)
-      signatures.sort_by! { |node| -node.ancestors.size }
+      # Sort by depth descending (innermost first) so nested signatures are
+      # signed before the ones that envelope them.
+      depth_sorted = signatures.sort_by { |node| -node.ancestors.size }
 
       signatures_to_sign = if signature
-                             [signatures[signature]].compact
+                             # Document order, to agree with Verifier's Integer
+                             # index -- not the depth-sorted signing order (S-11).
+                             target = all_sigs_in_order[signature]
+                             unless target
+                               raise HankoXml::ConfigurationError, "signature: #{signature.inspect} not found"
+                             end
+
+                             [target]
                            else
-                             signatures
+                             depth_sorted
                            end
 
       signatures_to_sign.reject! { |node| node_signed?(node) } unless force
@@ -147,7 +158,6 @@ module HankoXml
       return doc if signatures_to_sign.empty?
 
       xml_bytes = HankoXml.serialize(doc)
-      all_sigs_in_order = doc.xpath(".//ds:Signature", ds: NS["ds"])
 
       # Policy + reference-URI checks run on every template before any
       # Native.sign (S-05). inspect_sig does not fetch; Native.sign would.

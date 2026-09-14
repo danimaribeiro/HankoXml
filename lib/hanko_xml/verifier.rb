@@ -21,15 +21,21 @@ module HankoXml
     # @param resolver [Proc, nil] Optional callable `(doc, uri_fragment) -> node` for fragment resolution in
     #   `Verification#references` / `#signed?`.
     # @param namespaces [Hash<String, String>] Namespaces for XPath signature selection.
-    # @param signature [Symbol, Integer, String] Which signature to verify:
-    #   `:first`, `:only`, `:all`, an integer index, or an XPath.
+    # @param signature [Symbol, Integer, String, nil] Which signature to verify:
+    #   `:first` (explicitly take the first signature even if more exist), `:only`
+    #   (require exactly one, raising {MultipleSignatures} otherwise), `:all`, an
+    #   integer index (document order, matching {Signer#sign!}'s `signature:`), or
+    #   an XPath. Defaults to `nil`, which behaves like `:only`: with a single
+    #   `<Signature>` it is verified, but with more than one {MultipleSignatures}
+    #   is raised rather than silently verifying just the first (S-11) --
+    #   pass `:first` to opt into the old unsafe default explicitly.
     # @param verification_time [Time, nil] The time to use for checking certificate expiration bounds.
     # @param schema [Symbol, String, Nokogiri::XML::Schema, nil] An XSD schema to
     #   pre-validate the signature node (e.g. `:default`).
     # @param referenced_documents [Hash<String, Nokogiri::XML::Document>] Documents to resolve external references.
     def initialize(certificate: nil, certificates: nil, store: nil, key: nil, keys: nil,
                    policy: HankoXml::Policy.strict, id_attributes: %w[Id ID id], resolver: nil,
-                   namespaces: {}, signature: :first, verification_time: nil,
+                   namespaces: {}, signature: nil, verification_time: nil,
                    schema: nil, referenced_documents: {})
       supplied_trusts = [certificate, certificates, store, key, keys].compact
       if supplied_trusts.size != 1
@@ -152,11 +158,14 @@ module HankoXml
 
     def resolve_signature_target(sigs, signature_option)
       case signature_option
-      when :first
-        [sigs.first, 0]
-      when :only
+      when nil, :only
+        # No explicit selection: fail closed on ambiguity rather than
+        # silently verifying only the first of several signatures (S-11).
+        # Pass `signature: :first` to opt into the old, unsafe default.
         raise HankoXml::MultipleSignatures, "Expected exactly 1 signature, found #{sigs.size}" if sigs.size > 1
 
+        [sigs.first, 0]
+      when :first
         [sigs.first, 0]
       when Integer
         [sigs[signature_option], signature_option]

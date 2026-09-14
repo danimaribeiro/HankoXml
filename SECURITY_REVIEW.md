@@ -87,7 +87,7 @@ trust source → `ConfigurationError`).
 - [ ] **S-07** (#38) remaining: `certificate:` path + native `certsVerificationTime`
 - [ ] **S-09** (#39) per-reference validity / `signed?` over-approximation
 - [ ] **S-10** (#40) restrict transforms/URIs regardless of host xmlsec build
-- [ ] **S-11** (#41) `signature: :first` and Signer/Verifier index disagreement
+- [x] **S-11** (#41) `signature: :first` and Signer/Verifier index disagreement
 - [ ] **S-12** (#42) `xml.len() as i32` + `max_document_size`
 - [ ] **S-13** (#43) error classification and xmlsec log in messages
 - [ ] **S-14** (#44) reject mismatched `key:` / `certificate:` at sign time
@@ -353,19 +353,20 @@ Ruby Policy rejects it before `Native.verify` (R6) and `Native.sign` (S-05);
 the remaining gap is a direct `Native.verify` / `Native.sign` call, and
 host-dependent registration.
 
-### S-11 -- Multiple signatures and `signature: :first`  [code review, Medium, **open**]
+### S-11 -- Multiple signatures and `signature: :first`  [code review, Medium, **fixed**]
 
-**Disposition:** still open. Default is still `:first`; Signer vs Verifier
-integer indexes still disagree.
-
-`Verifier#verify` picks `sigs.first` by default. With two signatures, a valid
-first signature over a harmless fragment makes `HankoXml.verify!(doc).valid?`
-true while the second (e.g. the one over the payload) is never checked. Only
-`signature: :only` raises `MultipleSignatures`; `require_signed_root` (which
-would have caught a harmless-fragment signature) is unenforced (S-06). Also,
-`Signer#sign!(signature: n)` indexes into a **depth-sorted** array while the
-Verifier's `Integer` indexes document order, so the two sides disagree about
-which signature `n` is.
+**Disposition:** fixed. `Verifier#initialize` now defaults `signature:` to
+`nil`, which behaves like `:only`: with a single `<Signature>` it verifies as
+before, but with more than one it raises `MultipleSignatures` instead of
+silently verifying just the first. `signature: :first` remains as an
+explicit, unsafe opt-in for callers who intentionally want the old default.
+`Signer#sign!(signature: n)` now indexes document order (matching the
+`all_sigs_in_order` xpath), the same as the Verifier's `Integer` index,
+instead of the depth-sorted signing-order array; an out-of-range index raises
+`ConfigurationError` instead of silently returning the document unmodified.
+Signing order for the unqualified (sign-everything) case is still
+depth-first/innermost-first, unaffected. `require_signed_root` enforcement
+remains tracked separately under S-06.
 
 ### S-12 -- Length truncation at the FFI boundary  [code review, Low, **open**]
 
