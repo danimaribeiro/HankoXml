@@ -145,6 +145,52 @@ RSpec.describe "S-06 Policy enforcement" do
     end
   end
 
+  # S-07: check_certificate_validity on the certificate:/certificates: trust
+  # path. signKey pinning (S-01) means xmlsec never reads KeyInfo to verify
+  # the embedded certificate's dates, so this Ruby-side check is the only
+  # one that runs here -- store: gets an equivalent, independent check via
+  # OpenSSL::X509::StoreContext (#30).
+  describe "check_certificate_validity on certificate:" do
+    it "rejects an already-expired signing certificate by default, with no verification_time given" do
+      key, cert = cert_expiring_in(-3600) # expired an hour ago
+      policy = HankoXml::Policy.strict.with(min_rsa_key_bits: 0)
+      signed = HankoXml.sign(unsigned_xml, key: key, certificate: cert, policy: policy)
+
+      result = HankoXml.verify(signed.to_s, certificate: cert)
+
+      expect(result.valid?).to be false
+      expect(result.errors.first).to be_a(HankoXml::CertificateExpired)
+    end
+
+    it "accepts it when verification_time falls inside its original validity window" do
+      key = OpenSSL::PKey::RSA.new(2048)
+      cert = OpenSSL::X509::Certificate.new
+      cert.version = 2
+      cert.serial = 1
+      cert.subject = cert.issuer = OpenSSL::X509::Name.parse("/CN=expired")
+      cert.public_key = key.public_key
+      cert.not_before = Time.now - 7200
+      cert.not_after = Time.now - 3600 # valid 2h-1h ago, expired since
+      cert.sign(key, OpenSSL::Digest.new("SHA256"))
+      policy = HankoXml::Policy.strict.with(min_rsa_key_bits: 0)
+      signed = HankoXml.sign(unsigned_xml, key: key, certificate: cert, policy: policy)
+
+      result = HankoXml.verify(signed.to_s, certificate: cert, verification_time: Time.now - 5400)
+
+      expect(result.valid?).to be true
+    end
+
+    it "accepts an expired certificate when check_certificate_validity is false" do
+      key, cert = cert_expiring_in(-3600)
+      policy = HankoXml::Policy.strict.with(min_rsa_key_bits: 0, check_certificate_validity: false)
+      signed = HankoXml.sign(unsigned_xml, key: key, certificate: cert, policy: policy)
+
+      result = HankoXml.verify(signed.to_s, certificate: cert, policy: policy)
+
+      expect(result.valid?).to be true
+    end
+  end
+
   describe "schema (Policy.strict.schema == :default wired to Verifier)" do
     it "defaults Verifier#schema from the policy without an explicit schema:" do
       verifier = HankoXml::Verifier.new(certificate: signer_cert_pem)

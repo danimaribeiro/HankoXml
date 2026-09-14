@@ -266,25 +266,30 @@ module HankoXml
         return failed_verification(doc, sig_node, [e], signature_info: sig_info)
       end
 
-      # Check certificate expiration in Ruby if verification_time is set
-      # (Ideally, we pass time to native store, but for now we do it here if possible)
-      if @verification_time
-        # For each trusted cert, check if verification_time is within bounds
-        # If any is out of bounds, we could fail early or let xmlsec fail.
-        # But xmlsec1 doesn't accept a time parameter in our API yet.
-        # So we validate the parsed certs here. Key PEMs are skipped: they have
-        # no notBefore/notAfter. clock_skew (S-06) widens the window on both
-        # ends, the same way NTP-adjacent clock drift is usually tolerated.
+      # Certificate expiration on the certificate:/certificates:/key: trust
+      # paths (S-07). signKey pinning (S-01) means xmlsec never reads
+      # KeyInfo to verify the embedded certificate, so it never checks these
+      # dates either -- this Ruby-side check is the only one that runs here
+      # (the store: path gets its own, equivalent check from
+      # OpenSSL::X509::StoreContext above). check_certificate_validity, not
+      # verification_time's presence, gates it -- an unset verification_time
+      # means "now", not "skip the check" (S-07); Policy.permissive sets
+      # check_certificate_validity: false to opt out entirely, matching the
+      # store: path's semantics. Key PEMs are skipped: they have no
+      # notBefore/notAfter. clock_skew (S-06) widens the window on both
+      # ends, the same way NTP-adjacent clock drift is usually tolerated.
+      if @policy.check_certificate_validity
+        verification_time = @verification_time || Time.now
         skew = @policy.clock_skew
         trusted.each do |pem|
           next unless certificate_pem?(pem)
 
           cert = OpenSSL::X509::Certificate.new(pem)
-          if @verification_time < (cert.not_before - skew) || @verification_time > (cert.not_after + skew)
+          if verification_time < (cert.not_before - skew) || verification_time > (cert.not_after + skew)
             return failed_verification(
               doc,
               sig_node,
-              [HankoXml::CertificateExpired.new("Certificate expired at #{@verification_time}")],
+              [HankoXml::CertificateExpired.new("Certificate expired at #{verification_time}")],
               signature_info: sig_info
             )
           end

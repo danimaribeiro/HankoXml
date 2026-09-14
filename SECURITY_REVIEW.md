@@ -44,7 +44,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-04 | **High** | Verifier / native | Policy is enforced *after* `Native.verify`, so external `Reference URI="file://…"`/`http://…` are dereferenced by xmlsec before `allow_external_references: false` rejects them (local-file digest oracle, SSRF) | **fixed** | confirmed (spec R1/R2/R6/R8) |
 | S-05 | **High** | Signer | `Signer#sign!` (default `template: :adopt`) signs any pre-existing `<Signature>` template in the input with the caller's key and never enforces `Signer#policy`: a signing oracle for attacker-chosen algorithms, references and external URIs | **fixed** | confirmed (spec R3/R4/R5) |
 | S-06 | **Medium** | Policy | 11 of 18 `Policy` fields were declared and documented as enforced but never checked. After #30, `check_certificate_validity` is honored on the `store:` path only; the other ten fields are still unread. | **fixed** | confirmed (grep), re-checked |
-| S-07 | **Medium** | Verifier | `verification_time:` validates only the *trusted* certificates' validity window, never the signing certificate; `check_certificate_validity: false` has no effect. After #30, `store:` applies both knobs to the signing cert via `StoreContext`; `certificate:` is unchanged. | **partial** (#30) | confirmed, re-checked |
+| S-07 | **Medium** | Verifier | `verification_time:` validates only the *trusted* certificates' validity window, never the signing certificate; `check_certificate_validity: false` has no effect. After #30, `store:` applies both knobs to the signing cert via `StoreContext`; `certificate:` is unchanged. | **fixed** | confirmed, re-checked |
 | S-08 | **Medium** | Verifier | `keys:` with a public key (not a certificate) produces an empty trust set. After #30, key-valued entries pass `to_pem` and pin `signKey`. Cert-valued entries still hit S-01. | **fixed** (#30) | confirmed, then re-checked |
 | S-09 | **Medium** | Verification | `Reference#valid?` is just `Verification#valid?`; per-reference status, `Manifest`, `RetrievalMethod` and `Object` semantics are not surfaced, so `signed?` over-approximates for anything but the simplest shapes | **fixed** | code review |
 | S-10 | **Medium** | Native | Transform surface is whatever libxmlsec1 was built with; the source gem on a host whose xmlsec links libxslt (this checkout does) enables the XSLT transform, and policy blocks it only after it has run (S-04) | **open** | confirmed (ldd) |
@@ -84,7 +84,7 @@ trust source → `ConfigurationError`).
 - [x] **S-04** (#35) policy before crypto; do not dereference external URIs first
 - [x] **S-05** (#36) `template: :adopt` signing oracle; enforce Signer policy
 - [x] **S-06** (#37) remaining unenforced Policy fields
-- [ ] **S-07** (#38) remaining: `certificate:` path + native `certsVerificationTime`
+- [x] **S-07** (#38) remaining: `certificate:` path + native `certsVerificationTime`
 - [x] **S-09** (#39) per-reference validity / `signed?` over-approximation
 - [ ] **S-10** (#40) restrict transforms/URIs regardless of host xmlsec build
 - [x] **S-11** (#41) `signature: :first` and Signer/Verifier index disagreement
@@ -312,30 +312,39 @@ which existing tests and `HankoXml.validate`'s documented `Policy.permissive`
 forwarding both rely on. Fixing that contradiction is a separate decision,
 not a mechanical enforcement gap.
 
-### S-07 -- `verification_time:` checks the wrong certificates  [confirmed, Medium, **partial**]
+### S-07 -- `verification_time:` checks the wrong certificates  [confirmed, Medium, **fixed**]
 
-**Disposition:** `store:` now applies `verification_time` (and
-`check_certificate_validity`) to the **signing** cert via
-`OpenSSL::X509::StoreContext`. The `certificate:` / `certificates:` path still
-iterates the caller's trusted anchors. xmlsec `certsVerificationTime` is still
-0. `clock_skew` is still unused.
-
-`verify_single` iterates `trusted` (the caller's own anchors) and raises
-`CertificateExpired` when `verification_time` falls outside *their* window.
-On the `certificate:` path the signing certificate embedded in the document
-is checked by xmlsec against `certsVerificationTime = 0` (wall clock)
-regardless.
+**Disposition:** fixed, but not by the mechanism this entry originally
+proposed. Re-verified empirically before fixing (`certificate:` trust,
+already-expired signing cert, no `verification_time:`): xmlsec's own
+`certsVerificationTime` never fires at all on this path, at 0 or any other
+value, because S-01's signKey pinning means xmlsec never reads `KeyInfo` to
+independently verify the embedded certificate -- there is no native check
+to redirect. The actual bug was in `verify_single`'s own Ruby-side check: it
+was gated on `if @verification_time` (present at all), not on
+`@policy.check_certificate_validity`, so an expired trusted certificate
+verified fine with the default `verification_time: nil` regardless of
+`check_certificate_validity: true` (the strict default) -- confirmed
+`valid? == true` for an already-expired cert with `certificate:` and no
+`verification_time:`, before the fix. The fix: gate the block on
+`@policy.check_certificate_validity` and compare against
+`@verification_time || Time.now` -- an unset `verification_time` now means
+"now", matching the `store:` path's semantics (`OpenSSL::X509::StoreContext`
+also defaults to "now" when `ctx.time` is left unset), not "skip checking
+expiry entirely". `clock_skew` (S-06) already widens the window on both
+ends. `check_certificate_validity: false` (e.g. `Policy.permissive`) still
+disables the check outright, same as `store:`.
 
 ```
-expired signing cert, verify now                              -> valid? false
-expired signing cert, verification_time inside its validity   -> valid? false
-expired signing cert, Policy.permissive (check_certificate_validity: false) -> valid? false
-good doc, verification_time before TRUSTED cert notBefore     -> [CertificateExpired]
+expired signing cert, verify now (no verification_time:)                -> valid? false (was true)
+expired signing cert, verification_time: inside its original validity   -> valid? true
+expired signing cert, check_certificate_validity: false                 -> valid? true
 ```
 
-So the documented use case (verify an old NF-e as of its signing date) is
-impossible, and `clock_skew` is meaningless. Fix by setting
-`ctx.keyInfoReadCtx.certsVerificationTime` from Ruby's `verification_time`.
+`store:`'s own `check_certificate_validity`/`verification_time` handling
+(via `StoreContext`, from #30) is unchanged; `store:` does not get
+`clock_skew` (`StoreContext` has no skew concept, and this is out of scope
+for S-07's own remaining-work bullets).
 
 ### S-08 -- `keys:` with a public key gives an empty trust set  [confirmed, Medium, **fixed**]
 

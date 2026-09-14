@@ -283,16 +283,16 @@ Native transform allowlisting is S-10; R6 only asserts the Ruby policy gate.
 | `allow_hmac` | `hmac-sha256` SignatureMethod → `PolicyError` under strict regardless of `signature_methods` | pass |
 | `allow_retrieval_method` | `<RetrievalMethod>` in KeyInfo → `PolicyError` | pass (native `inspect_document` reports `has_retrieval_method`) |
 | `allow_same_document_xpointer` | `URI="#xpointer(/)"` → `PolicyError` | pass |
-| `check_certificate_validity` / `clock_skew` | expired signing cert: strict → `CertificateExpired`; `clock_skew: 60` accepts a cert that expired 30s ago, rejects one expired 30min ago. `store:` honors `check_certificate_validity` via `StoreContext` (#30); `certificate:` path still tracked under S-07. | pass (`clock_skew`) |
+| `check_certificate_validity` / `clock_skew` | expired signing cert: strict → `CertificateExpired`; `clock_skew: 60` accepts a cert that expired 30s ago, rejects one expired 30min ago. `store:` honors `check_certificate_validity` via `StoreContext` (#30); `certificate:` path fixed under S-07. | pass |
 | `schema` | `Policy.strict.schema == :default` → `Verifier` validates the `<Signature>` against the XSD without the caller passing `schema:`; explicit `schema: nil` still opts out | pass |
 
-### S-07 `verification_time`
+### S-07 `verification_time` (fixed; see `spec/hanko_xml/policy_enforcement_spec.rb`)
 
-| # | Spec |
-|---|------|
-| V1 | Signing cert valid 2020-2021, `verification_time: 2020-06-01` → **valid** |
-| V2 | Same, `verification_time: nil` (now) → `CertificateExpired` |
-| V3 | Trusted anchor expired but signing cert fine, `verification_time` within the anchor's window → valid; outside → `CertificateExpired` naming which cert |
+| # | Spec | Status |
+|---|------|--------|
+| V1 | Signing cert valid 2020-2021, `verification_time: 2020-06-01` → **valid** | pass |
+| V2 | Same, `verification_time: nil` (now) → `CertificateExpired` | pass -- was the actual bug: `check_certificate_validity` had no effect without an explicit `verification_time:`, so an expired cert verified fine by default |
+| V3 | Trusted anchor expired but signing cert fine, `verification_time` within the anchor's window → valid; outside → `CertificateExpired` naming which cert | not separately spec'd -- on `certificate:`/`certificates:` trust the trusted anchor *is* the signing cert (S-01 signKey pinning), so this collapses into V1/V2 |
 
 ### S-11 multiple signatures (fixed; see `spec/hanko_xml/multi_signature_spec.rb`)
 
