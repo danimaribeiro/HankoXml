@@ -375,8 +375,16 @@ verifier = HankoXml::Verifier.new(
   verification_time:    nil,   # Time — evaluate certificate validity as of then
   schema:               nil,   # validate <Signature> against an XSD first
   referenced_documents: {},    # URI => document, for non-fragment references
+  certificate_subject:  nil,   # store: only — String CN or OpenSSL::X509::Name
 )
 ```
+
+**`certificate_subject:`** — with `store:`, after the chain validates, the
+signing certificate's subject must match: a `String` must be the subject's only
+`CN` (exact, no prefix or wildcard matching), an `OpenSSL::X509::Name` must
+equal the whole subject. A mismatch fails with `UntrustedCertificate`. Passing
+it with any other trust source raises `ConfigurationError`. This is SignXML's
+`cert_subject_name`: a public CA chain alone says nothing about *who* signed.
 
 Four keywords deserve their own note:
 
@@ -790,10 +798,21 @@ HankoXml::Policy.new(
   allow_hmac:                false,  # see below
   check_certificate_validity: true,  # notBefore / notAfter against Time.now
   clock_skew:                60,     # seconds of tolerance for the above
+  require_signing_key_usage: true,   # store: only -- see below
 )
 ```
 
 Notes on the non-obvious ones:
+
+- **`require_signing_key_usage: true`.** Applies to `store:` verification only.
+  If the signing certificate has a KeyUsage extension, it must include
+  `digitalSignature` or `nonRepudiation`; otherwise verification fails with
+  `UntrustedCertificate`. A certificate with no KeyUsage extension is accepted
+  (RFC 5280: no extension means no restriction). `nonRepudiation` alone is
+  enough because qualified signing certificates (eIDAS/XAdES) often carry only
+  that bit; SignXML, by contrast, requires `digitalSignature`. Pinned trust
+  (`certificate:`, `certificates:`, `key:`, `keys:`) is not checked: the caller
+  already chose that exact key. `Policy.permissive` turns it off.
 
 - **`allow_hmac: false`.** An HMAC `SignatureMethod` combined with certificate-
   based trust is a classic confusion attack: the attacker replaces an RSA

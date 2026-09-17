@@ -20,7 +20,8 @@ module HankoXml
       ?signature: Symbol | Integer | String,
       ?verification_time: Time?,
       ?schema: Symbol | String | Nokogiri::XML::Schema | nil,
-      ?referenced_documents: Hash[String, Nokogiri::XML::Document]
+      ?referenced_documents: Hash[String, Nokogiri::XML::Document],
+      ?certificate_subject: (String | OpenSSL::X509::Name)?
     ) -> void
 
     def verify: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml) -> Verification

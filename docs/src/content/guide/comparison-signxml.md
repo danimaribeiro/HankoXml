@@ -29,7 +29,7 @@ HankoXml is a general Ruby XML-DSig library with a strict policy and an XSW API.
 | Algorithm policy | Frozen `Policy` allowlist on sign **and** verify | `SignatureConfiguration` on verify |
 | Trust model | Exactly one of `certificate` / `certificates` / `store` / `key` / `keys` | Optional `x509_cert`, `ca_pem_file`, `cert_subject_name`, `cert_resolver`, `hmac_key`; **none → system CAs** |
 | Chain validation | `store:` via `OpenSSL::X509::Store` | cryptography `x509.verification`, plus hostname/CN check |
-| KeyUsage `digitalSignature` | Not enforced as a dedicated policy | Enforced on end-entity by default |
+| KeyUsage `digitalSignature` | `store:` under `Policy.strict`: KeyUsage, when present, must allow `digitalSignature` or `nonRepudiation` | Enforced on end-entity by default |
 | HMAC | Registered (`hmac-sha256`) but **no HMAC key API**; blocked by default `signature_methods` | First-class `hmac_key=` |
 | RSA-PSS (MGF1), SHA3, ECDSA-SHA3 | Not built in (registerable) | Built in and allowed by default |
 | InclusiveNamespaces PrefixList | Claimed in `API_CONTRACT.md`; **not on `Transform`** | First-class (`inclusive_ns_prefixes`) |
@@ -63,7 +63,7 @@ HankoXml is a general Ruby XML-DSig library with a strict policy and an XSW API.
 ### Where SignXML is stronger
 
 1. **XAdES and XML-DSig 1.1 breadth.** RSA-PSS, SHA3, ECDSA-SHA3, InclusiveNamespaces, XAdES signed properties. HankoXml would need `Algorithms.register` plus a looser policy, and InclusiveNamespaces is not actually implemented on `Transform`.
-2. **Certificate path policy.** SignXML checks `KeyUsage: digitalSignature` and supports `ee_policy` / `ca_policy` and CN matching. HankoXml’s `store:` uses OpenSSL’s store; the `certificate:` pin path does not apply OpenSSL chain policy to the embedded signing cert the same way.
+2. **Certificate path policy.** SignXML supports `ee_policy` / `ca_policy`. HankoXml’s `store:` checks KeyUsage (`require_signing_key_usage`) and exact subject matching (`certificate_subject:`), but has no equivalent of arbitrary end-entity/CA policy objects beyond what `OpenSSL::X509::Store` configures.
 3. **Default schema validation** of the Signature element.
 4. **Comment / c14n truncation.** SignXML documents comment-induced truncation and excises comments from `signed_xml` when they were not signed. HankoXml leaves “read the node you checked with `signed?`” to the caller.
 5. **Maturity.** Years of interop vectors and two published HMAC CVEs that were fixed. HankoXml is new; several advertised `Policy` knobs are still unenforced (below).

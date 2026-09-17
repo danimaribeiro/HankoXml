@@ -22,11 +22,12 @@ verifier = HankoXml::Verifier.new(
   policy:        HankoXml::Policy.strict,  # default
   id_attributes: %w[Id ID id],
   namespaces:    {},
-  signature:     :first,   # :first | :only | :all | Integer index | XPath String
+  signature:     nil,      # nil (default) | :first | :only | :all | Integer index | XPath String
 
   verification_time:    nil,   # Time — evaluate certificate validity as of then
   schema:               nil,   # validate <Signature> against an XSD first
   referenced_documents: {},    # URI => document, for non-fragment references
+  certificate_subject:  nil,   # store: only — String CN or OpenSSL::X509::Name
 )
 ```
 
@@ -35,11 +36,18 @@ Trust sources are mutually exclusive: passing more than one of `certificate:`, `
 construction. See [Trust Anchors & Verification](/guide/trust-anchors) for a full discussion of
 each keyword.
 
+`certificate_subject:` only works with `store:`. After the chain validates, a `String` must be the
+signing certificate's only `CN` (exact match), and an `OpenSSL::X509::Name` must equal its whole
+subject; otherwise verification fails with `UntrustedCertificate`. With `store:`, `Policy.strict` also
+requires the certificate's KeyUsage, when present, to allow `digitalSignature` or `nonRepudiation`
+(`require_signing_key_usage`).
+
 ## `signature:` values
 
 | Value | Meaning |
 | --- | --- |
-| `:first` (default) | verify the first `<ds:Signature>` in document order |
+| `nil` (default) | as `:only` — one signature verifies as before, several raise `MultipleSignatures` |
+| `:first` | verify the first `<ds:Signature>` in document order; ignores any others (unsafe opt-in) |
 | `:only` | as `:first`, but raise `MultipleSignatures` if the document has more than one — the safest choice for protocols that expect exactly one |
 | `Integer` | the nth signature, document order, 0-based |
 | `String` | an XPath selecting exactly one `<ds:Signature>` |

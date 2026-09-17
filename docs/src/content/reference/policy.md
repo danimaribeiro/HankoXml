@@ -56,10 +56,21 @@ HankoXml::Policy.new(
   allow_hmac:                false,
   check_certificate_validity: true,  # notBefore / notAfter against Time.now
   clock_skew:                60,     # seconds of tolerance for the above
+  require_signing_key_usage: true,   # store: only -- see below
 )
 ```
 
 ## Notes on the non-obvious fields
+
+- **`require_signing_key_usage: true`.** Applies to `store:` verification only.
+  If the signing certificate has a KeyUsage extension, it must include
+  `digitalSignature` or `nonRepudiation`; otherwise verification fails with
+  `UntrustedCertificate`. A certificate with no KeyUsage extension is accepted
+  (RFC 5280: no extension means no restriction). `nonRepudiation` alone is
+  enough because qualified signing certificates (eIDAS/XAdES) often carry only
+  that bit; SignXML, by contrast, requires `digitalSignature`. Pinned trust
+  (`certificate:`, `certificates:`, `key:`, `keys:`) is not checked: the caller
+  already chose that exact key. `Policy.permissive` turns it off.
 
 - **`allow_hmac: false`** — An HMAC `SignatureMethod` combined with certificate-based trust is a
   classic confusion attack: the attacker replaces an RSA signature with an HMAC one keyed on public

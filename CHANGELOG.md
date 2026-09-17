@@ -10,6 +10,14 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Added
 
+- **#63:** `Policy#require_signing_key_usage` (on in `Policy.strict`, off in
+  `Policy.permissive`): with `store:`, a signing certificate whose KeyUsage
+  extension allows neither `digitalSignature` nor `nonRepudiation` fails
+  verification with `UntrustedCertificate`. No extension means no
+  restriction. `Verifier.new(store:, certificate_subject:)` additionally
+  requires the signing certificate's CN (String) or whole subject
+  (`OpenSSL::X509::Name`) to match.
+
 - `HankoXml::NativeVersion.check!` runs at require time and refuses to load
   when the libxmlsec1 present at runtime is not ABI compatible with the headers
   the extension was compiled against. `build.rs` bakes xmlsec's and libxml2's

@@ -29,12 +29,13 @@ module HankoXmlVerifierSpecHelpers
     doc
   end
 
+  # key_usage: nil uses the default for is_ca; :none omits the extension.
   def issue_cert(subject:, key:, serial:, is_ca:, issuer_cert: nil, issuer_key: nil,
-                 not_before: Time.now - 3600, not_after: Time.now + 86_400)
+                 not_before: Time.now - 3600, not_after: Time.now + 86_400, key_usage: nil)
     cert = OpenSSL::X509::Certificate.new
     cert.version = 2
     cert.serial = serial
-    cert.subject = OpenSSL::X509::Name.parse("/CN=#{subject}")
+    cert.subject = subject.is_a?(OpenSSL::X509::Name) ? subject : OpenSSL::X509::Name.parse("/CN=#{subject}")
     cert.issuer = issuer_cert ? issuer_cert.subject : cert.subject
     cert.public_key = key
     cert.not_before = not_before
@@ -43,7 +44,8 @@ module HankoXmlVerifierSpecHelpers
     factory.subject_certificate = cert
     factory.issuer_certificate = issuer_cert || cert
     cert.add_extension(factory.create_extension("basicConstraints", is_ca ? "CA:TRUE" : "CA:FALSE", true))
-    cert.add_extension(factory.create_extension("keyUsage", is_ca ? "keyCertSign,cRLSign" : "digitalSignature", true))
+    key_usage ||= is_ca ? "keyCertSign,cRLSign" : "digitalSignature"
+    cert.add_extension(factory.create_extension("keyUsage", key_usage, true)) unless key_usage == :none
     cert.add_extension(factory.create_extension("subjectKeyIdentifier", "hash", false))
     cert.add_extension(factory.create_extension("authorityKeyIdentifier", "keyid:always", false)) if issuer_cert
     cert.sign(issuer_key || key, OpenSSL::Digest.new("SHA256"))
@@ -240,6 +242,95 @@ RSpec.describe HankoXml::Verifier do
 
       expect(result.valid?).to be false
       expect(result.id_attributes).to eq(["CustomId"])
+    end
+  end
+
+  # #63: certificate-usage policy on the store: signing certificate.
+  describe "store: signing certificate policy" do
+    before(:context) do
+      @ca_key = OpenSSL::PKey::RSA.new(2048)
+      @leaf_key = OpenSSL::PKey::RSA.new(2048)
+      @ca_cert = HankoXmlVerifierSpecHelpers.issue_cert(subject: "usage-root", key: @ca_key, serial: 10, is_ca: true)
+    end
+
+    let(:store) { OpenSSL::X509::Store.new.tap { |s| s.add_cert(@ca_cert) } }
+
+    def leaf(serial, key_usage: nil, subject: "usage-leaf")
+      HankoXmlVerifierSpecHelpers.issue_cert(
+        subject: subject, key: @leaf_key, serial: serial, is_ca: false,
+        issuer_cert: @ca_cert, issuer_key: @ca_key, key_usage: key_usage
+      )
+    end
+
+    def signed_by(cert)
+      HankoXml.sign(unsigned_xml, key: @leaf_key, certificate: cert).to_s
+    end
+
+    it "accepts digitalSignature, nonRepudiation alone, or no KeyUsage extension" do
+      [leaf(11), leaf(12, key_usage: "nonRepudiation"), leaf(13, key_usage: :none)].each do |cert|
+        expect(HankoXml.verify(signed_by(cert), store: store).valid?).to be(true), cert.extensions.map(&:to_s).inspect
+      end
+    end
+
+    it "rejects a KeyUsage without digitalSignature or nonRepudiation under Policy.strict" do
+      result = HankoXml.verify(signed_by(leaf(14, key_usage: "keyEncipherment")), store: store)
+
+      expect(result.valid?).to be false
+      expect(result.errors.first).to be_a(HankoXml::UntrustedCertificate)
+      expect(result.errors.first.message).to match(/require_signing_key_usage/)
+    end
+
+    it "skips the KeyUsage check when require_signing_key_usage is false" do
+      policy = HankoXml::Policy.strict.with(require_signing_key_usage: false)
+      result = HankoXml.verify(signed_by(leaf(15, key_usage: "keyEncipherment")), store: store, policy: policy)
+
+      expect(result.valid?).to be true
+    end
+
+    it "does not apply the KeyUsage check to a pinned certificate:" do
+      cert = leaf(16, key_usage: "keyEncipherment")
+      expect(HankoXml.verify(signed_by(cert), certificate: cert).valid?).to be true
+    end
+
+    describe "certificate_subject:" do
+      it "accepts a String equal to the only CN" do
+        expect(HankoXml.verify(signed_by(leaf(20)), store: store, certificate_subject: "usage-leaf").valid?)
+          .to be true
+      end
+
+      it "rejects a different CN, including a prefix or suffix match" do
+        %w[usage-lea usage-leaf.evil other].each do |cn|
+          result = HankoXml.verify(signed_by(leaf(21)), store: store, certificate_subject: cn)
+
+          expect(result.valid?).to be false
+          expect(result.errors.first).to be_a(HankoXml::UntrustedCertificate)
+          expect(result.errors.first.message).to match(/certificate_subject/)
+        end
+      end
+
+      it "rejects a String when the subject has more than one CN" do
+        name = OpenSSL::X509::Name.parse("/CN=usage-leaf/CN=attacker")
+        result = HankoXml.verify(signed_by(leaf(22, subject: name)), store: store, certificate_subject: "usage-leaf")
+
+        expect(result.valid?).to be false
+      end
+
+      it "matches an OpenSSL::X509::Name against the whole subject" do
+        name = OpenSSL::X509::Name.parse("/O=Example/CN=usage-leaf")
+        cert = leaf(23, subject: name)
+
+        expect(HankoXml.verify(signed_by(cert), store: store, certificate_subject: name).valid?).to be true
+        expect(HankoXml.verify(signed_by(cert), store: store,
+                                                certificate_subject: OpenSSL::X509::Name.parse("/CN=usage-leaf"))
+          .valid?).to be false
+      end
+
+      it "is a ConfigurationError without store: or with an unsupported type" do
+        expect { described_class.new(certificate: signer_cert_pem, certificate_subject: "x") }
+          .to raise_error(HankoXml::ConfigurationError, /only applies to store:/)
+        expect { described_class.new(store: store, certificate_subject: /usage/) }
+          .to raise_error(HankoXml::ConfigurationError, /String .* or an OpenSSL::X509::Name/)
+      end
     end
   end
 

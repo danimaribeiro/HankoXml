@@ -45,7 +45,7 @@ module HankoXml
     def initialize(certificate: nil, certificates: nil, store: nil, key: nil, keys: nil,
                    policy: HankoXml::Policy.strict, id_attributes: %w[Id ID id], resolver: nil,
                    namespaces: {}, signature: nil, verification_time: nil,
-                   schema: UNSET_SCHEMA, referenced_documents: {})
+                   schema: UNSET_SCHEMA, referenced_documents: {}, certificate_subject: nil)
       supplied_trusts = [certificate, certificates, store, key, keys].compact
       if supplied_trusts.size != 1
         raise HankoXml::ConfigurationError,
@@ -66,6 +66,7 @@ module HankoXml
       @verification_time = verification_time
       @schema = schema.equal?(UNSET_SCHEMA) ? policy.schema : schema
       @referenced_documents = referenced_documents
+      @certificate_subject = coerce_certificate_subject(certificate_subject)
 
       freeze
     end
@@ -388,6 +389,7 @@ module HankoXml
       end
 
       leaf, error = verified_leaf_from_store(embedded)
+      error ||= signing_certificate_violation(leaf)
       return [nil, nil, error] if error
 
       # xmlsec treats trusted cert PEMs as CA anchors and still X509-verifies
@@ -440,6 +442,63 @@ module HankoXml
     # End-entity certs in this KeyInfo set: nobody else in the set was issued
     # by them. Document order is not a leaf indicator (XML-DSig does not
     # require leaf-first X509Certificate).
+    # KeyUsage bits (RFC 5280 §4.2.1.3), numbered from the most significant
+    # bit of the BIT STRING.
+    DIGITAL_SIGNATURE_BIT = 0
+    NON_REPUDIATION_BIT = 1
+    private_constant :DIGITAL_SIGNATURE_BIT, :NON_REPUDIATION_BIT
+
+    def coerce_certificate_subject(subject)
+      return nil if subject.nil?
+      unless @store
+        raise HankoXml::ConfigurationError,
+              "certificate_subject: only applies to store: (the other trust sources already pin the key)"
+      end
+      return subject.dup.freeze if subject.is_a?(String)
+      return subject if subject.is_a?(OpenSSL::X509::Name)
+
+      raise HankoXml::ConfigurationError,
+            "certificate_subject: must be a String (the CN) or an OpenSSL::X509::Name, got #{subject.class}"
+    end
+
+    # Certificate-usage policy on the leaf store: already validated (#63):
+    # KeyUsage and the optional certificate_subject:.
+    def signing_certificate_violation(leaf)
+      if @policy.require_signing_key_usage && !signing_key_usage?(leaf)
+        return HankoXml::UntrustedCertificate.new(
+          "signing certificate's KeyUsage allows neither digitalSignature nor nonRepudiation " \
+          "(require_signing_key_usage)"
+        )
+      end
+      return nil if @certificate_subject.nil? || certificate_subject_matches?(leaf)
+
+      HankoXml::UntrustedCertificate.new(
+        "signing certificate subject #{leaf.subject} does not match certificate_subject: #{@certificate_subject}"
+      )
+    end
+
+    # No KeyUsage extension means no restriction (RFC 5280). When present,
+    # either bit is enough: qualified signing certificates (eIDAS/XAdES) often
+    # carry nonRepudiation alone.
+    def signing_key_usage?(cert)
+      extension = cert.extensions.find { |ext| ext.oid == "keyUsage" }
+      return true if extension.nil?
+
+      bits = OpenSSL::ASN1.decode(extension.value_der).value.to_s.unpack1("B*").to_s
+      [DIGITAL_SIGNATURE_BIT, NON_REPUDIATION_BIT].any? { |bit| bits[bit] == "1" }
+    rescue OpenSSL::ASN1::ASN1Error
+      false
+    end
+
+    # A String must be the certificate's only CN; an X509::Name must equal
+    # the whole subject.
+    def certificate_subject_matches?(cert)
+      return cert.subject.cmp(@certificate_subject).zero? if @certificate_subject.is_a?(OpenSSL::X509::Name)
+
+      common_names = cert.subject.to_a.filter_map { |name, value, _type| value if name == "CN" }
+      common_names == [@certificate_subject]
+    end
+
     def end_entity_certificates(certificates)
       certificates.select do |candidate|
         certificates.none? { |other| issued_by?(other, candidate) }

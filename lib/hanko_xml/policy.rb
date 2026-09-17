@@ -12,7 +12,7 @@ module HankoXml
       max_references require_references
       require_signed_root reject_duplicate_ids max_document_size max_transforms_per_reference
       min_rsa_key_bits min_ec_key_bits allow_hmac check_certificate_validity clock_skew
-      schema
+      require_signing_key_usage schema
     ].freeze
 
     STRICT_DEFAULTS = {
@@ -38,6 +38,9 @@ module HankoXml
       allow_hmac: false,
       check_certificate_validity: true,
       clock_skew: 60,
+      # store: only -- the signing certificate's KeyUsage, when present, must
+      # allow digitalSignature or nonRepudiation (#63).
+      require_signing_key_usage: true,
 
       schema: :default
     }.freeze
@@ -102,6 +105,7 @@ module HankoXml
           allow_hmac: true,
           check_certificate_validity: false,
           clock_skew: 0,
+          require_signing_key_usage: false,
           schema: nil
         )
       end
