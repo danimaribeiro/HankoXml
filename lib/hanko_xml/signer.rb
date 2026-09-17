@@ -247,6 +247,15 @@ module HankoXml
       if existing.empty?
         raise HankoXml::ConfigurationError, "template: :require but no <Signature> found" if @template_mode == :require
 
+        # API_CONTRACT.md §5.5: detached builds a <Signature> but inserts
+        # nothing, so there is nothing in the document to sign. Without this
+        # the unplaced node fell through to a TypeError (#52 G6).
+        if @placement.detached?
+          raise HankoXml::ConfigurationError,
+                "placement: :detached inserts no <Signature>, so there is nothing to sign; use " \
+                "Signer#template(doc) and insert it yourself, or Placement.custom"
+        end
+
         template_node = template(doc)
         @placement.insert(doc, template_node)
         [[template_node], false]
@@ -304,7 +313,6 @@ module HankoXml
       val && !val.content.strip.empty?
     end
 
-    # rubocop:disable Metrics/PerceivedComplexity
     def write_back_signature(doc, signed_bytes, index, caller_sig_node)
       # Parse the signed bytes
       signed_doc = HankoXml.parse(signed_bytes)
@@ -328,28 +336,22 @@ module HankoXml
       signed_sv = signed_sig_node.at_xpath("./ds:SignatureValue", ds: NS["ds"])
       caller_sv.content = signed_sv.content if caller_sv && signed_sv
 
-      # Copy KeyInfo//X509Certificate (and KeyValue leaves if applicable, though for now we just copy X509Certificate)
-      caller_certs = caller_sig_node.xpath(".//ds:KeyInfo//ds:X509Certificate", ds: NS["ds"])
-      signed_certs = signed_sig_node.xpath(".//ds:KeyInfo//ds:X509Certificate", ds: NS["ds"])
-
-      # If caller has no X509Certificate but signed does, append it to X509Data
-      if caller_certs.empty? && signed_certs.any?
-        x509_data = caller_sig_node.at_xpath(".//ds:KeyInfo/ds:X509Data", ds: NS["ds"])
-        if x509_data
-          signed_certs.each do |signed_cert|
-            new_cert = doc.create_element("X509Certificate")
-            new_cert.namespace = x509_data.namespace
-            x509_data.add_child(new_cert)
-            new_cert.content = signed_cert.content
-          end
-        end
-      else
-        caller_certs.each_with_index do |caller_cert, i|
-          signed_cert = signed_certs[i]
-          caller_cert.content = signed_cert.content if signed_cert
-        end
-      end
+      write_back_key_info(doc, caller_sig_node, signed_sig_node)
     end
-    # rubocop:enable Metrics/PerceivedComplexity
+
+    # xmlsec fills KeyInfo from the key: certificates (possibly several, for
+    # a certificates: chain), <RSAKeyValue>/<ECKeyValue>, X509SubjectName and
+    # the rest. Copying individual leaves missed everything but
+    # X509Certificate, so the caller's document kept an empty <KeyValue/>
+    # that no longer matched what was signed (#52 E5/E6/E8). Mirror the
+    # signed KeyInfo's children wholesale instead.
+    def write_back_key_info(doc, caller_sig_node, signed_sig_node)
+      caller_key_info = caller_sig_node.at_xpath("./ds:KeyInfo", ds: NS["ds"])
+      signed_key_info = signed_sig_node.at_xpath("./ds:KeyInfo", ds: NS["ds"])
+      return unless caller_key_info && signed_key_info
+
+      caller_key_info.children.each(&:unlink)
+      signed_key_info.children.each { |child| caller_key_info.add_child(child.dup(1, doc)) }
+    end
   end
 end

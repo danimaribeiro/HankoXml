@@ -60,6 +60,22 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **#52:** `key_info: [:key_value]` wrote an empty `<KeyValue/>`, so the
+  signature could not be verified with `key:` and failed the default schema
+  check. xmlsec 1.3 disables KeyValue key data globally; the signing context
+  now enables it, along with KeyName and X509Data, for writing only.
+  Verification is unchanged and still pins its key (S-01). EC keys now write
+  `<dsig11:ECKeyValue>`.
+- **#52:** `key_info:` clauses `:x509_subject_name`, `:x509_issuer_serial` and
+  `:x509_ski` silently wrote an `<X509Certificate>` instead. The template now
+  emits a placeholder for each clause.
+- **#52:** Signing copied only `X509Certificate` from xmlsec's output back
+  into the caller's document, dropping anything else xmlsec wrote into
+  `<KeyInfo>`. The whole signed `<KeyInfo>` is now mirrored.
+- **#52:** `Signer#sign` with `placement: :detached` raised `TypeError`. It now
+  raises `ConfigurationError`, as API_CONTRACT.md §5.5 documents; build the
+  template with `Signer#template` and insert it yourself.
+
 - **#52:** Loading an encrypted private key without `password:` made OpenSSL
   prompt `Enter PEM pass phrase:` on the controlling terminal and block the
   process (a server with a TTY would hang). `Key.from_pem`, `Key.from_der`,

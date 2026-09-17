@@ -37,11 +37,20 @@ RSpec.describe HankoXml::Template do
     expect(sig.at_xpath("ds:SignatureValue", HankoXml::NS).content).to eq("")
   end
 
-  it "builds an empty <X509Data/> for the default key_info: [:x509_certificate]" do
+  it "builds <X509Data><X509Certificate/></X509Data> for the default key_info: [:x509_certificate]" do
     sig = signer.template(doc)
     x509_data = sig.at_xpath("ds:KeyInfo/ds:X509Data", HankoXml::NS)
     expect(x509_data).not_to be_nil
-    expect(x509_data.children).to be_empty
+    expect(x509_data.element_children.map(&:name)).to eq(%w[X509Certificate])
+    expect(x509_data.text).to eq("")
+  end
+
+  # #52 E8: xmlsec only fills the X509Data children the template names.
+  it "builds one X509Data placeholder per x509 clause, in order" do
+    sig = signer(key_info: %i[x509_ski key_name x509_certificate x509_issuer_serial x509_subject_name]).template(doc)
+    expect(sig.xpath("ds:KeyInfo/ds:X509Data", HankoXml::NS).size).to eq(1)
+    expect(sig.at_xpath("ds:KeyInfo/ds:X509Data", HankoXml::NS).element_children.map(&:name))
+      .to eq(%w[X509SKI X509Certificate X509IssuerSerial X509SubjectName])
   end
 
   it "omits <KeyInfo> entirely when key_info: []" do

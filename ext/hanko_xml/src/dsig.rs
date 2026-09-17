@@ -610,6 +610,62 @@ impl<'mngr> DsigCtx<'mngr> {
         Ok(())
     }
 
+    /// Lets the signing KeyInfo writer fill `<KeyName>`, `<KeyValue>` and
+    /// `<X509Data>`.
+    ///
+    /// xmlsec 1.3 registers the KeyValue key data *disabled* globally (it
+    /// is unsafe to *read*), so with the default empty
+    /// `keyInfoWriteCtx.enabledKeyData` a `<KeyValue/>` template stayed
+    /// empty. A non-empty local list replaces the global one for this
+    /// context only, so it must name every KeyInfo child we write and the
+    /// key value classes KeyValue may serialize. Reading is untouched:
+    /// verification pins `signKey` and never consults KeyInfo (S-01).
+    ///
+    /// Classes are picked from xmlsec's registry by name rather than by
+    /// `xmlSec*GetKlass` symbol because the EC class is `ec` in 1.3 but
+    /// `ecdsa` (a different symbol) in the 1.2 that Linux distros ship.
+    fn enable_key_info_writing(&mut self) -> Result<(), &'static str> {
+        const WRITABLE: &[&[u8]] = &[b"key-name", b"key-value", b"x509", b"rsa", b"ec", b"ecdsa", b"dsa"];
+
+        // SAFETY: xmlSecKeyDataIdsGet returns the process-global registry
+        // list, populated once by init_xmlsec and never mutated afterwards.
+        let registry = unsafe { sys::xmlSecKeyDataIdsGet() };
+        if registry.is_null() {
+            return Err("xmlsec key data registry is unavailable");
+        }
+        // SAFETY: registry is a valid list (checked above).
+        let size = unsafe { sys::xmlSecPtrListGetSize(registry) };
+        for pos in 0..size {
+            // SAFETY: pos < size; every item is a static xmlSecKeyDataKlass.
+            let id = unsafe { sys::xmlSecPtrListGetItem(registry, pos) } as sys::xmlSecKeyDataId;
+            if id.is_null() {
+                continue;
+            }
+            // SAFETY: id is a non-null static klass; name is a static
+            // NUL-terminated string or null.
+            let name = unsafe { (*id).name };
+            if name.is_null() {
+                continue;
+            }
+            // SAFETY: name is non-null and NUL-terminated (see above).
+            let name = unsafe { std::ffi::CStr::from_ptr(name.cast()) }.to_bytes();
+            if !WRITABLE.contains(&name) {
+                continue;
+            }
+            // SAFETY: self.ptr is a live xmlSecDSigCtx we exclusively own;
+            // enabledKeyData was initialized as an xmlSecKeyDataIdListId
+            // list by xmlSecDSigCtxCreate, and id is static for the life of
+            // the process. Same ABI caveat as the signKey write.
+            let rc = unsafe {
+                sys::xmlSecPtrListAdd(&mut (*self.ptr).keyInfoWriteCtx.enabledKeyData, id as sys::xmlSecPtr)
+            };
+            if rc < 0 {
+                return Err("failed to enable KeyInfo key data for writing");
+            }
+        }
+        Ok(())
+    }
+
     /// Signs the document at the given signature node.
     fn sign(&mut self, sig_node: sys::xmlNodePtr) -> Result<(), &'static str> {
         // SAFETY: self.ptr is valid and exclusively ours; sig_node is
@@ -892,6 +948,7 @@ pub fn sign_document(
     let mngr = KeysMngr::new(&[], &[]).map_err(DsigError::native)?;
 
     let mut ctx = DsigCtx::for_signing(&mngr, key).map_err(DsigError::native)?;
+    ctx.enable_key_info_writing().map_err(DsigError::native)?;
 
     ctx.sign(sig_node).map_err(DsigError::signing)?;
 

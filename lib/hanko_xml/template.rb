@@ -103,13 +103,29 @@ module HankoXml
       node
     end
 
+    X509_CHILDREN = {
+      x509_certificate: "X509Certificate",
+      x509_subject_name: "X509SubjectName",
+      x509_issuer_serial: "X509IssuerSerial",
+      x509_ski: "X509SKI"
+    }.freeze
+    private_constant :X509_CHILDREN
+
     def build_key_info
       clauses = @config.key_info
       return nil if clauses.empty?
 
       key_info = element("KeyInfo")
 
-      key_info.add_child(element("X509Data")) if clauses.any? { |c| c.name.to_s.start_with?("x509") }
+      x509_children = clauses.filter_map { |c| X509_CHILDREN[c.name] }.uniq
+      unless x509_children.empty?
+        # xmlsec writes only the X509Data children the template names (an
+        # empty <X509Data/> means "certificate"), so each clause needs its
+        # own placeholder (#52 E8).
+        x509_data = element("X509Data")
+        x509_children.each { |name| x509_data.add_child(element(name)) }
+        key_info.add_child(x509_data)
+      end
 
       clauses.each do |c|
         case c.name
