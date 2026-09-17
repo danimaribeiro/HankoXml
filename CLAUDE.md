@@ -6,8 +6,11 @@ Nokogiri is the optional DOM layer.
 
 ## Workflow
 
-- Never push straight to `main`. Work on a branch, open a PR, wait for CI to go
-  green, then merge it.
+- Never push code straight to `main`. Work on a branch, open a PR, wait for CI
+  to go green, then merge it.
+- Documentation-only changes (Markdown docs, `CLAUDE.md`, comments in docs) may
+  be committed and pushed straight to `main`. Anything touching `lib/`, `ext/`,
+  `spec/`, `sig/`, build files or workflows goes through a PR.
 - Locally, run only the specs for the code you touched
   (`bundle exec rspec spec/path/to_spec.rb`, plus `bundle exec rubocop` on changed
   files). Leave the full suite and the OS/Ruby matrix to CI.
