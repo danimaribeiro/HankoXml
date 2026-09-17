@@ -79,10 +79,8 @@ From `SECURITY_REVIEW.md` (still open or partial):
 | S-06 | Many `Policy` fields are documented but unread: `require_signed_root`, `reject_duplicate_ids`, `max_document_size`, `min_rsa_key_bits`, `min_ec_key_bits`, `allow_hmac`, `clock_skew`, `allow_retrieval_method`, `allow_same_document_xpointer`, `schema` | `Policy.strict` does **not** reject fragment signatures, duplicate IDs, 1024-bit RSA, or huge docs. `Policy.strict.schema == :default` does not turn on XSD. HMAC is still blocked via `signature_methods`, not `allow_hmac`. |
 | S-07 | `verification_time:` on `certificate:` checks the **pinned** cert’s window, not xmlsec’s view of the signing cert | Archived documents with an expired leaf can fail even with a historical time; `clock_skew` is unused. |
 | S-09 | `#signed?` assumes the whole ID’d subtree; XPath/XSLT/Manifest not modeled | Safe under `Policy.strict` (those transforms denied). Unsafe if you use `Policy.permissive`. |
-| S-10 | Source gem inherits host xmlsec (often linked to libxslt) | Direct `Native.verify` / `Policy.permissive` can run XSLT. Public API + `Policy.strict` still deny it. |
 | S-11 | Default `signature: :first` | Extra wrapping signatures are ignored unless you use `:only` or `verify_all`. SignXML’s `location` is the analogous footgun. |
 | S-12 | `max_document_size` unused; `xml.len() as i32` | No DoS cap at the FFI boundary. |
-| S-14 | Mismatched `key:` / `certificate:` at sign time | Signs with a cert that will not verify that signature. |
 | Docs vs code | `Transform.exc_c14n(inclusive_prefixes:)` in the contract; HMAC key path advertised in policy docs | SAML InclusiveNamespaces and HMAC interop are not actually there. |
 
 ### Remaining SignXML gaps (5.1.0)

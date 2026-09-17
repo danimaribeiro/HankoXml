@@ -47,11 +47,11 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-07 | **Medium** | Verifier | `verification_time:` validates only the *trusted* certificates' validity window, never the signing certificate; `check_certificate_validity: false` has no effect. After #30, `store:` applies both knobs to the signing cert via `StoreContext`; `certificate:` is unchanged. | **fixed** | confirmed, re-checked |
 | S-08 | **Medium** | Verifier | `keys:` with a public key (not a certificate) produces an empty trust set. After #30, key-valued entries pass `to_pem` and pin `signKey`. Cert-valued entries still hit S-01. | **fixed** (#30) | confirmed, then re-checked |
 | S-09 | **Medium** | Verification | `Reference#valid?` is just `Verification#valid?`; per-reference status, `Manifest`, `RetrievalMethod` and `Object` semantics are not surfaced, so `signed?` over-approximates for anything but the simplest shapes | **fixed** | code review |
-| S-10 | **Medium** | Native | Transform surface is whatever libxmlsec1 was built with; the source gem on a host whose xmlsec links libxslt (this checkout does) enables the XSLT transform, and policy blocks it only after it has run (S-04) | **open** | confirmed (ldd) |
+| S-10 | **Medium** | Native | Transform surface is whatever libxmlsec1 was built with; the source gem on a host whose xmlsec links libxslt (this checkout does) enables the XSLT transform, and policy blocks it only after it has run (S-04) | **fixed** (#64) | confirmed (ldd) |
 | S-11 | **Medium** | Verifier | `signature: :first` default: with several `<Signature>` elements only the first is verified and the result is reported for the whole document | **open** | code review |
 | S-12 | **Low** | Native | `xml.len() as i32` in `OwnedXmlDoc::parse` truncates documents over 2 GiB; no size guard before the FFI boundary and `max_document_size` is unenforced | **open** | code review |
 | S-13 | **Low** | Native / Ruby | Exceptions are classified by substring (`msg.contains("key")`, `contains("parse")`); xmlsec error text (with attacker-controlled URIs/paths) is echoed verbatim into Ruby exception messages | **open** | code review |
-| S-14 | **Low** | Signer | A mismatched `key:`/`certificate:` pair is accepted at sign time; the output verifies with neither certificate | **open** | confirmed, re-checked |
+| S-14 | **Low** | Signer | A mismatched `key:`/`certificate:` pair is accepted at sign time; the output verifies with neither certificate | **fixed** | confirmed, re-checked |
 | S-15 | **Low** | Key | `Key#dispose!` claims in-place zeroization but only nils the reference; `Key#private_key?` is true for public-only `PKey`s; PEM-vs-cert detection is a substring heuristic | **open** | code review |
 | S-16 | **Low** | Algorithms | `Algorithms.register(..., replace: true)` is process-global and can re-point a Symbol used by `Policy.strict` (e.g. `:sha256`) at another URI, silently changing what "strict" means | **open** | code review |
 | S-17 | **Low** | SignedDocument | `#document` exposes the mutable Nokogiri document; `FrozenSignatureError` exists but is never raised | **open** | code review |
@@ -86,11 +86,11 @@ trust source → `ConfigurationError`).
 - [x] **S-06** (#37) remaining unenforced Policy fields
 - [x] **S-07** (#38) remaining: `certificate:` path + native `certsVerificationTime`
 - [x] **S-09** (#39) per-reference validity / `signed?` over-approximation
-- [ ] **S-10** (#40) restrict transforms/URIs regardless of host xmlsec build
+- [x] **S-10** (#40) restrict transforms/URIs regardless of host xmlsec build
 - [x] **S-11** (#41) `signature: :first` and Signer/Verifier index disagreement
 - [ ] **S-12** (#42) `xml.len() as i32` + `max_document_size`
 - [ ] **S-13** (#43) error classification and xmlsec log in messages
-- [ ] **S-14** (#44) reject mismatched `key:` / `certificate:` at sign time
+- [x] **S-14** (#44) reject mismatched `key:` / `certificate:` at sign time
 - [ ] **S-15** (#45) `Key#dispose!` / `private_key?` / PEM heuristic
 - [ ] **S-16** (#46) freeze or snapshot `Algorithms.register`
 - [ ] **S-17** (#47) `SignedDocument` mutability / unused `FrozenSignatureError`
@@ -392,9 +392,22 @@ nothing," so it cannot be used to over-claim coverage), just not an accurate
 one; genuine support for those shapes remains future work, now tracked
 separately if picked up.
 
-### S-10 -- Transform/URI surface depends on the host build  [confirmed by `ldd`, Medium, **open**]
+### S-10 -- Transform/URI surface depends on the host build  [confirmed by `ldd`, Medium, **fixed**]
 
-**Disposition:** still open. Source gem still inherits distro xmlsec.
+**Disposition:** fixed in `a2ab423` (PR #64). `DsigCtx::for_signing`, used by
+both `native_sign` and `native_verify`, now calls `restrict_transforms`, which
+fills `enabledReferenceTransforms` with an allow-list: enveloped signature,
+base64, the inclusive/exclusive C14N variants, and the SHA-1/SHA-2 digests.
+XSLT, XPath, XPath Filter 2 and XPointer are not on it, so a direct
+`Native.verify` / `Native.sign` call can no longer reach them, whatever the
+host xmlsec was built with. Caveat: the regression spec ("Native transform
+restriction (S-10)" in `spec/hanko_xml/policy_ordering_spec.rb`) only asserts
+the status is not `:succeeded`, which adding any transform to a signed
+Reference already causes, and vendored builds have no XSLT to register. It
+does not tell the allow-list apart from a digest mismatch. Adding a new
+transform or digest (for example SHA-3, #60) means adding it to the list.
+
+Original report:
 
 `lib/hanko_xml/hanko_xml.so` in this checkout links `libxslt.so.1` via the
 system `libxmlsec1`, so the XSLT transform is registered. The vendored builds
@@ -443,10 +456,20 @@ that log or display exception messages leak those. Also, `native_sign` drains
 the error buffer a second time after `format_error` already did, so
 `SigningError#xmlsec_errors` is always empty.
 
-### S-14 -- Key/certificate mismatch accepted at sign time  [confirmed, Low, **open**]
+### S-14 -- Key/certificate mismatch accepted at sign time  [confirmed, Low, **fixed**]
 
-**Disposition:** still open. Re-checked after #30: `sign(key: other.key,
-certificate: signer.crt)` succeeds; `verify` with either cert is false.
+**Disposition:** fixed. `Signer#initialize` runs
+`check_key_matches_certificate!` after the configuration block (which can
+reassign `key`/`certificate`) and before `freeze`. When `key:` is a private
+key and `certificate:` is an X.509 certificate, it raises `ConfigurationError`
+unless `OpenSSL::X509::Certificate#check_private_key` accepts the pair. The
+message names the certificate subject, never key material. Other shapes (a
+certificate passed as `key:`, a key passed as `certificate:`) are not checked
+here (F5/F7 in `SIGNING_TEST_COVERAGE.md`). Specs: "key:/certificate: pairing
+(S-14)" in `spec/hanko_xml/signer_spec.rb`.
+
+Original report (re-checked after #30): `sign(key: other.key,
+certificate: signer.crt)` succeeded; `verify` with either cert was false.
 
 `HankoXml.sign(xml, key: other.key, certificate: signer.crt)` succeeds; the
 output verifies with neither `signer.crt` nor `other.crt`. `Signer#initialize`
@@ -534,13 +557,10 @@ accept path Strings explicitly.
 
 ## Suggested remediation order
 
-S-01, S-02, S-03, S-04, S-05, and S-08 are done. Remaining, in order:
+S-01 through S-11 and S-14 are done. Remaining, in order:
 
-1. S-10 -- restrict `enabledTransforms` natively regardless of host xmlsec.
-2. S-06, S-07 -- make every documented knob real or remove it from the API
-   and docs, including the `certificate:` time path.
-3. S-11, S-14, S-09, S-12, S-13 -- correctness and robustness.
-4. S-15 through S-21 -- hygiene.
+1. S-12, S-13 -- correctness and robustness.
+2. S-15 through S-21 -- hygiene.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /

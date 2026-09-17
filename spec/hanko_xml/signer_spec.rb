@@ -57,6 +57,50 @@ RSpec.describe HankoXml::Signer do
     expect { described_class.new(key: key_pem, template: :nonsense) }.to raise_error(HankoXml::ConfigurationError)
   end
 
+  describe "key:/certificate: pairing (S-14)" do
+    let(:other_key_pem) { fixtures.join("other.key").read }
+    let(:other_cert_pem) { fixtures.join("other.crt").read }
+
+    it "raises HankoXml::ConfigurationError when key: does not match certificate:" do
+      expect { described_class.new(key: other_key_pem, certificate: cert_pem) }
+        .to raise_error(HankoXml::ConfigurationError, /does not match certificate/)
+    end
+
+    it "checks OpenSSL objects and HankoXml::Key the same as PEM Strings" do
+      expect do
+        described_class.new(key: HankoXml::Key.coerce(OpenSSL::PKey::RSA.new(other_key_pem)),
+                            certificate: OpenSSL::X509::Certificate.new(cert_pem))
+      end.to raise_error(HankoXml::ConfigurationError)
+    end
+
+    it "checks the pair after the configuration block reassigns it" do
+      expect do
+        described_class.new(key: key_pem, certificate: cert_pem) do |s|
+          s.certificate = HankoXml::Key.coerce(other_cert_pem)
+        end
+      end.to raise_error(HankoXml::ConfigurationError, /does not match certificate/)
+    end
+
+    it "rejects the mismatch through HankoXml.sign before any signature is produced" do
+      xml = "<root><a>1</a></root>"
+      expect { HankoXml.sign(xml, key: other_key_pem, certificate: cert_pem) }
+        .to raise_error(HankoXml::ConfigurationError)
+    end
+
+    it "never puts key material in the error message" do
+      expect { described_class.new(key: other_key_pem, certificate: cert_pem) }.to raise_error do |error|
+        expect(error.message).not_to include(other_key_pem)
+        expect(error.message).not_to include("PRIVATE KEY")
+      end
+    end
+
+    it "accepts matching pairs and a key: with no certificate:" do
+      expect { described_class.new(key: key_pem, certificate: cert_pem) }.not_to raise_error
+      expect { described_class.new(key: other_key_pem, certificate: other_cert_pem) }.not_to raise_error
+      expect { described_class.new(key: other_key_pem) }.not_to raise_error
+    end
+  end
+
   describe "#to_h" do
     it "reflects the resolved configuration" do
       signer = described_class.new(key: key_pem, certificate: cert_pem)

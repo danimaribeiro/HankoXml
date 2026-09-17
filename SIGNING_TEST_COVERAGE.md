@@ -161,7 +161,7 @@ signed.
 | F3 | Encrypted PEM key passed as a raw String to `Signer.new` (no password) | `KeyLoadError`, message never contains the PEM | pass |
 | F4 | `Key.from_pkcs12` bundle → `Signer.new(**bundle.to_h)` | signs; certificate chain emitted | ? |
 | F5 | `key:` is a **public** key | `KeyLoadError`/`SigningError` at sign time (not a silent bad signature); ideally `ConfigurationError` at construction | ? |
-| F6 | `key:` and `certificate:` do not match | should raise at construction | FAIL (S-14, confirmed: signs, verifies with nothing) |
+| F6 | `key:` and `certificate:` do not match | `ConfigurationError` at construction | pass (S-14, `spec/hanko_xml/signer_spec.rb`) |
 | F7 | `certificate:` given as a private key PEM | `ConfigurationError` | ? |
 | F8 | RSA-1024 key | strict `Signer` refuses (`min_rsa_key_bits`) | pass (S-06, `Policy#enforce_key_size!`) |
 | F9 | EC P-256 / P-384 / Ed25519 keys | ECDSA signs; Ed25519 raises a clear error (no XML-DSig URI registered) | ? |
@@ -258,7 +258,9 @@ pass there. Cert-valued `keys:` is covered under S-01 group K.
 S-04 verify-side ordering and URI fetch are **fixed** in
 `spec/hanko_xml/policy_ordering_spec.rb`. S-05 Signer `:adopt` policy and
 reference-URI matching are **fixed** in `spec/hanko_xml/signer_policy_spec.rb`.
-Native transform allowlisting is S-10; R6 only asserts the Ruby policy gate.
+Native transform allowlisting is S-10 (fixed, PR #64); R6 only asserts the Ruby
+policy gate, and the S-10 native spec cannot tell the allow-list apart from a
+digest mismatch.
 
 | # | Spec | After S-05 |
 |---|------|------------|

@@ -70,6 +70,9 @@ module HankoXml
 
       yield self if block_given?
 
+      # After the block, which may reassign key/certificate (S-14).
+      check_key_matches_certificate!
+
       freeze
     end
 
@@ -198,6 +201,21 @@ module HankoXml
     end
 
     private
+
+    # A key that does not belong to certificate: produces a signature that
+    # verifies against neither that certificate nor any other (S-14). Only
+    # checks a private key against an X.509 certificate; other shapes are
+    # left to Key coercion and the native layer.
+    def check_key_matches_certificate!
+      pkey = key.is_a?(HankoXml::Key) ? key.to_openssl : key
+      cert = certificate.is_a?(HankoXml::Key) ? certificate.to_openssl : certificate
+      return unless pkey.is_a?(::OpenSSL::PKey::PKey) && cert.is_a?(::OpenSSL::X509::Certificate)
+      return if cert.check_private_key(pkey)
+
+      raise HankoXml::ConfigurationError,
+            "key: does not match certificate: (subject #{cert.subject}); " \
+            "the signature would not verify against that certificate"
+    end
 
     def find_or_build_signatures(doc)
       existing = doc.xpath(".//ds:Signature", ds: NS["ds"]).to_a
