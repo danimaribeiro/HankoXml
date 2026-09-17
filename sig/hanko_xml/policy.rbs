@@ -20,6 +20,7 @@ module HankoXml
     attr_reader max_transforms_per_reference: limit
     attr_reader min_rsa_key_bits: Integer
     attr_reader min_ec_key_bits: Integer
+    attr_reader min_dsa_key_bits: Integer
     attr_reader allow_hmac: bool
     attr_reader check_certificate_validity: bool
     attr_reader clock_skew: Numeric
@@ -48,6 +49,7 @@ module HankoXml
       ?max_transforms_per_reference: limit,
       ?min_rsa_key_bits: Integer,
       ?min_ec_key_bits: Integer,
+      ?min_dsa_key_bits: Integer,
       ?allow_hmac: bool,
       ?check_certificate_validity: bool,
       ?clock_skew: Numeric,

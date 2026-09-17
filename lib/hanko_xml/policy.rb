@@ -11,7 +11,7 @@ module HankoXml
       allow_external_references allow_retrieval_method allow_same_document_xpointer
       max_references require_references
       require_signed_root reject_duplicate_ids max_document_size max_transforms_per_reference
-      min_rsa_key_bits min_ec_key_bits allow_hmac check_certificate_validity clock_skew
+      min_rsa_key_bits min_ec_key_bits min_dsa_key_bits allow_hmac check_certificate_validity clock_skew
       require_signing_key_usage schema
     ].freeze
 
@@ -35,6 +35,7 @@ module HankoXml
 
       min_rsa_key_bits: 2048,
       min_ec_key_bits: 256,
+      min_dsa_key_bits: 2048,
       allow_hmac: false,
       check_certificate_validity: true,
       clock_skew: 60,
@@ -85,7 +86,8 @@ module HankoXml
       end
 
       # fragment + what the W3C interop signatures (merlin-xmldsig-twenty-three,
-      # phaos-xmldsig-three) need: SHA-1 with RSA or DSA, and 1024-bit RSA keys.
+      # phaos-xmldsig-three) need: SHA-1 with RSA or DSA, and 1024-bit RSA and
+      # DSA keys.
       # For verifying legacy signatures from other implementations (#62), never
       # as a default. External references, RetrievalMethod, HMAC and
       # XPath/XSLT stay off, as in strict.
@@ -93,7 +95,8 @@ module HankoXml
         @interop ||= fragment.with(
           digest_methods: fragment.digest_methods + [:sha1],
           signature_methods: fragment.signature_methods + %i[rsa_sha1 dsa_sha1],
-          min_rsa_key_bits: 1024
+          min_rsa_key_bits: 1024,
+          min_dsa_key_bits: 1024
         )
       end
 
@@ -115,6 +118,7 @@ module HankoXml
           max_transforms_per_reference: Float::INFINITY,
           min_rsa_key_bits: 0,
           min_ec_key_bits: 0,
+          min_dsa_key_bits: 0,
           allow_hmac: true,
           check_certificate_validity: false,
           clock_skew: 0,
@@ -206,7 +210,7 @@ module HankoXml
 
     # Raises HankoXml::PolicyError if any of +keys+
     # (OpenSSL::PKey::PKey / OpenSSL::X509::Certificate) is smaller than
-    # this policy's min_rsa_key_bits / min_ec_key_bits (S-06). Separate from
+    # this policy's min_rsa_key_bits / min_ec_key_bits / min_dsa_key_bits (S-06). Separate from
     # #enforce! because the real signing/trust key is only known once
     # Signer/Verifier have resolved it (Signer's own key; Verifier's
     # resolved trust material) -- after SignatureInfo has already been
@@ -341,13 +345,11 @@ module HankoXml
       kind, bits = key_bits(key)
       return nil if kind.nil?
 
-      minimum = kind == :rsa ? min_rsa_key_bits : min_ec_key_bits
+      field = :"min_#{kind}_key_bits"
+      minimum = public_send(field)
       return nil if bits >= minimum
 
-      HankoXml::PolicyError.new(
-        "#{kind} key is #{bits} bits, less than this policy's " \
-        "#{kind == :rsa ? "min_rsa_key_bits" : "min_ec_key_bits"} (#{minimum})"
-      )
+      HankoXml::PolicyError.new("#{kind} key is #{bits} bits, less than this policy's #{field} (#{minimum})")
     end
 
     def key_bits(key)
@@ -357,6 +359,8 @@ module HankoXml
         [:rsa, public_key.n.num_bits]
       when ::OpenSSL::PKey::EC
         [:ec, public_key.group.degree]
+      when ::OpenSSL::PKey::DSA
+        [:dsa, public_key.p.num_bits]
       else
         [nil, nil]
       end

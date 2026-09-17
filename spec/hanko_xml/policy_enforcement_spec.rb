@@ -94,6 +94,36 @@ RSpec.describe "S-06 Policy enforcement" do
     end
   end
 
+  # #76: before this field, any DSA key passed once a policy allowed dsa_sha1.
+  describe "min_dsa_key_bits" do
+    let(:dsa_key) { OpenSSL::PKey::DSA.generate(1024) }
+    let(:dsa_policy) { HankoXml::Policy.interop.with(min_dsa_key_bits: 2048) }
+
+    def sign_with_dsa(policy)
+      HankoXml.sign(unsigned_xml, key: dsa_key.to_pem, signature_method: :dsa_sha1, digest_method: :sha1,
+                                  key_info: [], policy: policy)
+    end
+
+    it "rejects signing with a weaker-than-policy DSA key" do
+      expect { sign_with_dsa(dsa_policy) }
+        .to raise_error(HankoXml::PolicyError, /dsa key is 1024 bits, less than this policy's min_dsa_key_bits/)
+    end
+
+    it "rejects verifying against a weaker-than-policy trusted DSA key" do
+      signed = sign_with_dsa(HankoXml::Policy.interop).to_s
+      public_key = dsa_key.public_to_pem
+
+      expect(HankoXml.verify(signed, key: public_key, policy: HankoXml::Policy.interop).valid?).to be true
+      result = HankoXml.verify(signed, key: public_key, policy: dsa_policy)
+      expect(result.errors.first).to be_a(HankoXml::PolicyError)
+      expect(result.errors.first.message).to match(/min_dsa_key_bits/)
+    end
+
+    it "is 2048 in strict" do
+      expect(HankoXml::Policy.strict.min_dsa_key_bits).to eq(2048)
+    end
+  end
+
   describe "min_rsa_key_bits" do
     it "rejects signing with a weaker-than-policy RSA key" do
       key, cert = weak_rsa_cert

@@ -43,14 +43,15 @@ RSpec.describe HankoXml::Policy do
   end
 
   describe ".interop" do
-    it "differs from fragment only by SHA-1 with RSA or DSA and 1024-bit RSA keys" do
+    it "differs from fragment only by SHA-1 with RSA or DSA and 1024-bit RSA and DSA keys" do
       interop = described_class.interop.to_h
       fragment = described_class.fragment.to_h
 
       expect(interop.reject { |field, value| fragment[field] == value }).to eq(
         digest_methods: fragment[:digest_methods] + [:sha1],
         signature_methods: fragment[:signature_methods] + %i[rsa_sha1 dsa_sha1],
-        min_rsa_key_bits: 1024
+        min_rsa_key_bits: 1024,
+        min_dsa_key_bits: 1024
       )
     end
   end

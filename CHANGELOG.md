@@ -10,6 +10,10 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Added
 
+- **#76:** `Policy#min_dsa_key_bits` (2048 in `strict`, 1024 in `interop`, 0 in
+  `permissive`). DSA keys had no size check, so once a policy allowed
+  `:dsa_sha1` a key of any size signed and verified.
+
 - **#62:** `Policy.interop`, for verifying legacy signatures from other
   implementations: `Policy.fragment` plus SHA-1 with RSA or DSA, and 1024-bit
   RSA keys. External references, RetrievalMethod, HMAC and XPath/XSLT stay off.
