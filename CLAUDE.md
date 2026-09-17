@@ -40,6 +40,8 @@ Nokogiri is the optional DOM layer.
   specs where a check exists because of one.
 - `SIGNING_TEST_COVERAGE.md`, `VENDORING.md`, `RELEASING.md`: update these when
   their subject changes.
+- `ASSURANCE.md`: the roadmap for property-based specs, fuzzing and `unsafe`
+  checks. When one of its items lands, move it to "In place".
 
 ## Security conventions
 
