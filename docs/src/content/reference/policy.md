@@ -74,9 +74,10 @@ HankoXml::Policy.new(
 
 - **`allow_hmac: false`** — An HMAC `SignatureMethod` combined with certificate-based trust is a
   classic confusion attack: the attacker replaces an RSA signature with an HMAC one keyed on public
-  data. Enabling HMAC requires `allow_hmac: true` *and* a `key:` (never `certificate:`/`store:`) on
-  the verifier; the combination `allow_hmac: true` + `certificate:` raises `PolicyError` at
-  `Verifier.new` time.
+  data. With `allow_hmac: false` any HMAC `SignatureMethod` is a `PolicyError`, even if a custom
+  `signature_methods` list names it. HankoXml has no HMAC secret-key API, so `allow_hmac: true`
+  (as in `Policy.permissive`) does not make HMAC signatures verifiable; it only stops the policy
+  from rejecting them. Trust stays pinned to the caller's certificate or key either way.
 - **`require_signed_root: true`** is the structural half of the XSW defence — see
   [XSW Defense](/guide/xsw-defense).
 - **`reject_duplicate_ids: true`** is enforced by a Nokogiri scan before serialization. Duplicate IDs

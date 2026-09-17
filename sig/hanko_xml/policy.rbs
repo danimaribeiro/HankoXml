@@ -1,32 +1,81 @@
 module HankoXml
   class Policy
-    attr_reader require_signed_root: bool
-    attr_reader allowed_digest_methods: Array[Symbol]?
-    attr_reader allowed_signature_methods: Array[Symbol]?
+    type limit = Integer | Float
+
+    FIELDS: Array[Symbol]
+    STRICT_DEFAULTS: Hash[Symbol, untyped]
+
+    attr_reader signature_methods: Array[Symbol | String]
+    attr_reader digest_methods: Array[Symbol | String]
+    attr_reader canonicalization_methods: Array[Symbol | String]
+    attr_reader transforms: Array[Symbol | String]
     attr_reader allow_external_references: bool
-    attr_reader max_references: Integer?
+    attr_reader allow_retrieval_method: bool
+    attr_reader allow_same_document_xpointer: bool
+    attr_reader max_references: limit
+    attr_reader require_references: bool
+    attr_reader require_signed_root: bool
+    attr_reader reject_duplicate_ids: bool
+    attr_reader max_document_size: limit
+    attr_reader max_transforms_per_reference: limit
+    attr_reader min_rsa_key_bits: Integer
+    attr_reader min_ec_key_bits: Integer
+    attr_reader allow_hmac: bool
+    attr_reader check_certificate_validity: bool
+    attr_reader clock_skew: Numeric
+    attr_reader require_signing_key_usage: bool
+    attr_reader schema: Symbol | String | Nokogiri::XML::Schema | nil
 
     def self.strict: () -> instance
     def self.fragment: () -> instance
     def self.legacy_sha1: () -> instance
+    def self.permissive: () -> instance
 
     def initialize: (
-      require_signed_root: bool,
-      allowed_digest_methods: Array[Symbol]?,
-      allowed_signature_methods: Array[Symbol]?,
-      allow_external_references: bool,
-      max_references: Integer?
+      ?signature_methods: Array[Symbol | String],
+      ?digest_methods: Array[Symbol | String],
+      ?canonicalization_methods: Array[Symbol | String],
+      ?transforms: Array[Symbol | String],
+      ?allow_external_references: bool,
+      ?allow_retrieval_method: bool,
+      ?allow_same_document_xpointer: bool,
+      ?max_references: limit,
+      ?require_references: bool,
+      ?require_signed_root: bool,
+      ?reject_duplicate_ids: bool,
+      ?max_document_size: limit,
+      ?max_transforms_per_reference: limit,
+      ?min_rsa_key_bits: Integer,
+      ?min_ec_key_bits: Integer,
+      ?allow_hmac: bool,
+      ?check_certificate_validity: bool,
+      ?clock_skew: Numeric,
+      ?require_signing_key_usage: bool,
+      ?schema: Symbol | String | Nokogiri::XML::Schema | nil
     ) -> void
 
-    def with: (
-      ?require_signed_root: bool,
-      ?allowed_digest_methods: Array[Symbol]?,
-      ?allowed_signature_methods: Array[Symbol]?,
-      ?allow_external_references: bool,
-      ?max_references: Integer?
-    ) -> instance
+    def with: (**untyped overrides) -> instance
+    def to_h: () -> Hash[Symbol, untyped]
 
-    def enforce!: (HankoXml::SignatureInfo sig_info) -> void
-    def violations: (HankoXml::SignatureInfo sig_info) -> Array[String]
+    def violations: (
+      HankoXml::SignatureInfo signature_info,
+      ?document: Nokogiri::XML::Document?,
+      ?sig_node: Nokogiri::XML::Node?,
+      ?id_attributes: Array[String | [String, String]]?,
+      ?xml_bytes: String?,
+      ?check_root_signed: bool
+    ) -> Array[HankoXml::PolicyError]
+
+    def enforce!: (
+      HankoXml::SignatureInfo signature_info,
+      ?document: Nokogiri::XML::Document?,
+      ?sig_node: Nokogiri::XML::Node?,
+      ?id_attributes: Array[String | [String, String]]?,
+      ?xml_bytes: String?,
+      ?check_root_signed: bool
+    ) -> void
+
+    def enforce_document_size!: (Integer bytesize) -> void
+    def enforce_key_size!: (Array[OpenSSL::PKey::PKey | OpenSSL::X509::Certificate] | OpenSSL::PKey::PKey | OpenSSL::X509::Certificate keys) -> void
   end
 end

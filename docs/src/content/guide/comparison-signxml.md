@@ -35,11 +35,11 @@ HankoXml is a general Ruby XML-DSig library with a strict policy and an XSW API.
 | InclusiveNamespaces PrefixList | Claimed in `API_CONTRACT.md`; **not on `Transform`** | First-class (`inclusive_ns_prefixes`) |
 | XPath / XSLT / XPointer transforms | Registered as insecure; **denied by `Policy.strict`** | Disabled by default (no network, XSLT, or XPath) |
 | External references | Denied by default; native URI types limited to empty/same-document | Only if you pass `uri_resolver` |
-| Schema check of `<ds:Signature>` | Opt-in `schema: :default` (not auto-applied from `Policy.strict.schema`) | `validate_schema=True` by default |
+| Schema check of `<ds:Signature>` | On by default (`Policy.strict.schema == :default`); `schema: nil` opts out | `validate_schema=True` by default |
 | XAdES | No | Yes (`XAdESSigner` / `XAdESVerifier`) — see [XAdES](#xades) |
 | XML Encryption | No | No |
 | PKCS#12 / A1 bundles | `Key.from_pkcs12` | PEM / cryptography objects |
-| Historical signature time | `verification_time:` (fully wired on `store:`; incomplete on `certificate:`) | `SignatureConfiguration(verification_time=...)` |
+| Historical signature time | `verification_time:` on every trust source; `clock_skew` on pinned trust | `SignatureConfiguration(verification_time=...)` |
 | Interop tests | Internal RSpec + self-roundtrip fixtures | XMLDSig interoperability vectors — see [Interop tests](#interop-tests) |
 | Native ABI risk | Bindgen vs system libxmlsec1; checked at require | None (pure Python) |
 
@@ -64,23 +64,22 @@ HankoXml is a general Ruby XML-DSig library with a strict policy and an XSW API.
 
 1. **XAdES and XML-DSig 1.1 breadth.** RSA-PSS, SHA3, ECDSA-SHA3, InclusiveNamespaces, XAdES signed properties. HankoXml would need `Algorithms.register` plus a looser policy, and InclusiveNamespaces is not actually implemented on `Transform`.
 2. **Certificate path policy.** SignXML supports `ee_policy` / `ca_policy`. HankoXml’s `store:` checks KeyUsage (`require_signing_key_usage`) and exact subject matching (`certificate_subject:`), but has no equivalent of arbitrary end-entity/CA policy objects beyond what `OpenSSL::X509::Store` configures.
-3. **Default schema validation** of the Signature element.
-4. **Comment / c14n truncation.** SignXML documents comment-induced truncation and excises comments from `signed_xml` when they were not signed. HankoXml leaves “read the node you checked with `signed?`” to the caller.
-5. **Maturity.** Years of interop vectors and two published HMAC CVEs that were fixed. HankoXml is new; several advertised `Policy` knobs are still unenforced (below).
+3. **Comment / c14n truncation.** SignXML documents comment-induced truncation and excises comments from `signed_xml` when they were not signed. HankoXml leaves “read the node you checked with `signed?`” to the caller.
+4. **Maturity.** Years of interop vectors and two published HMAC CVEs that were fixed. HankoXml is new and has no foreign interop corpus yet (below).
 
 Neither library is immune to XSW if the application reads unsigned nodes. HankoXml makes the safe read shorter (`at_signed`). SignXML makes the safe read the return value (`signed_xml`). Skipping either pattern reopens wrapping.
 
 ### Remaining HankoXml gaps
 
-From `SECURITY_REVIEW.md` (still open or partial):
+Every finding in `SECURITY_REVIEW.md` (S-01 to S-21) is fixed. What remains are design choices and missing features:
 
-| ID | Issue | Practical impact |
-|---|---|---|
-| S-06 | Many `Policy` fields are documented but unread: `require_signed_root`, `reject_duplicate_ids`, `max_document_size`, `min_rsa_key_bits`, `min_ec_key_bits`, `allow_hmac`, `clock_skew`, `allow_retrieval_method`, `allow_same_document_xpointer`, `schema` | `Policy.strict` does **not** reject fragment signatures, duplicate IDs, 1024-bit RSA, or huge docs. `Policy.strict.schema == :default` does not turn on XSD. HMAC is still blocked via `signature_methods`, not `allow_hmac`. |
-| S-07 | `verification_time:` on `certificate:` checks the **pinned** cert’s window, not xmlsec’s view of the signing cert | Archived documents with an expired leaf can fail even with a historical time; `clock_skew` is unused. |
-| S-09 | `#signed?` assumes the whole ID’d subtree; XPath/XSLT/Manifest not modeled | Safe under `Policy.strict` (those transforms denied). Unsafe if you use `Policy.permissive`. |
-| S-11 | Default `signature: :first` | Extra wrapping signatures are ignored unless you use `:only` or `verify_all`. SignXML’s `location` is the analogous footgun. |
-| Docs vs code | `Transform.exc_c14n(inclusive_prefixes:)` in the contract; HMAC key path advertised in policy docs | SAML InclusiveNamespaces and HMAC interop are not actually there. |
+| Gap | Practical impact |
+|---|---|
+| `signature: :first` is still available | The default (`nil`) fails closed on more than one `<Signature>`, but an explicit `:first` ignores extra wrapping signatures. SignXML’s `location` is the analogous footgun. |
+| `#signed?` under `Policy.permissive` | XPath/XSLT/Manifest are not modeled. Safe under `Policy.strict`, which denies those transforms. |
+| No HMAC key API | `allow_hmac` only gates the `SignatureMethod`; HMAC interop is not possible. |
+| InclusiveNamespaces PrefixList | `API_CONTRACT.md` documents `Transform.exc_c14n(inclusive_prefixes:)`, but it does not exist yet (#61). Many SAML signatures need it. |
+| `clock_skew` on `store:` | `OpenSSL::X509::StoreContext` has no skew, so `clock_skew` applies only to pinned trust. |
 
 ### Remaining SignXML gaps (5.1.0)
 
@@ -199,7 +198,7 @@ HankoXml is the same kind of library: general XML-DSig. The NFe-shaped spec fixt
 | XML shape | What XML-DSig must do | HankoXml today | SignXML today |
 |---|---|---|---|
 | **NFe-shaped fixture** | Enveloped, RSA-SHA1, SHA-1, C14N, `X509Data` end-entity only, `Id` on a child, PKCS#12 | Supported (`Policy.legacy_sha1`, `Key.from_pkcs12`, `Placement.after`) | Possible with a SHA-1 `SignatureConfiguration` |
-| **SAML 2.0** | Enveloped **fragment** (Assertion, not Response), exclusive c14n, often **InclusiveNamespaces PrefixList**, Assertion `ID` | `Policy.fragment` + `#at_signed`; InclusiveNamespaces **missing**; `require_signed_root` still unenforced (S-06) | Documented; InclusiveNamespaces first-class; `location=` for the Assertion |
+| **SAML 2.0** | Enveloped **fragment** (Assertion, not Response), exclusive c14n, often **InclusiveNamespaces PrefixList**, Assertion `ID` | `Policy.fragment` + `#at_signed`; InclusiveNamespaces **missing** | Documented; InclusiveNamespaces first-class; `location=` for the Assertion |
 | **WS-Security** | Sign SOAP Body / Timestamp; `wsu:Id`; sometimes STR-Transform / `BinarySecurityToken` | Custom `id_attributes` might cover `wsu:Id`; STR-Transform no | Some interop fixtures; not a WSS stack |
 | **EBICS** | XML-DSig over order data + X.509 | Generic XML-DSig | Generic XML-DSig |
 | **XAdES / eIDAS / ICP-Brasil AD-\*** | Extra signed properties, later timestamps/revocation | No | Baseline XAdES yes; archival incomplete |
