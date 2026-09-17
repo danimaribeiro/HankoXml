@@ -84,6 +84,19 @@ module HankoXml
         )
       end
 
+      # fragment + what the W3C interop signatures (merlin-xmldsig-twenty-three,
+      # phaos-xmldsig-three) need: SHA-1 with RSA or DSA, and 1024-bit RSA keys.
+      # For verifying legacy signatures from other implementations (#62), never
+      # as a default. External references, RetrievalMethod, HMAC and
+      # XPath/XSLT stay off, as in strict.
+      def interop
+        @interop ||= fragment.with(
+          digest_methods: fragment.digest_methods + [:sha1],
+          signature_methods: fragment.signature_methods + %i[rsa_sha1 dsa_sha1],
+          min_rsa_key_bits: 1024
+        )
+      end
+
       # Everything libxmlsec1 supports. Documented as unsafe.
       def permissive
         @permissive ||= new(

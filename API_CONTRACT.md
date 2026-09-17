@@ -781,6 +781,8 @@ HankoXml::Policy.strict        # default everywhere
 HankoXml::Policy.fragment      # strict, minus require_signed_root — for protocols
                                # that sign a fragment (SAML assertions). §5.8.1
 HankoXml::Policy.legacy_sha1   # strict + SHA-1 digest and RSA-SHA1 signature
+HankoXml::Policy.interop       # fragment + SHA-1 with RSA or DSA, 1024-bit RSA — for
+                               # legacy foreign signatures (W3C interop vectors), never a default
 HankoXml::Policy.permissive    # everything libxmlsec1 supports. Documented as unsafe.
 
 policy = HankoXml::Policy.strict.with(

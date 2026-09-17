@@ -40,7 +40,7 @@ HankoXml is a general Ruby XML-DSig library with a strict policy and an XSW API.
 | XML Encryption | No | No |
 | PKCS#12 / A1 bundles | `Key.from_pkcs12` | PEM / cryptography objects |
 | Historical signature time | `verification_time:` on every trust source; `clock_skew` on pinned trust | `SignatureConfiguration(verification_time=...)` |
-| Interop tests | Internal RSpec + self-roundtrip fixtures | XMLDSig interoperability vectors — see [Interop tests](#interop-tests) |
+| Interop tests | Internal RSpec + self-roundtrip fixtures, plus merlin-twenty-three and phaos-three under `Policy.interop` | XMLDSig interoperability vectors — see [Interop tests](#interop-tests) |
 | Native ABI risk | Bindgen vs system libxmlsec1; checked at require | None (pure Python) |
 
 ### Algorithms (defaults)
@@ -117,7 +117,7 @@ HankoXml’s suite is RSpec around **self-produced** fixtures:
 - one RSA-2048 signer and one “other” cert
 - security regressions (KeyInfo pinning, policy-before-crypto, ID resolution vs DTD/`xml:id`)
 
-There is no merlin/phaos corpus. `SIGNING_TEST_COVERAGE.md` already records that ECDSA, PKCS#12, chains, HMAC, and most algorithm matrix cells are untested.
+Since #62 it also verifies the merlin/phaos corpus (see below). `SIGNING_TEST_COVERAGE.md` already records that ECDSA, PKCS#12, chains, HMAC, and most algorithm matrix cells are untested.
 
 ### Why this is not “xmlsec already did it”
 
@@ -141,7 +141,18 @@ Not “pass every merlin file under `Policy.strict`.” That would force XPath/X
 4. Fail the spec on `PolicyError` vs `VerificationError` vs success — the interesting cases are “xmlsec would have accepted this, HankoXml’s policy or ID table did not.”
 5. Keep `Policy.strict` as the production default. Interop coverage is a *verifier compatibility* test, not a reason to loosen defaults.
 
-Until that exists, “we bind xmlsec” is evidence of *likely* c14n/crypto interop, not evidence that a foreign signer (SAML IdP, .NET, Java xmlsec) will verify.
+### Where HankoXml stands (#62)
+
+`spec/interop/` vendors merlin-xmldsig-twenty-three and phaos-xmldsig-three from the pinned xmlsec1 1.3.12 tarball and pins every vector's outcome under `Policy.interop`, next to xmlsec's own expectation:
+
+- **Valid:** all 8 signatures that need only same-document data: merlin enveloped/enveloping DSA and RSA (keys from `<KeyValue>`), and phaos DSA and RSA enveloped/enveloping (through a CA `store:` and against the pinned leaf certificate).
+- **Refused by policy, by design:** HMAC (7; there is no HMAC key API), RetrievalMethod (3), XPath transform (1), more than 8 references (1).
+- **Refused, as xmlsec also refuses them:** the bad digest and bad signature vectors.
+- **Blocked on #74:** external references (`http://…`, `document.xml`), because `referenced_documents:` is not wired into xmlsec yet.
+- **Blocked on #75:** Manifest references, which Policy does not inspect. xmlsec's same-document URI restriction stops them.
+- **Schema:** merlin `signature.xml` puts a no-namespace element where the XML-DSig schema's `##other` wildcard does not allow one.
+
+No vector showed HankoXml's Ruby layer rejecting a signature that xmlsec accepts, outside those explicit policy choices.
 
 ---
 

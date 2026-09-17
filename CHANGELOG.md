@@ -10,6 +10,13 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Added
 
+- **#62:** `Policy.interop`, for verifying legacy signatures from other
+  implementations: `Policy.fragment` plus SHA-1 with RSA or DSA, and 1024-bit
+  RSA keys. External references, RetrievalMethod, HMAC and XPath/XSLT stay off.
+  `spec/interop/` verifies the W3C merlin-xmldsig-twenty-three and
+  phaos-xmldsig-three vectors (vendored from the pinned xmlsec1 1.3.12 tarball)
+  under it, and pins every vector's outcome with its reason.
+
 - **#61:** `Transform.exc_c14n(inclusive_prefixes:)` and
   `Transform.new(:exc_c14n, inclusive_prefixes:)` emit an
   `<ec:InclusiveNamespaces PrefixList="...">` child, as SAML 2.0 assertions

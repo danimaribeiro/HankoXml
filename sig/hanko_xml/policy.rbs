@@ -29,6 +29,7 @@ module HankoXml
     def self.strict: () -> instance
     def self.fragment: () -> instance
     def self.legacy_sha1: () -> instance
+    def self.interop: () -> instance
     def self.permissive: () -> instance
 
     def initialize: (
