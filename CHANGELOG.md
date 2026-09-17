@@ -10,6 +10,13 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Added
 
+- **#57:** `HankoXml::Xades::Signer`, XAdES-B (baseline) signing: a
+  `<xades:QualifyingProperties>` object with `SigningTime`, `SigningCertificateV2`
+  and optional `SignaturePolicyIdentifier`, `SignerRoleV2` and `DataObjectFormat`,
+  signed through a second `<SignedInfo>` Reference. It is a thin layer over
+  `Signer`; xmlsec does all the digesting and signing. The output conforms to the
+  ETSI XAdES 1.3.2 schema. See API_CONTRACT.md §5.9.1.
+
 - **#76:** `Policy#min_dsa_key_bits` (2048 in `strict`, 1024 in `interop`, 0 in
   `permissive`). DSA keys had no size check, so once a policy allowed
   `:dsa_sha1` a key of any size signed and verified.

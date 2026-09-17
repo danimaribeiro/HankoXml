@@ -966,6 +966,40 @@ native locator (or, when no native indexes are present, with Ruby
 exactly how "verified a different node than the one I read" happens. `#signed?`
 is also false whenever `#valid?` is false (§5.4).
 
+### 5.9.1 `HankoXml::Xades::Signer` (XAdES-B)
+
+A `Signer` that produces XAdES baseline signatures (ETSI EN 319 132-1, namespace
+`http://uri.etsi.org/01903/v1.3.2#`). It takes every `Signer` keyword, plus:
+
+```ruby
+HankoXml::Xades::Signer.new(
+  key: key, certificate: cert,          # certificate: is required
+  signing_time:       nil,              # Time; nil = when #sign runs, written in UTC
+  signature_policy:   nil,              # Xades::SignaturePolicy / Hash / :implied
+                                        #   { identifier: "urn:oid:…", digest_value: "<Base64>",
+                                        #     digest_method: :sha256, description: nil }
+  claimed_roles:      [],               # SignerRoleV2/ClaimedRoles
+  data_object_format: nil,              # Xades::DataObjectFormat / Hash: mime_type:, description:, encoding:
+  signature_id:       nil,              # generated when nil; QualifyingProperties targets it
+)
+```
+
+The template gains a `<ds:Object><xades:QualifyingProperties Target="#sig">` whose
+`<xades:SignedProperties>` holds `SigningTime`, `SigningCertificateV2` (digest of
+`certificate:` with `digest_method:`, and `IssuerSerialV2`) and the optional
+properties. `<SignedInfo>` gains a last Reference with
+`Type="http://uri.etsi.org/01903#SignedProperties"` and an exclusive c14n transform
+over it. xmlsec digests that Reference and signs, as for any same-document
+Reference. Nothing new crosses the native boundary. With `data_object_format:`,
+each of the Signer's own references gets an `Id` (if it had none), which its
+`DataObjectFormat ObjectReference` points at.
+
+It always builds a new `<Signature>` (`template:` other than `:build` raises
+`ConfigurationError`). The output conforms to the ETSI XAdES 1.3.2 schema and
+verifies with a plain `Verifier` under `Policy.strict`. Checking the
+signed properties on verification (the certificate binding) is #58, and
+timestamps and validation data (XAdES-T/LT/LTA) are #81 and #82.
+
 ### 5.10 Errors
 
 ```
@@ -1796,9 +1830,9 @@ Listed so that "not implemented" is a decision rather than an omission:
 
 - **XML Encryption** — the one feature `nokogiri-xmlsec` has and we do not.
   Reasoning and future shape in §11.3.
-- **XAdES** (`-BES`, `-T`, `-LT`) — signed properties, timestamps, archival.
-  Buildable on top of this contract as a profile plus custom `<Object>` content;
-  not core.
+- **XAdES beyond baseline signing** (`-T`, `-LT`, `-LTA`: timestamps and
+  archival, #81 / #82). XAdES-B signing is §5.9.1, built on this contract as a
+  profile plus custom `<Object>` content; verifying its signed properties is #58.
 - **WS-Security / SOAP** binding, including `wsu:Id` resolution as a default.
   The `resolver:` hook (§5.9) is the extension point that makes it possible
   out-of-tree.

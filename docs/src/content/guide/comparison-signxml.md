@@ -36,7 +36,7 @@ HankoXml is a general Ruby XML-DSig library with a strict policy and an XSW API.
 | XPath / XSLT / XPointer transforms | Registered as insecure; **denied by `Policy.strict`** | Disabled by default (no network, XSLT, or XPath) |
 | External references | Denied by default; native URI types limited to empty/same-document | Only if you pass `uri_resolver` |
 | Schema check of `<ds:Signature>` | On by default (`Policy.strict.schema == :default`); `schema: nil` opts out | `validate_schema=True` by default |
-| XAdES | No | Yes (`XAdESSigner` / `XAdESVerifier`) — see [XAdES](#xades) |
+| XAdES | XAdES-B signing (`Xades::Signer`); verification of signed properties planned (#58) | Yes (`XAdESSigner` / `XAdESVerifier`) — see [XAdES](#xades) |
 | XML Encryption | No | No |
 | PKCS#12 / A1 bundles | `Key.from_pkcs12` | PEM / cryptography objects |
 | Historical signature time | `verification_time:` on every trust source; `clock_skew` on pinned trust | `SignatureConfiguration(verification_time=...)` |
@@ -158,7 +158,7 @@ No vector showed HankoXml's Ruby layer rejecting a signature that xmlsec accepts
 
 SignXML implements a **baseline XAdES** wrapper (`XAdESSigner` / `XAdESVerifier`): extra `ds:Object` / `QualifyingProperties` references, `SignaturePolicyIdentifier`, `ClaimedRoles`, `DataObjectFormat`. It is not a full archival profile (XAdES-A / T / C / XL with RFC 3161 timestamps, OCSP, and certificate values).
 
-HankoXml has no XAdES types, no `xades:` namespace helpers, and no second reference over `SignedProperties`.
+HankoXml signs XAdES-B with `HankoXml::Xades::Signer` (#57): `QualifyingProperties` with `SigningTime`, `SigningCertificateV2`, `SignaturePolicyIdentifier`, `SignerRoleV2` and `DataObjectFormat`, and a second reference over `SignedProperties`, conforming to the ETSI XAdES 1.3.2 schema. Checking those properties on verification (#58), SignXML interop (#59), RSA-PSS/SHA-3 (#60), and XAdES-T/LT/LTA (#81, #82) are still open.
 
 ### XAdES is an overlay, not a different crypto
 

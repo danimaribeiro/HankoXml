@@ -1,0 +1,43 @@
+module HankoXml
+  module Xades
+    NS: String
+    SIGNED_PROPERTIES_TYPE: String
+
+    class SignaturePolicy
+      attr_reader identifier: String
+      attr_reader digest_value: String
+      attr_reader digest_method: Symbol | String
+      attr_reader description: String?
+
+      def initialize: (identifier: String, digest_value: String, ?digest_method: Symbol | String, ?description: String?) -> void
+    end
+
+    class DataObjectFormat
+      attr_reader mime_type: String?
+      attr_reader description: String?
+      attr_reader encoding: String?
+
+      def initialize: (?mime_type: String?, ?description: String?, ?encoding: String?) -> void
+    end
+
+    class Signer < HankoXml::Signer
+      attr_reader signing_time: Time?
+      attr_reader signature_policy: (SignaturePolicy | :implied)?
+      attr_reader claimed_roles: Array[String]
+      attr_reader data_object_format: DataObjectFormat?
+
+      def initialize: (
+        ?certificate: (Key | OpenSSL::X509::Certificate | String | _ToPath)?,
+        ?signing_time: Time?,
+        ?signature_policy: (SignaturePolicy | Hash[Symbol, untyped] | :implied)?,
+        ?claimed_roles: Array[String],
+        ?data_object_format: (DataObjectFormat | Hash[Symbol, untyped])?,
+        ?signature_id: String?,
+        ?template: Symbol,
+        **untyped
+      ) ?{ (self) -> void } -> void
+
+      def signed_properties_id: () -> String
+    end
+  end
+end

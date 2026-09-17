@@ -28,6 +28,7 @@ require_relative "hanko_xml/signer"
 require_relative "hanko_xml/verification"
 require_relative "hanko_xml/verifier"
 require_relative "hanko_xml/signed_document"
+require_relative "hanko_xml/xades"
 
 # Refuse to run against a libxmlsec1 the extension was not built for, before
 # any signing or verification can produce a wrong answer. See
