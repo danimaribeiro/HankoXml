@@ -50,7 +50,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-10 | **Medium** | Native | Transform surface is whatever libxmlsec1 was built with; the source gem on a host whose xmlsec links libxslt (this checkout does) enables the XSLT transform, and policy blocks it only after it has run (S-04) | **fixed** (#64) | confirmed (ldd) |
 | S-11 | **Medium** | Verifier | `signature: :first` default: with several `<Signature>` elements only the first is verified and the result is reported for the whole document | **open** | code review |
 | S-12 | **Low** | Native | `xml.len() as i32` in `OwnedXmlDoc::parse` truncates documents over 2 GiB; no size guard before the FFI boundary and `max_document_size` is unenforced | **fixed** | code review |
-| S-13 | **Low** | Native / Ruby | Exceptions are classified by substring (`msg.contains("key")`, `contains("parse")`); xmlsec error text (with attacker-controlled URIs/paths) is echoed verbatim into Ruby exception messages | **open** | code review |
+| S-13 | **Low** | Native / Ruby | Exceptions are classified by substring (`msg.contains("key")`, `contains("parse")`); xmlsec error text (with attacker-controlled URIs/paths) is echoed verbatim into Ruby exception messages | **fixed** | confirmed |
 | S-14 | **Low** | Signer | A mismatched `key:`/`certificate:` pair is accepted at sign time; the output verifies with neither certificate | **fixed** | confirmed, re-checked |
 | S-15 | **Low** | Key | `Key#dispose!` claims in-place zeroization but only nils the reference; `Key#private_key?` is true for public-only `PKey`s; PEM-vs-cert detection is a substring heuristic | **open** | code review |
 | S-16 | **Low** | Algorithms | `Algorithms.register(..., replace: true)` is process-global and can re-point a Symbol used by `Policy.strict` (e.g. `:sha256`) at another URI, silently changing what "strict" means | **open** | code review |
@@ -89,7 +89,7 @@ trust source → `ConfigurationError`).
 - [x] **S-10** (#40) restrict transforms/URIs regardless of host xmlsec build
 - [x] **S-11** (#41) `signature: :first` and Signer/Verifier index disagreement
 - [x] **S-12** (#42) `xml.len() as i32` + `max_document_size`
-- [ ] **S-13** (#43) error classification and xmlsec log in messages
+- [x] **S-13** (#43) error classification and xmlsec log in messages
 - [x] **S-14** (#44) reject mismatched `key:` / `certificate:` at sign time
 - [ ] **S-15** (#45) `Key#dispose!` / `private_key?` / PEM heuristic
 - [ ] **S-16** (#46) freeze or snapshot `Algorithms.register`
@@ -457,10 +457,23 @@ longer than `i32::MAX` wraps (negative → parse failure; ≥ 4 GiB → parses o
 the low 32 bits' worth of bytes). Ruby strings can be that large. Guard with a
 checked conversion and honour `max_document_size` before copying.
 
-### S-13 -- Error classification and message content  [code review, Low, **open**]
+### S-13 -- Error classification and message content  [confirmed, Low, **fixed**]
 
-**Disposition:** still open. Substring mapping and xmlsec log-in-message
-unchanged.
+**Disposition:** fixed. Confirmed first: a template whose `SignatureMethod`
+href was `urn:parse-key:…` made `Native.sign` raise `ParseError` with that
+href in the message and an empty `xmlsec_errors`, and a tampered document's
+`VerificationError#message` was the raw xmlsec log line. Now `dsig.rs`
+returns a `DsigError { kind, message }` whose `kind` (`Parse`, `KeyLoad`,
+`Signing`, `Native`) is set at the call site that failed and whose `message`
+is a fixed `&'static str`. `format_error` is gone. `lib.rs`'s `dsig_error`
+picks the Ruby class from `kind`, drains the xmlsec log for that call, and
+sets it as `#xmlsec_errors` instead of appending it to `#message`.
+`Verifier` uses `"Signature verification failed (<status>)"` as the message
+and keeps the log in `#xmlsec_errors`. The log itself still contains document
+text by design; `API_CONTRACT.md` §5.10 now says to treat it as untrusted.
+Specs: `spec/hanko_xml/native_errors_spec.rb`.
+
+Original report:
 
 `lib.rs` maps errors with `msg.contains("parse")`, `contains("key")`,
 `contains("certificate")`; `format_error` appends the full xmlsec log
@@ -571,10 +584,9 @@ accept path Strings explicitly.
 
 ## Suggested remediation order
 
-S-01 through S-12 and S-14 are done. Remaining, in order:
+S-01 through S-14 are done. Remaining, in order:
 
-1. S-13 -- correctness and robustness.
-2. S-15 through S-21 -- hygiene.
+1. S-15 through S-21 -- hygiene.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /

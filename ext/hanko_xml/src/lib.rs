@@ -10,7 +10,7 @@ mod sys;
 
 use magnus::{
     function, prelude::*, Error, ExceptionClass, IntoValue, RArray, RHash, RModule, RString,
-    Ruby, TryConvert,
+    Ruby, TryConvert, Value,
 };
 use std::sync::Once;
 
@@ -32,41 +32,35 @@ fn error_class(ruby: &Ruby, class_name: &str) -> ExceptionClass {
         .unwrap_or_else(|_| ruby.exception_runtime_error())
 }
 
-fn signing_error(ruby: &Ruby, message: String, xmlsec_errors: Vec<String>) -> Error {
-    build_typed_error(ruby, "HankoXml::SigningError", message, xmlsec_errors)
-}
-
-fn parse_error(ruby: &Ruby, message: String) -> Error {
-    Error::new(error_class(ruby, "HankoXml::ParseError"), message)
-}
-
-fn key_load_error(ruby: &Ruby, message: String) -> Error {
-    Error::new(error_class(ruby, "HankoXml::KeyLoadError"), message)
-}
-
 fn native_error(ruby: &Ruby, message: String) -> Error {
     Error::new(error_class(ruby, "HankoXml::NativeError"), message)
 }
 
-/// Builds a typed error with `xmlsec_errors` included in the message.
-fn build_typed_error(
-    ruby: &Ruby,
-    class_name: &str,
-    message: String,
-    xmlsec_errors: Vec<String>,
-) -> Error {
+/// Converts a [`dsig::DsigError`] into the matching `HankoXml::Error`
+/// subclass (S-13). The class comes from `err.kind`, and the message is the
+/// fixed string from `dsig.rs`. The xmlsec log captured during the call is
+/// drained here and set as `#xmlsec_errors`, never appended to `#message`:
+/// it can contain document text (hrefs, URIs, node names) that applications
+/// commonly log or display.
+fn dsig_error(ruby: &Ruby, err: dsig::DsigError) -> Error {
+    let class_name = match err.kind {
+        dsig::ErrorKind::Parse => "HankoXml::ParseError",
+        dsig::ErrorKind::KeyLoad => "HankoXml::KeyLoadError",
+        dsig::ErrorKind::Signing => "HankoXml::SigningError",
+        dsig::ErrorKind::Native => "HankoXml::NativeError",
+    };
     let cls = error_class(ruby, class_name);
+    let xmlsec_errors = errors::drain_errors();
 
-    if !xmlsec_errors.is_empty() {
-        let msg_with_errors = format!(
-            "{}\nxmlsec errors:\n{}",
-            message,
-            xmlsec_errors.join("\n")
-        );
-        Error::new(cls, msg_with_errors)
-    } else {
-        Error::new(cls, message)
+    let exception = match cls.new_instance((err.message,)) {
+        Ok(exception) => exception,
+        Err(e) => return e,
+    };
+    if let Ok(log) = string_slice_to_rarray(ruby, &xmlsec_errors) {
+        // Best effort: without the attribute the typed error is still right.
+        let _: Result<Value, Error> = exception.funcall("xmlsec_errors=", (log,));
     }
+    Error::from(exception)
 }
 
 // ---------------------------------------------------------------------------
@@ -140,16 +134,7 @@ fn native_sign(
 
     match dsig::sign_document(&xml_bytes, &key_bytes, &cert_bytes, &id_attrs, signature_index) {
         Ok(signed_bytes) => Ok(ruby.str_from_slice(&signed_bytes)),
-        Err(msg) => {
-            let captured = errors::drain_errors();
-            if msg.contains("parse") {
-                Err(parse_error(ruby, msg))
-            } else if msg.contains("key") || msg.contains("certificate") {
-                Err(key_load_error(ruby, msg))
-            } else {
-                Err(signing_error(ruby, msg, captured))
-            }
-        }
+        Err(err) => Err(dsig_error(ruby, err)),
     }
 }
 
@@ -225,15 +210,7 @@ fn native_verify(
 
             Ok(hash)
         }
-        Err(msg) => {
-            if msg.contains("parse") {
-                Err(parse_error(ruby, msg))
-            } else if msg.contains("key") || msg.contains("certificate") {
-                Err(key_load_error(ruby, msg))
-            } else {
-                Err(native_error(ruby, msg))
-            }
-        }
+        Err(err) => Err(dsig_error(ruby, err)),
     }
 }
 
@@ -250,6 +227,7 @@ fn native_inspect(
 
     let xml_bytes = rstring_to_bytes(xml);
 
+    errors::clear_errors();
     match dsig::inspect_document(&xml_bytes, signature_index) {
         Ok(result) => {
             let hash = ruby.hash_new();
@@ -331,13 +309,7 @@ fn native_inspect(
 
             Ok(hash)
         }
-        Err(msg) => {
-            if msg.contains("parse") {
-                Err(parse_error(ruby, msg.into()))
-            } else {
-                Err(native_error(ruby, msg.into()))
-            }
-        }
+        Err(err) => Err(dsig_error(ruby, err)),
     }
 }
 

@@ -44,6 +44,47 @@ unsafe fn xml_free(ptr: *mut std::os::raw::c_void) {
     }
 }
 
+/// Which Ruby exception a native failure maps to (S-13).
+///
+/// Decided at the call site that failed, never by looking at the message:
+/// the xmlsec log can contain document text (algorithm hrefs, URIs, node
+/// names), so matching words in it let a document pick its own exception
+/// class.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ErrorKind {
+    Parse,
+    KeyLoad,
+    Signing,
+    Native,
+}
+
+/// A failure from one of the public entry points below. `message` is always
+/// a fixed string from this file, so it never carries document content; the
+/// xmlsec log for the call is drained separately by the caller.
+#[derive(Debug)]
+pub struct DsigError {
+    pub kind: ErrorKind,
+    pub message: &'static str,
+}
+
+impl DsigError {
+    fn parse(message: &'static str) -> Self {
+        Self { kind: ErrorKind::Parse, message }
+    }
+
+    fn key_load(message: &'static str) -> Self {
+        Self { kind: ErrorKind::KeyLoad, message }
+    }
+
+    fn signing(message: &'static str) -> Self {
+        Self { kind: ErrorKind::Signing, message }
+    }
+
+    fn native(message: &'static str) -> Self {
+        Self { kind: ErrorKind::Native, message }
+    }
+}
+
 /// Converts a buffer length to the integer type an FFI function takes (S-12).
 ///
 /// A plain `as` cast wraps silently: past `i32::MAX` an `int` length goes
@@ -716,18 +757,20 @@ const DSIG_NS: &str = "http://www.w3.org/2000/09/xmldsig#";
 pub fn inspect_document(
     xml: &[u8],
     signature_index: usize,
-) -> Result<InspectResult, &'static str> {
-    let doc = OwnedXmlDoc::parse(xml)?;
-    let root = doc.root_element().ok_or("XML document has no root element")?;
+) -> Result<InspectResult, DsigError> {
+    let doc = OwnedXmlDoc::parse(xml).map_err(DsigError::parse)?;
+    let root = doc
+        .root_element()
+        .ok_or(DsigError::parse("XML document has no root element"))?;
 
     let sig_count = doc.count_signatures(root);
     let sig_node = doc
         .find_nth_signature(root, signature_index)
-        .ok_or("signature index out of range")?;
+        .ok_or(DsigError::native("signature index out of range"))?;
 
     // Extract <SignedInfo>
     let signed_info = unsafe { find_child(sig_node, "SignedInfo", DSIG_NS) }
-        .ok_or("no <SignedInfo> element in <Signature>")?;
+        .ok_or(DsigError::native("no <SignedInfo> element in <Signature>"))?;
 
     // CanonicalizationMethod/@Algorithm
     let c14n_method = unsafe { find_child(signed_info, "CanonicalizationMethod", DSIG_NS) }
@@ -826,33 +869,33 @@ pub fn sign_document(
     cert_pems: &[Vec<u8>],
     id_attrs: &[String],
     signature_index: usize,
-) -> Result<Vec<u8>, String> {
+) -> Result<Vec<u8>, DsigError> {
     errors::clear_errors();
 
-    let doc = OwnedXmlDoc::parse(xml).map_err(format_error)?;
+    let doc = OwnedXmlDoc::parse(xml).map_err(DsigError::parse)?;
     let root = doc
         .root_element()
-        .ok_or_else(|| format_error("XML document has no root element"))?;
+        .ok_or(DsigError::parse("XML document has no root element"))?;
 
     doc.register_id_attributes(root, id_attrs);
 
     let sig_node = doc
         .find_nth_signature(root, signature_index)
-        .ok_or_else(|| format_error("signature index out of range or no <Signature> found"))?;
+        .ok_or(DsigError::native("signature index out of range or no <Signature> found"))?;
 
-    let key = XmlSecKey::from_pem(key_pem).map_err(format_error)?;
+    let key = XmlSecKey::from_pem(key_pem).map_err(DsigError::key_load)?;
 
     for cert_pem in cert_pems {
-        key.add_cert_pem(cert_pem).map_err(format_error)?;
+        key.add_cert_pem(cert_pem).map_err(DsigError::key_load)?;
     }
 
-    let mngr = KeysMngr::new(&[], &[]).map_err(format_error)?;
+    let mngr = KeysMngr::new(&[], &[]).map_err(DsigError::native)?;
 
-    let mut ctx = DsigCtx::for_signing(&mngr, key).map_err(format_error)?;
+    let mut ctx = DsigCtx::for_signing(&mngr, key).map_err(DsigError::native)?;
 
-    ctx.sign(sig_node).map_err(format_error)?;
+    ctx.sign(sig_node).map_err(DsigError::signing)?;
 
-    doc.serialize().map_err(format_error)
+    doc.serialize().map_err(DsigError::native)
 }
 
 /// Verifies the nth `<ds:Signature>` against trusted/untrusted certs.
@@ -876,19 +919,19 @@ pub fn verify_document(
     untrusted_pems: &[Vec<u8>],
     id_attrs: &[String],
     signature_index: usize,
-) -> Result<VerifyResult, String> {
+) -> Result<VerifyResult, DsigError> {
     errors::clear_errors();
 
-    let doc = OwnedXmlDoc::parse(xml).map_err(format_error)?;
+    let doc = OwnedXmlDoc::parse(xml).map_err(DsigError::parse)?;
     let root = doc
         .root_element()
-        .ok_or_else(|| format_error("XML document has no root element"))?;
+        .ok_or(DsigError::parse("XML document has no root element"))?;
 
     doc.register_id_attributes(root, id_attrs);
 
     let sig_node = doc
         .find_nth_signature(root, signature_index)
-        .ok_or_else(|| format_error("no <Signature> element found in document"))?;
+        .ok_or(DsigError::native("no <Signature> element found in document"))?;
 
     let mut pinned_key_pems: Vec<&[u8]> = Vec::new();
     let mut cert_pems: Vec<&[u8]> = Vec::new();
@@ -901,13 +944,14 @@ pub fn verify_document(
     }
 
     if pinned_key_pems.len() > 1 {
-        return Err("at most one trusted key PEM is supported".into());
+        return Err(DsigError::native("at most one trusted key PEM is supported"));
     }
 
     // Chain building stays a Ruby `store:` concern. Native only ever pins
     // a verification key; untrusted PEMs are still accepted so the FFI
     // shape is unchanged, but they are not consulted once signKey is set.
-    let mngr = KeysMngr::new(&[], untrusted_pems).map_err(format_error)?;
+    // Loads the untrusted PEMs, so a failure is about certificate input.
+    let mngr = KeysMngr::new(&[], untrusted_pems).map_err(DsigError::key_load)?;
 
     let keys_to_try = load_pinned_keys(&pinned_key_pems, &cert_pems)?;
     let reference_element_indexes =
@@ -927,7 +971,7 @@ pub fn verify_document(
     let mut reference_valid = Vec::new();
     for key in keys_to_try {
         errors::clear_errors();
-        let mut ctx = DsigCtx::for_signing(&mngr, key).map_err(format_error)?;
+        let mut ctx = DsigCtx::for_signing(&mngr, key).map_err(DsigError::native)?;
         status = ctx.verify(sig_node);
         captured_errors = errors::drain_errors();
         reference_valid = ctx.reference_statuses();
@@ -949,16 +993,14 @@ pub fn verify_document(
 fn load_pinned_keys(
     key_pems: &[&[u8]],
     cert_pems: &[&[u8]],
-) -> Result<Vec<XmlSecKey>, String> {
+) -> Result<Vec<XmlSecKey>, DsigError> {
     if let Some(pem) = key_pems.first() {
-        return Ok(vec![
-            XmlSecKey::from_pem(pem).map_err(format_error)?,
-        ]);
+        return Ok(vec![XmlSecKey::from_pem(pem).map_err(DsigError::key_load)?]);
     }
 
     cert_pems
         .iter()
-        .map(|pem| XmlSecKey::from_cert_pem(pem).map_err(format_error))
+        .map(|pem| XmlSecKey::from_cert_pem(pem).map_err(DsigError::key_load))
         .collect()
 }
 
@@ -1149,15 +1191,6 @@ fn check_version_mode(mode: sys::xmlSecCheckVersionMode) -> bool {
     }
 }
 
-/// Formats an error message including any captured xmlsec errors.
-fn format_error(base_msg: &str) -> String {
-    let captured = errors::drain_errors();
-    if captured.is_empty() {
-        base_msg.to_string()
-    } else {
-        format!("{base_msg}\nxmlsec errors:\n{}", captured.join("\n"))
-    }
-}
 
 #[cfg(test)]
 mod tests {

@@ -320,8 +320,10 @@ module HankoXml
       errors = []
 
       unless valid
-        msg = verify_result[:errors].first || "Signature verification failed"
-        errors << HankoXml::VerificationError.new(msg, xmlsec_errors: verify_result[:errors], signature_node: sig_node)
+        # Fixed message: the xmlsec log can quote document text (S-13), so it
+        # is only exposed through #xmlsec_errors.
+        errors << HankoXml::VerificationError.new("Signature verification failed (#{verify_result[:status]})",
+                                                  xmlsec_errors: verify_result[:errors], signature_node: sig_node)
       end
 
       HankoXml::Verification.new(

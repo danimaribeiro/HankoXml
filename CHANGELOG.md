@@ -44,6 +44,15 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **S-13 / #43:** Native errors are classified by the step that failed
+  instead of by searching the message for "parse", "key" or "certificate",
+  which the xmlsec log could contain from the document itself (an unknown
+  `SignatureMethod` href of `urn:parse-key:…` raised `ParseError`). The xmlsec
+  log is no longer appended to `#message`; it is set as `#xmlsec_errors`,
+  which was always empty on `SigningError` before. A failed native
+  verification's `VerificationError#message` is now
+  `"Signature verification failed (<status>)"` instead of the first xmlsec
+  log line.
 - **S-12 / #42:** `max_document_size` is checked before a String, file or IO
   is read or parsed (an IO is read at most one byte past the limit), and
   against the serialized document before `Native.inspect_sig`. An oversized

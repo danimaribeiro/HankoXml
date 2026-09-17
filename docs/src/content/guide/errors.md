@@ -60,6 +60,11 @@ end
 thread-local buffer, drained on each native call. This is the difference between
 `SigningError: failed to sign` and an actual diagnosis.
 
+`#message` is always a fixed string from HankoXml, and the exception class depends on where the
+failure happened, never on the log's wording. The xmlsec log can quote text from the document
+(algorithm URIs, Reference URIs, node names), so it appears only in `#xmlsec_errors`. Treat that
+array as untrusted input before logging or displaying it.
+
 **`HankoXml::Error` and subclasses never carry key material.** The error constructor filters any
 value that came from a `Key`.
 

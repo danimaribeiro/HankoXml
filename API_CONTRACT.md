@@ -950,6 +950,12 @@ the difference between `SigningError: failed to sign` and an actual diagnosis,
 and it is the single highest-value thing the Rust layer can add beyond the
 crypto itself.
 
+`#message` is always a fixed string from this library, and the exception
+class is chosen by where the failure happened, not by the log's content. The
+xmlsec log can quote document text (algorithm hrefs, Reference URIs, node
+names), so it only ever appears in `#xmlsec_errors`: treat that array as
+untrusted input before logging or displaying it.
+
 **`HankoXml::Error` and subclasses never carry key material.** The error
 constructor filters any value that came from a `Key`.
 
