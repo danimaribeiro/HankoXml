@@ -5,6 +5,19 @@ Date: 2026-09-12 (originally against commit `3af4155`; `bundle exec rspec` =
 `spec/hanko_xml/verifier_spec.rb`. S-01 group K lives in
 `spec/hanko_xml/key_value_trust_spec.rb`.)
 
+**Status after #52 (2026-09-17):** groups A–H are now specs:
+`spec/hanko_xml/signer_sign_spec.rb` (A, D, G, H, N3),
+`signer_algorithms_spec.rb` (B), `signer_references_spec.rb` (C),
+`signer_key_info_spec.rb` (E, F) and `key_spec.rb` (F2/F3). Writing them
+fixed four bugs: the pass-phrase prompt on an encrypted key without
+`password:`, the empty `<KeyValue/>` (E6), the no-op X509Data clauses (E8)
+and the `:detached` `TypeError` (G6). The rest are `pending` specs with their
+own issues: E7 `<KeyName/>` (#67), C6 `[href, name]` on the Signer (#68),
+F9 Ed25519 (#69), B6 EC key with the default method (#70), C14 an apostrophe
+in an Id (#71), and E4 a stale adopted certificate (#72). The tables below
+keep their original "Expected today" column as a record of what the review
+predicted.
+
 This document inventories what the suite currently exercises on the *signing*
 side of HankoXml, lists the scenarios it does not, and specifies the specs that
 should be written. It covers functional gaps as well as security regressions;
