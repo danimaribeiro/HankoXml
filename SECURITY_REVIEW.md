@@ -49,7 +49,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-09 | **Medium** | Verification | `Reference#valid?` is just `Verification#valid?`; per-reference status, `Manifest`, `RetrievalMethod` and `Object` semantics are not surfaced, so `signed?` over-approximates for anything but the simplest shapes | **fixed** | code review |
 | S-10 | **Medium** | Native | Transform surface is whatever libxmlsec1 was built with; the source gem on a host whose xmlsec links libxslt (this checkout does) enables the XSLT transform, and policy blocks it only after it has run (S-04) | **fixed** (#64) | confirmed (ldd) |
 | S-11 | **Medium** | Verifier | `signature: :first` default: with several `<Signature>` elements only the first is verified and the result is reported for the whole document | **open** | code review |
-| S-12 | **Low** | Native | `xml.len() as i32` in `OwnedXmlDoc::parse` truncates documents over 2 GiB; no size guard before the FFI boundary and `max_document_size` is unenforced | **open** | code review |
+| S-12 | **Low** | Native | `xml.len() as i32` in `OwnedXmlDoc::parse` truncates documents over 2 GiB; no size guard before the FFI boundary and `max_document_size` is unenforced | **fixed** | code review |
 | S-13 | **Low** | Native / Ruby | Exceptions are classified by substring (`msg.contains("key")`, `contains("parse")`); xmlsec error text (with attacker-controlled URIs/paths) is echoed verbatim into Ruby exception messages | **open** | code review |
 | S-14 | **Low** | Signer | A mismatched `key:`/`certificate:` pair is accepted at sign time; the output verifies with neither certificate | **fixed** | confirmed, re-checked |
 | S-15 | **Low** | Key | `Key#dispose!` claims in-place zeroization but only nils the reference; `Key#private_key?` is true for public-only `PKey`s; PEM-vs-cert detection is a substring heuristic | **open** | code review |
@@ -88,7 +88,7 @@ trust source → `ConfigurationError`).
 - [x] **S-09** (#39) per-reference validity / `signed?` over-approximation
 - [x] **S-10** (#40) restrict transforms/URIs regardless of host xmlsec build
 - [x] **S-11** (#41) `signature: :first` and Signer/Verifier index disagreement
-- [ ] **S-12** (#42) `xml.len() as i32` + `max_document_size`
+- [x] **S-12** (#42) `xml.len() as i32` + `max_document_size`
 - [ ] **S-13** (#43) error classification and xmlsec log in messages
 - [x] **S-14** (#44) reject mismatched `key:` / `certificate:` at sign time
 - [ ] **S-15** (#45) `Key#dispose!` / `private_key?` / PEM heuristic
@@ -434,9 +434,23 @@ Signing order for the unqualified (sign-everything) case is still
 depth-first/innermost-first, unaffected. `require_signed_root` enforcement
 remains tracked separately under S-06.
 
-### S-12 -- Length truncation at the FFI boundary  [code review, Low, **open**]
+### S-12 -- Length truncation at the FFI boundary  [code review, Low, **fixed**]
 
-**Disposition:** still open. `xml.len() as i32` is unchanged.
+**Disposition:** fixed. `dsig.rs` converts every length it hands to
+libxml2/xmlsec with `ffi_len` (`TryFrom`), so `OwnedXmlDoc::parse` returns
+`ParseError` for a document over `c_int::MAX` bytes and the PEM loaders
+return a key-load error, instead of wrapping. `max_document_size` (enforced
+since S-06, but only after `Native.inspect_sig` had already parsed the
+document) is now checked earlier: `HankoXml.coerce_document(input, policy:)`
+applies it to a String's `bytesize`, a path's `File.size`, or at most
+`limit + 1` bytes read from an IO, before anything is parsed; `Verifier` and
+`Signer` check the serialized bytes via `Policy#enforce_document_size!`
+before `inspect_sig`. `Policy.permissive` has no limit, so the native check
+is what stands between it and a >2 GiB input. Specs:
+`spec/hanko_xml/document_size_spec.rb`, plus the `ffi_len` unit test in
+`dsig.rs` (`cargo test`).
+
+Original report:
 
 `sys::xmlReadMemory(xml.as_ptr().cast(), xml.len() as i32, …)`: a `Vec<u8>`
 longer than `i32::MAX` wraps (negative → parse failure; ≥ 4 GiB → parses only
@@ -557,9 +571,9 @@ accept path Strings explicitly.
 
 ## Suggested remediation order
 
-S-01 through S-11 and S-14 are done. Remaining, in order:
+S-01 through S-12 and S-14 are done. Remaining, in order:
 
-1. S-12, S-13 -- correctness and robustness.
+1. S-13 -- correctness and robustness.
 2. S-15 through S-21 -- hygiene.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should

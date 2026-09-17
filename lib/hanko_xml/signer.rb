@@ -116,7 +116,7 @@ module HankoXml
     # @param signature [Symbol, Integer, String, nil] The target signature to sign (defaults to all).
     # @return [HankoXml::SignedDocument] The new signed document.
     def sign(doc_or_xml, force: false, signature: nil)
-      doc = HankoXml.coerce_document(doc_or_xml)
+      doc = HankoXml.coerce_document(doc_or_xml, policy: policy)
       # Deep clone the document to avoid mutating the input if it's already a document.
       cloned = doc.dup
       sign!(cloned, force: force, signature: signature)
@@ -133,7 +133,7 @@ module HankoXml
     #   {Verifier}'s `signature:` Integer index (S-11).
     # @return [Nokogiri::XML::Node, Nokogiri::XML::Document] The mutated document.
     def sign!(doc_or_xml, force: false, signature: nil)
-      doc = HankoXml.coerce_document(doc_or_xml)
+      doc = HankoXml.coerce_document(doc_or_xml, policy: policy)
       Dom.require!("HankoXml::Signer#sign!")
 
       signatures, adopted = find_or_build_signatures(doc)
@@ -161,7 +161,7 @@ module HankoXml
       return doc if signatures_to_sign.empty?
 
       xml_bytes = HankoXml.serialize(doc)
-      @policy.enforce_key_size!([@key.to_openssl])
+      enforce_document_and_key_size!(xml_bytes)
 
       # Policy + reference-URI checks run on every template before any
       # Native.sign (S-05). inspect_sig does not fetch; Native.sign would.
@@ -234,6 +234,12 @@ module HankoXml
 
         [existing, true]
       end
+    end
+
+    # Before inspect_sig, which is itself a native parse (S-12).
+    def enforce_document_and_key_size!(xml_bytes)
+      @policy.enforce_document_size!(xml_bytes.bytesize)
+      @policy.enforce_key_size!([@key.to_openssl])
     end
 
     # Policy is a structural allowlist over inspect_sig output. Enforce it

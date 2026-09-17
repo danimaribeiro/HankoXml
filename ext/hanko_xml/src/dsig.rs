@@ -44,22 +44,35 @@ unsafe fn xml_free(ptr: *mut std::os::raw::c_void) {
     }
 }
 
+/// Converts a buffer length to the integer type an FFI function takes (S-12).
+///
+/// A plain `as` cast wraps silently: past `i32::MAX` an `int` length goes
+/// negative, and past `u32::MAX` an unsigned one keeps only the low 32 bits,
+/// so libxml2/xmlsec would read a different number of bytes than the caller
+/// passed. The width of `xmlSecSize` also differs between xmlsec 1.2 and 1.3,
+/// hence the generic target.
+fn ffi_len<T: TryFrom<usize>>(len: usize) -> Option<T> {
+    T::try_from(len).ok()
+}
+
 impl OwnedXmlDoc {
     /// Parses `xml` bytes into a libxml2 document.
-    pub fn parse(xml: &[u8]) -> Option<Self> {
-        // SAFETY: xmlReadMemory reads exactly xml.len() bytes starting at
-        // xml.as_ptr() and copies them into buffers it manages itself, so
-        // xml doesn't need to outlive this call.
+    ///
+    /// Documents longer than `c_int::MAX` bytes (about 2 GiB) are rejected
+    /// rather than truncated (S-12).
+    pub fn parse(xml: &[u8]) -> Result<Self, &'static str> {
+        let len: std::os::raw::c_int = ffi_len(xml.len())
+            .ok_or("failed to parse XML document: larger than the 2 GiB libxml2 limit")?;
+        // SAFETY: xmlReadMemory reads exactly len (== xml.len()) bytes
+        // starting at xml.as_ptr() and copies them into buffers it manages
+        // itself, so xml doesn't need to outlive this call.
         let ptr = unsafe {
-            sys::xmlReadMemory(
-                xml.as_ptr().cast(),
-                xml.len() as i32,
-                ptr::null(),
-                ptr::null(),
-                0,
-            )
+            sys::xmlReadMemory(xml.as_ptr().cast(), len, ptr::null(), ptr::null(), 0)
         };
-        (!ptr.is_null()).then_some(Self(ptr))
+        if ptr.is_null() {
+            return Err("failed to parse XML document");
+        }
+        Ok(Self(ptr))
     }
 
     /// Returns the root element, or None if the document is empty.
@@ -283,6 +296,7 @@ pub struct XmlSecKey(sys::xmlSecKeyPtr);
 impl XmlSecKey {
     /// Loads a private or public key from PEM bytes.
     pub fn from_pem(pem: &[u8]) -> Result<Self, &'static str> {
+        let len = ffi_len(pem.len()).ok_or("failed to load PEM key: too large")?;
         // SAFETY: pem is a valid slice; xmlSecOpenSSLAppKeyLoadMemory
         // copies what it needs. xmlsec tries a private key first, then a
         // SubjectPublicKeyInfo / RSA public key — the `key:` verify path
@@ -290,7 +304,7 @@ impl XmlSecKey {
         let ptr = unsafe {
             sys::xmlSecOpenSSLAppKeyLoadMemory(
                 pem.as_ptr(),
-                pem.len() as _,
+                len,
                 sys::KEY_FORMAT_PEM,
                 ptr::null(),  // no password (already decrypted in Ruby)
                 ptr::null_mut(),
@@ -311,6 +325,7 @@ impl XmlSecKey {
     /// KeysMngr trust anchor and xmlsec still takes `<KeyValue>` from the
     /// document (S-01).
     pub fn from_cert_pem(pem: &[u8]) -> Result<Self, &'static str> {
+        let len = ffi_len(pem.len()).ok_or("failed to load PEM certificate: too large")?;
         // SAFETY: pem is a valid slice; xmlSecOpenSSLAppKeyLoadMemory
         // copies what it needs. KEY_FORMAT_CERT_PEM dispatches to
         // xmlSecOpenSSLAppKeyFromCertLoadBIO rather than treating the
@@ -318,7 +333,7 @@ impl XmlSecKey {
         let ptr = unsafe {
             sys::xmlSecOpenSSLAppKeyLoadMemory(
                 pem.as_ptr(),
-                pem.len() as _,
+                len,
                 sys::KEY_FORMAT_CERT_PEM,
                 ptr::null(),
                 ptr::null_mut(),
@@ -333,12 +348,13 @@ impl XmlSecKey {
 
     /// Attaches a PEM certificate to this key (for KeyInfo population).
     pub fn add_cert_pem(&self, cert_pem: &[u8]) -> Result<(), &'static str> {
+        let len = ffi_len(cert_pem.len()).ok_or("failed to attach certificate to key: too large")?;
         // SAFETY: self.0 is valid; cert_pem is a valid slice.
         let rc = unsafe {
             sys::xmlSecOpenSSLAppKeyCertLoadMemory(
                 self.0,
                 cert_pem.as_ptr(),
-                cert_pem.len() as _,
+                len,
                 sys::KEY_FORMAT_PEM,
             )
         };
@@ -392,12 +408,13 @@ impl KeysMngr {
         }
 
         for cert_pem in trusted_pems {
+            let len = ffi_len(cert_pem.len()).ok_or("failed to load trusted certificate: too large")?;
             // SAFETY: mngr.0 is valid and initialized; cert_pem is a valid slice.
             let loaded = unsafe {
                 sys::xmlSecOpenSSLAppKeysMngrCertLoadMemory(
                     mngr.0,
                     cert_pem.as_ptr(),
-                    cert_pem.len() as _,
+                    len,
                     sys::xmlSecKeyDataFormat_xmlSecKeyDataFormatPem,
                     sys::xmlSecKeyDataTypeTrusted,
                 )
@@ -408,12 +425,14 @@ impl KeysMngr {
         }
 
         for cert_pem in untrusted_pems {
+            let len =
+                ffi_len(cert_pem.len()).ok_or("failed to load untrusted/intermediate certificate: too large")?;
             // SAFETY: same as above, but with type 0 (not trusted — intermediate).
             let loaded = unsafe {
                 sys::xmlSecOpenSSLAppKeysMngrCertLoadMemory(
                     mngr.0,
                     cert_pem.as_ptr(),
-                    cert_pem.len() as _,
+                    len,
                     sys::xmlSecKeyDataFormat_xmlSecKeyDataFormatPem,
                     0, // not trusted — intermediate for chain building
                 )
@@ -698,7 +717,7 @@ pub fn inspect_document(
     xml: &[u8],
     signature_index: usize,
 ) -> Result<InspectResult, &'static str> {
-    let doc = OwnedXmlDoc::parse(xml).ok_or("failed to parse XML document")?;
+    let doc = OwnedXmlDoc::parse(xml)?;
     let root = doc.root_element().ok_or("XML document has no root element")?;
 
     let sig_count = doc.count_signatures(root);
@@ -810,8 +829,7 @@ pub fn sign_document(
 ) -> Result<Vec<u8>, String> {
     errors::clear_errors();
 
-    let doc = OwnedXmlDoc::parse(xml)
-        .ok_or_else(|| format_error("failed to parse XML document"))?;
+    let doc = OwnedXmlDoc::parse(xml).map_err(format_error)?;
     let root = doc
         .root_element()
         .ok_or_else(|| format_error("XML document has no root element"))?;
@@ -861,8 +879,7 @@ pub fn verify_document(
 ) -> Result<VerifyResult, String> {
     errors::clear_errors();
 
-    let doc = OwnedXmlDoc::parse(xml)
-        .ok_or_else(|| format_error("failed to parse XML document"))?;
+    let doc = OwnedXmlDoc::parse(xml).map_err(format_error)?;
     let root = doc
         .root_element()
         .ok_or_else(|| format_error("XML document has no root element"))?;
@@ -1139,5 +1156,20 @@ fn format_error(base_msg: &str) -> String {
         base_msg.to_string()
     } else {
         format!("{base_msg}\nxmlsec errors:\n{}", captured.join("\n"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ffi_len;
+    use std::os::raw::c_int;
+
+    #[test]
+    fn ffi_len_rejects_lengths_that_would_wrap() {
+        assert_eq!(ffi_len::<c_int>(0), Some(0));
+        assert_eq!(ffi_len::<c_int>(c_int::MAX as usize), Some(c_int::MAX));
+        assert_eq!(ffi_len::<c_int>(c_int::MAX as usize + 1), None);
+        assert_eq!(ffi_len::<u32>(u32::MAX as usize + 1), None);
+        assert_eq!(ffi_len::<c_int>(usize::MAX), None);
     }
 }

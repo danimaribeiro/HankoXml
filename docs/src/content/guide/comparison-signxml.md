@@ -80,7 +80,6 @@ From `SECURITY_REVIEW.md` (still open or partial):
 | S-07 | `verification_time:` on `certificate:` checks the **pinned** cert’s window, not xmlsec’s view of the signing cert | Archived documents with an expired leaf can fail even with a historical time; `clock_skew` is unused. |
 | S-09 | `#signed?` assumes the whole ID’d subtree; XPath/XSLT/Manifest not modeled | Safe under `Policy.strict` (those transforms denied). Unsafe if you use `Policy.permissive`. |
 | S-11 | Default `signature: :first` | Extra wrapping signatures are ignored unless you use `:only` or `verify_all`. SignXML’s `location` is the analogous footgun. |
-| S-12 | `max_document_size` unused; `xml.len() as i32` | No DoS cap at the FFI boundary. |
 | Docs vs code | `Transform.exc_c14n(inclusive_prefixes:)` in the contract; HMAC key path advertised in policy docs | SAML InclusiveNamespaces and HMAC interop are not actually there. |
 
 ### Remaining SignXML gaps (5.1.0)

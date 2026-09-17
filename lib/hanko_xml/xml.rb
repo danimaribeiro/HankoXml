@@ -45,18 +45,31 @@ module HankoXml
     # Nokogiri::XML::Document: an existing Document as-is, a Node via its
     # #document, a String of markup, a path-like object, or anything
     # responding to #read.
-    def coerce_document(input)
+    #
+    # +policy+, when given, applies its +max_document_size+ to unparsed
+    # input before it is read or parsed (S-12): a String by #bytesize, a
+    # path by File.size, an IO by reading at most one byte past the limit.
+    # An existing Document/Node is not checked here; Signer/Verifier check
+    # its serialized form before any native call.
+    def coerce_document(input, policy: nil)
+      limit = policy&.max_document_size
+      limit = nil unless limit&.finite?
+
       case input
       when ->(obj) { Dom.document?(obj) }
         input
       when ->(obj) { Dom.node?(obj) }
         input.document
       when String
+        policy&.enforce_document_size!(input.bytesize)
         parse(input)
       when ->(obj) { obj.respond_to?(:to_path) }
+        policy&.enforce_document_size!(::File.size(input.to_path))
         parse(::File.binread(input.to_path))
       when ->(obj) { obj.respond_to?(:read) }
-        parse(input.read)
+        source = limit ? input.read(limit + 1) : input.read
+        policy&.enforce_document_size!(source.to_s.bytesize)
+        parse(source)
       else
         raise ArgumentError,
               "expected a Nokogiri::XML::Document/Node, an XML String, a path-like object " \

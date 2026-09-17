@@ -44,6 +44,15 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **S-12 / #42:** `max_document_size` is checked before a String, file or IO
+  is read or parsed (an IO is read at most one byte past the limit), and
+  against the serialized document before `Native.inspect_sig`. An oversized
+  String/file/IO now raises `PolicyError` from `Verifier#verify` /
+  `#verify_all` as well as from `Signer`, the same way a `ParseError` does;
+  an already-parsed Document still yields a failed `Verification`. The native
+  layer rejects a document over libxml2's 2 GiB `int` length with
+  `ParseError` instead of truncating it, and every PEM length crossing the
+  FFI boundary uses a checked conversion.
 - **S-05 / #36:** `Signer#sign!` enforces `Policy` on `inspect_sig` output
   before `Native.sign`, for both built and adopted templates. Adopted /
   required templates must also have Reference URIs that match

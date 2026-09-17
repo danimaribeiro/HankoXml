@@ -76,7 +76,7 @@ module HankoXml
     # @param xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The signed XML.
     # @return [HankoXml::Verification] The verification result.
     def verify(xml)
-      doc = HankoXml.coerce_document(xml)
+      doc = HankoXml.coerce_document(xml, policy: @policy)
       # Find signatures
       sigs = doc.xpath(".//ds:Signature", ds: NS["ds"])
 
@@ -142,7 +142,7 @@ module HankoXml
     # @param xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The signed XML.
     # @return [Array<HankoXml::Verification>] An array of verification results.
     def verify_all(xml)
-      doc = HankoXml.coerce_document(xml)
+      doc = HankoXml.coerce_document(xml, policy: @policy)
       sigs = doc.xpath(".//ds:Signature", ds: NS["ds"])
 
       return [] if sigs.empty?
@@ -219,8 +219,14 @@ module HankoXml
         end
       end
 
-      # 1. Serialize document to bytes
+      # 1. Serialize document to bytes. max_document_size is checked before
+      # inspect_sig, which is itself a native parse (S-12).
       xml_bytes = HankoXml.serialize(doc)
+      begin
+        @policy.enforce_document_size!(xml_bytes.bytesize)
+      rescue HankoXml::PolicyError => e
+        return failed_verification(doc, sig_node, [e], signature_info: nil)
+      end
 
       # 2. Call Native.inspect_sig
       begin

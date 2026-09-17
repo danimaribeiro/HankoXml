@@ -162,7 +162,7 @@ module HankoXml
       errors.concat(reference_violations(signature_info.references))
       errors << root_signed_violation(document, sig_node, signature_info, id_attributes) if check_root_signed
       errors << duplicate_id_violation(document, id_attributes)
-      errors << document_size_violation(xml_bytes)
+      errors << document_size_violation(xml_bytes&.bytesize)
 
       errors.compact
     end
@@ -177,6 +177,15 @@ module HankoXml
       return if errors.empty?
 
       raise HankoXml::PolicyError, errors.map(&:message).join("; ")
+    end
+
+    # Raises HankoXml::PolicyError if +bytesize+ exceeds
+    # +max_document_size+. Separate from #enforce! so Signer/Verifier can
+    # apply it before parsing and before any native call -- #enforce! needs
+    # Native.inspect_sig output, which already means a native parse (S-12).
+    def enforce_document_size!(bytesize)
+      error = document_size_violation(bytesize)
+      raise error if error
     end
 
     # Raises HankoXml::PolicyError if any of +keys+
@@ -303,12 +312,12 @@ module HankoXml
       )
     end
 
-    def document_size_violation(xml_bytes)
-      return nil if xml_bytes.nil?
-      return nil if xml_bytes.bytesize <= max_document_size
+    def document_size_violation(bytesize)
+      return nil if bytesize.nil?
+      return nil if bytesize <= max_document_size
 
       HankoXml::PolicyError.new(
-        "document is #{xml_bytes.bytesize} bytes, more than this policy's max_document_size " \
+        "document is #{bytesize} bytes, more than this policy's max_document_size " \
         "(#{max_document_size})"
       )
     end

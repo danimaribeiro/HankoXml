@@ -309,9 +309,9 @@ digest mismatch.
 
 ### S-12 / S-13 native robustness
 
-| # | Spec |
-|---|------|
-| N1 | `Native.sign`/`verify` with a String of length `2**31` (skip unless `ENV["HANKO_BIG"]`) → `ParseError`/`ArgumentError`, never a truncated parse |
+| # | Spec | Status |
+|---|------|--------|
+| N1 | `Native.sign`/`verify` with a String of length `2**31` (skip unless `ENV["HANKO_BIG"]`) → `ParseError`/`ArgumentError`, never a truncated parse | pass (S-12, `document_size_spec.rb`, opt-in; `ffi_len` unit test always runs) |
 | N2 | `SigningError#xmlsec_errors` is non-empty when xmlsec logged errors |
 | N3 | Exception messages never include the private key PEM (grep `-----BEGIN`) for every error path in section H |
 | N4 | Unsafe-budget spec: extend to assert `dsig.rs` has a `// SAFETY:` comment within 3 lines above every `unsafe` |
