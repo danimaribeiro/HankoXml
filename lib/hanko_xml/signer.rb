@@ -107,7 +107,7 @@ module HankoXml
 
     # Adds a Reference. Block form only -- see API_CONTRACT.md §5.2.
     def reference(uri = "", **kwargs)
-      references << HankoXml::Reference.new(uri: uri, **kwargs)
+      @references << HankoXml::Reference.new(uri: uri, **kwargs)
     end
 
     # With no args, the current KeyInfo clauses. With args, replaces them --
