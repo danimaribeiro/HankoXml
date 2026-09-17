@@ -62,8 +62,8 @@ ruby -e '
   other = File.read("#{ENV.fetch("FIXTURES_DIR")}/other.crt")
   ids   = %w[Id ID id]
 
-  ok = HankoXml::Native.verify(xml, [good], [], ids, 0)[:status]
-  no = HankoXml::Native.verify(xml, [other], [], ids, 0)[:status]
+  ok = HankoXml::Native.verify(xml, [good], [], ids, 0, [])[:status]
+  no = HankoXml::Native.verify(xml, [other], [], ids, 0, [])[:status]
   puts "signer cert -> #{ok} / other cert -> #{no}"
   # Native.verify reports :status as a Symbol, not a String.
   raise "expected the signing certificate to verify"  unless ok == :succeeded

@@ -41,7 +41,10 @@ module HankoXml
     #   `policy.schema` (S-06): `Policy.strict.schema == :default` turns on
     #   XSD validation without the caller passing `schema:` explicitly. Pass
     #   `schema: nil` explicitly to opt out regardless of the policy.
-    # @param referenced_documents [Hash<String, Nokogiri::XML::Document>] Documents to resolve external references.
+    # @param referenced_documents [Hash<String, String | Nokogiri::XML::Document>] The only source an external
+    #   reference is read from, keyed by its URI (without any `#fragment`). Pass the exact bytes that were signed
+    #   as a String; a Document is serialized first, which only matches if that reproduces those bytes. Nothing
+    #   is ever fetched, and a URI not in the map fails with {ReferenceError} (#74).
     def initialize(certificate: nil, certificates: nil, store: nil, key: nil, keys: nil,
                    policy: HankoXml::Policy.strict, id_attributes: %w[Id ID id], resolver: nil,
                    namespaces: {}, signature: nil, verification_time: nil,
@@ -65,7 +68,7 @@ module HankoXml
       @signature = signature
       @verification_time = verification_time
       @schema = schema.equal?(UNSET_SCHEMA) ? policy.schema : schema
-      @referenced_documents = referenced_documents
+      @referenced_documents = coerce_referenced_documents(referenced_documents)
       @certificate_subject = coerce_certificate_subject(certificate_subject)
 
       freeze
@@ -264,9 +267,18 @@ module HankoXml
       # reject_duplicate_ids, and max_document_size (S-06).
       begin
         @policy.enforce!(sig_info, document: doc, sig_node: sig_node, id_attributes: @id_attributes,
-                                   xml_bytes: xml_bytes)
+                                   xml_bytes: xml_bytes, referenced_uris: @referenced_documents.keys)
       rescue HankoXml::PolicyError => e
         return failed_verification(doc, sig_node, [e], signature_info: sig_info)
+      end
+
+      unresolved = unreferenced_external_uri(sig_info)
+      if unresolved
+        error = HankoXml::ReferenceError.new(
+          "reference URI #{unresolved.inspect} is not in referenced_documents:, and nothing is ever fetched",
+          reference_uri: unresolved
+        )
+        return failed_verification(doc, sig_node, [error], signature_info: sig_info)
       end
 
       # 3. Resolve trust material and call Native.verify
@@ -314,7 +326,8 @@ module HankoXml
       end
 
       begin
-        verify_result = Native.verify(xml_bytes, trusted, untrusted, native_id_attributes, index)
+        verify_result = Native.verify(xml_bytes, trusted, untrusted, native_id_attributes, index,
+                                      @referenced_documents.to_a)
       rescue StandardError => e
         return HankoXml::Verification.new(
           valid: false,
@@ -351,6 +364,29 @@ module HankoXml
     end
     # rubocop:enable Metrics/CyclomaticComplexity, Metrics/AbcSize
     # rubocop:enable Metrics/MethodLength, Metrics/PerceivedComplexity
+
+    # A Hash of URI => bytes, frozen. Keys drop any #fragment, the way xmlsec
+    # opens the URI.
+    def coerce_referenced_documents(documents)
+      unless documents.is_a?(Hash)
+        raise HankoXml::ConfigurationError, "referenced_documents: must be a Hash of URI => String or Document"
+      end
+
+      documents.to_h do |uri, document|
+        bytes = if document.is_a?(String) then document.b
+                elsif Dom.document?(document) then HankoXml.serialize(document).b
+                else
+                  raise HankoXml::ConfigurationError,
+                        "referenced_documents: #{uri.to_s.inspect} must be a String of bytes or a " \
+                        "Nokogiri::XML::Document, got #{document.class}"
+                end
+        [uri.to_s.split("#", 2).first.to_s.freeze, bytes.freeze]
+      end.freeze
+    end
+
+    def unreferenced_external_uri(sig_info)
+      sig_info.references.find { |ref| ref.external? && !@referenced_documents.key?(ref.document_uri) }&.uri
+    end
 
     def failed_verification(doc, sig_node, errors, signature_info: nil)
       HankoXml::Verification.new(

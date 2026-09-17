@@ -76,7 +76,7 @@ RSpec.describe "HankoXml::Native" do
   describe ".verify" do
     it "returns :succeeded for a valid signature" do
       xml = fixtures.join("signed_exc_c14n.xml").read
-      result = HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0)
+      result = HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0, [])
 
       expect(result[:status]).to eq(:succeeded)
       expect(result[:errors]).to be_empty
@@ -85,7 +85,7 @@ RSpec.describe "HankoXml::Native" do
     it "verifies against a public key PEM and ignores KeyInfo" do
       xml = fixtures.join("signed_exc_c14n.xml").read
       pubkey = OpenSSL::X509::Certificate.new(signer_cert_pem).public_key.to_pem
-      result = HankoXml::Native.verify(xml, [pubkey], [], id_attrs, 0)
+      result = HankoXml::Native.verify(xml, [pubkey], [], id_attrs, 0, [])
 
       expect(result[:status]).to eq(:succeeded)
     end
@@ -93,7 +93,7 @@ RSpec.describe "HankoXml::Native" do
     it "returns :invalid when the public key PEM does not match the signature" do
       xml = fixtures.join("signed_exc_c14n.xml").read
       other_key = OpenSSL::X509::Certificate.new(other_cert_pem).public_key.to_pem
-      result = HankoXml::Native.verify(xml, [other_key], [], id_attrs, 0)
+      result = HankoXml::Native.verify(xml, [other_key], [], id_attrs, 0, [])
 
       expect(result[:status]).to eq(:invalid).or eq(:unknown)
       expect(result[:errors]).not_to be_empty
@@ -101,7 +101,7 @@ RSpec.describe "HankoXml::Native" do
 
     it "returns :invalid with captured error messages when the certificate does not match" do
       xml = fixtures.join("signed_exc_c14n.xml").read
-      result = HankoXml::Native.verify(xml, [other_cert_pem], [], id_attrs, 0)
+      result = HankoXml::Native.verify(xml, [other_cert_pem], [], id_attrs, 0, [])
 
       expect(result[:status]).to eq(:invalid).or eq(:unknown)
       expect(result[:errors]).not_to be_empty
@@ -117,21 +117,21 @@ RSpec.describe "HankoXml::Native" do
         signed_nfe.xml
       ].each do |filename|
         xml = fixtures.join(filename).read
-        result = HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0)
+        result = HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0, [])
         expect(result[:status]).to eq(:succeeded), "Expected #{filename} to verify as :succeeded, got #{result.inspect}"
       end
     end
 
     it "raises ParseError for unparseable XML" do
       expect do
-        HankoXml::Native.verify("not xml", [signer_cert_pem], [], id_attrs, 0)
+        HankoXml::Native.verify("not xml", [signer_cert_pem], [], id_attrs, 0, [])
       end.to raise_error(HankoXml::ParseError)
     end
 
     it "raises NativeError when document has no signature" do
       unsigned_xml = "<Envelope><Data>Hello</Data></Envelope>"
       expect do
-        HankoXml::Native.verify(unsigned_xml, [signer_cert_pem], [], id_attrs, 0)
+        HankoXml::Native.verify(unsigned_xml, [signer_cert_pem], [], id_attrs, 0, [])
       end.to raise_error(HankoXml::NativeError, /no <Signature>/)
     end
   end
@@ -147,7 +147,7 @@ RSpec.describe "HankoXml::Native" do
       expect(signed_xml).not_to include("<SignatureValue/>")
 
       # Verify the produced signature
-      verify_result = HankoXml::Native.verify(signed_xml, [signer_cert_pem], [], id_attrs, 0)
+      verify_result = HankoXml::Native.verify(signed_xml, [signer_cert_pem], [], id_attrs, 0, [])
       expect(verify_result[:status]).to eq(:succeeded)
     end
 
@@ -164,7 +164,7 @@ RSpec.describe "HankoXml::Native" do
         template_xml = fixtures.join(filename).read
         signed_xml = HankoXml::Native.sign(template_xml, signer_key_pem, [signer_cert_pem], id_attrs, 0)
 
-        verify_result = HankoXml::Native.verify(signed_xml, [signer_cert_pem], [], id_attrs, 0)
+        verify_result = HankoXml::Native.verify(signed_xml, [signer_cert_pem], [], id_attrs, 0, [])
         msg = "Expected signed #{filename} to verify, got #{verify_result.inspect}"
         expect(verify_result[:status]).to eq(:succeeded), msg
       end

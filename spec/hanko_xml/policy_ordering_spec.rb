@@ -101,7 +101,9 @@ RSpec.describe "S-04 policy before crypto" do
     end
   end
 
-  it "calls Native.verify under permissive but still does not fetch (R2)" do
+  # #74: an external URI not in referenced_documents: now stops in Ruby, even
+  # under permissive. The native layer's own refusal is covered directly below.
+  it "refuses an unmapped file:// Reference under permissive without fetching it (R2)" do
     with_fifo do |fifo|
       xml = rewrite_reference_uri(signed_xml, "file://#{fifo}")
       allow(HankoXml::Native).to receive(:verify).and_call_original
@@ -110,8 +112,8 @@ RSpec.describe "S-04 policy before crypto" do
         HankoXml.verify(xml, certificate: signer_cert_pem, policy: HankoXml::Policy.permissive)
       end
 
-      expect(HankoXml::Native).to have_received(:verify)
-      expect(result.valid?).to be false
+      expect(HankoXml::Native).not_to have_received(:verify)
+      expect(result.errors.first).to be_a(HankoXml::ReferenceError)
     end
   end
 
@@ -146,7 +148,7 @@ RSpec.describe "S-04 policy before crypto" do
         xml = rewrite_reference_uri(signed_xml, "file://#{fifo}")
 
         result = Timeout.timeout(2) do
-          HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0)
+          HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0, [])
         end
 
         expect(result[:status]).not_to eq(:succeeded)
@@ -156,7 +158,7 @@ RSpec.describe "S-04 policy before crypto" do
     it "does not connect to an http:// Reference" do
       with_http_probe do |uri, hits|
         xml = rewrite_reference_uri(signed_xml, uri)
-        result = HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0)
+        result = HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0, [])
 
         expect(result[:status]).not_to eq(:succeeded)
         expect(hits.call).to eq(0)
@@ -168,7 +170,7 @@ RSpec.describe "S-04 policy before crypto" do
     it "rejects XSLT transform even when called directly" do
       xml = add_transforms(signed_xml, ["http://www.w3.org/TR/1999/REC-xslt-19991116"])
 
-      result = HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0)
+      result = HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0, [])
 
       # The signature fails because the XSLT transform is not in the allow-list
       expect(result[:status]).not_to eq(:succeeded)
@@ -179,7 +181,7 @@ RSpec.describe "S-04 policy before crypto" do
       # Enveloped is a core DSig transform that should be allowed
       xml = add_transforms(signed_xml, ["http://www.w3.org/2000/09/xmldsig#enveloped-signature"])
 
-      result = HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0)
+      result = HankoXml::Native.verify(xml, [signer_cert_pem], [], id_attrs, 0, [])
 
       # The signature may not be valid due to the added transform, but it
       # should not be rejected because the transform type is unsupported

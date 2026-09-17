@@ -6,7 +6,7 @@ module HankoXml
     attr_reader signature: Symbol | Integer | String
     attr_reader verification_time: Time?
     attr_reader schema: Symbol | String | Nokogiri::XML::Schema | nil
-    attr_reader referenced_documents: Hash[String, Nokogiri::XML::Document]
+    attr_reader referenced_documents: Hash[String, String]
 
     def initialize: (
       ?certificate: (Key | OpenSSL::X509::Certificate | String | _ToPath)?,
@@ -20,7 +20,7 @@ module HankoXml
       ?signature: Symbol | Integer | String,
       ?verification_time: Time?,
       ?schema: Symbol | String | Nokogiri::XML::Schema | nil,
-      ?referenced_documents: Hash[String, Nokogiri::XML::Document],
+      ?referenced_documents: Hash[String, String | Nokogiri::XML::Document],
       ?certificate_subject: (String | OpenSSL::X509::Name)?
     ) -> void
 

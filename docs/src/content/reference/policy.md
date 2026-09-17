@@ -16,7 +16,8 @@ HankoXml::Policy.fragment      # strict, minus require_signed_root — for proto
 HankoXml::Policy.legacy_sha1   # strict + SHA-1 digest and RSA-SHA1 signature
 HankoXml::Policy.interop       # fragment + SHA-1 with RSA or DSA, 1024-bit RSA — for
                                # legacy foreign signatures (W3C interop vectors), never a default
-HankoXml::Policy.permissive    # everything libxmlsec1 supports. Documented as unsafe.
+HankoXml::Policy.permissive    # allows everything Ruby checks. Documented as unsafe. The native
+                               # layer still refuses XPath/XSLT transforms and never fetches a URI.
 
 policy = HankoXml::Policy.strict.with(
   digest_methods:    %i[sha1 sha256],

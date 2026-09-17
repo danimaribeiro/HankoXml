@@ -71,6 +71,16 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **#74:** `Verifier`'s `referenced_documents:` was documented but never used,
+  so no external reference could verify. It is now the only source an external
+  reference is read from, and works with `allow_external_references: false`. At
+  init the extension replaces xmlsec's file/HTTP/FTP readers with one that serves
+  only the map of the verification in progress, so no URI reaches the filesystem
+  or network whatever the policy says. An external URI missing from the map fails
+  with `ReferenceError`. Keys drop any `#fragment`; values are the signed bytes
+  as a `String`, or a `Nokogiri::XML::Document`. `Native.verify` takes the map as
+  a sixth argument. The 10 detached and external interop vectors now verify.
+
 - **#67:** `key_info: [:key_name]` signed an empty `<KeyName/>`: xmlsec writes
   the key's own name, and a key loaded from PEM has none. The clause now takes
   the name, as `key_info: [{ key_name: "idp-1" }]` or, in the block form,

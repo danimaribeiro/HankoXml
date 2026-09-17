@@ -22,7 +22,14 @@ module InteropVectors
   # Every certificate here expired long ago; verify at a time inside its validity.
   VERIFICATION_TIME = { MERLIN => Time.utc(2005, 1, 1), PHAOS => Time.utc(2009, 1, 1) }.freeze
 
-  EXTERNAL = [:policy, /is external, and allow_external_references is false/].freeze
+  # The data xmlsec's own suite maps these URIs to (--url-map), served
+  # through referenced_documents: (#74). Nothing is fetched.
+  REFERENCED_DOCUMENTS = {
+    "http://www.w3.org/TR/xml-stylesheet" => "xml-stylesheet-2005",
+    "http://www.w3.org/Signature/2002/04/xml-stylesheet.b64" => "xml-stylesheet-2005.b64",
+    "http://www.ietf.org/rfc/rfc3161.txt" => "rfc3161.txt"
+  }.transform_values { |file| ROOT.join("external-data", file).binread.freeze }.freeze
+
   HMAC = [:policy, /hmac-(sha1|md5) is not in this policy's signature_methods/].freeze
   RETRIEVAL_METHOD = [:policy, /<RetrievalMethod>, and allow_retrieval_method is false/].freeze
 
@@ -39,16 +46,20 @@ module InteropVectors
       "signature-enveloping-rsa" => %i[key_value valid],
       "signature-enveloping-hmac-sha1" => [[:certificate, "certs/merlin.pem"], HMAC],
       "signature-enveloping-hmac-sha1-40" => [[:certificate, "certs/merlin.pem"], HMAC],
-      # #74: these reference http://www.w3.org/TR/xml-stylesheet.
-      "signature-external-dsa" => [:key_value, EXTERNAL],
-      "signature-external-b64-dsa" => [:key_value, EXTERNAL],
-      "signature-keyname" => [[:certificate, "certs/lugh-cert.pem"], EXTERNAL],
-      "signature-x509-crt" => [[:store, "certs/ca.pem"], EXTERNAL],
-      # xmlsec expects this one to fail: the CRL revokes the signer.
-      "signature-x509-crt-crl" => [[:store, "certs/ca.pem"], EXTERNAL],
-      "signature-x509-is" => [[:certificate, "certs/macha.pem"], EXTERNAL],
-      "signature-x509-ski" => [[:certificate, "certs/nemain.pem"], EXTERNAL],
-      "signature-x509-sn" => [[:certificate, "certs/badb.pem"], EXTERNAL],
+      # These reference http://www.w3.org/TR/xml-stylesheet, served from
+      # REFERENCED_DOCUMENTS (#74).
+      "signature-external-dsa" => %i[key_value valid],
+      "signature-external-b64-dsa" => %i[key_value valid],
+      "signature-keyname" => [[:certificate, "certs/lugh-cert.pem"], :valid],
+      "signature-x509-crt" => [[:store, "certs/ca.pem"], :valid],
+      # xmlsec fails this one because the CRL in its <KeyInfo> revokes the
+      # signer; the document cannot revoke anything here (S-01).
+      "signature-x509-crt-crl" => [[:store, "certs/ca.pem"], :valid],
+      # KeyInfo only names the certificate (issuer/serial, SKI, subject), so
+      # the verifier pins it.
+      "signature-x509-is" => [[:certificate, "certs/macha.pem"], :valid],
+      "signature-x509-ski" => [[:certificate, "certs/nemain.pem"], :valid],
+      "signature-x509-sn" => [[:certificate, "certs/badb.pem"], :valid],
       "signature-retrievalmethod-rawx509crt" => [[:store, "certs/ca.pem"], RETRIEVAL_METHOD],
       # A SignatureProperty holds a no-namespace element, where the XML-DSig
       # schema's ##other wildcard only admits namespaced ones.
@@ -69,9 +80,9 @@ module InteropVectors
       "signature-hmac-sha1-40-exclusive-c14n-comments-detached" => [[:certificate, "certs/rsa-cert.der"], HMAC],
       "signature-hmac-sha1-exclusive-c14n-comments-detached" => [[:certificate, "certs/rsa-cert.der"], HMAC],
       "signature-hmac-sha1-exclusive-c14n-enveloped" => [[:certificate, "certs/rsa-cert.der"], HMAC],
-      # #74: these reference http://www.ietf.org/rfc/rfc3161.txt.
-      "signature-dsa-detached" => [[:certificate, "certs/dsa-cert.der"], EXTERNAL],
-      "signature-rsa-detached" => [[:certificate, "certs/rsa-cert.der"], EXTERNAL],
+      # These reference http://www.ietf.org/rfc/rfc3161.txt (#74).
+      "signature-dsa-detached" => [[:certificate, "certs/dsa-cert.der"], :valid],
+      "signature-rsa-detached" => [[:certificate, "certs/rsa-cert.der"], :valid],
       "signature-big" => [[:certificate, "certs/rsa-cert.der"], [:policy, /more than this policy's max_references/]],
       "signature-rsa-xpath-transform-enveloped" => [[:certificate, "certs/rsa-cert.der"],
                                                     [:policy, /\(:xpath\) .* not in this policy's transforms/]],
@@ -149,7 +160,8 @@ RSpec.describe "Interop vectors (#62)" do
           verification = HankoXml::Verifier.new(
             **InteropVectors.trust(suite, source, Nokogiri::XML(xml)),
             policy: HankoXml::Policy.interop,
-            verification_time: InteropVectors::VERIFICATION_TIME[suite]
+            verification_time: InteropVectors::VERIFICATION_TIME[suite],
+            referenced_documents: InteropVectors::REFERENCED_DOCUMENTS
           ).verify(xml)
 
           if outcome == :valid

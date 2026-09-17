@@ -12,6 +12,7 @@ use magnus::{
     function, prelude::*, Error, ExceptionClass, IntoValue, RArray, RHash, RModule, RString,
     Ruby, TryConvert, Value,
 };
+use std::collections::HashMap;
 use std::sync::Once;
 
 static INIT: Once = Once::new();
@@ -95,6 +96,20 @@ fn rarray_to_byte_vecs(ruby: &Ruby, arr: RArray) -> Result<Vec<Vec<u8>>, Error> 
     Ok(result)
 }
 
+/// Extracts an RArray of `[String, String]` pairs into a map.
+fn rarray_to_byte_pairs(ruby: &Ruby, arr: RArray) -> Result<HashMap<Vec<u8>, Vec<u8>>, Error> {
+    let mut result = HashMap::new();
+    for item in arr.into_iter() {
+        let pair: RArray = TryConvert::try_convert(item)
+            .map_err(|_| native_error(ruby, "referenced document is not a [uri, bytes] pair".into()))?;
+        let [uri, bytes] = rarray_to_byte_vecs(ruby, pair)?
+            .try_into()
+            .map_err(|_| native_error(ruby, "referenced document is not a [uri, bytes] pair".into()))?;
+        result.insert(uri, bytes);
+    }
+    Ok(result)
+}
+
 /// Extracts an RArray of RString into a Vec<String>.
 fn rarray_to_strings(ruby: &Ruby, arr: RArray) -> Result<Vec<String>, Error> {
     let mut result = Vec::new();
@@ -138,7 +153,7 @@ fn native_sign(
     }
 }
 
-/// `HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signature_index)`
+/// `HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signature_index, referenced_documents)`
 ///
 /// Verifies the nth `<ds:Signature>` and returns a Hash:
 /// `{ status:, errors:, reference_element_indexes: Array<Integer|nil>,
@@ -163,6 +178,7 @@ fn native_verify(
     untrusted_pems: RArray,
     id_attributes: RArray,
     signature_index: usize,
+    referenced_documents: RArray,
 ) -> Result<RHash, Error> {
     ensure_initialized().map_err(|msg| native_error(ruby, msg.into()))?;
 
@@ -170,8 +186,9 @@ fn native_verify(
     let trusted = rarray_to_byte_vecs(ruby, trusted_pems)?;
     let untrusted = rarray_to_byte_vecs(ruby, untrusted_pems)?;
     let id_attrs = rarray_to_strings(ruby, id_attributes)?;
+    let referenced = rarray_to_byte_pairs(ruby, referenced_documents)?;
 
-    match dsig::verify_document(&xml_bytes, &trusted, &untrusted, &id_attrs, signature_index) {
+    match dsig::verify_document(&xml_bytes, &trusted, &untrusted, &id_attrs, signature_index, referenced) {
         Ok(result) => {
             let hash = ruby.hash_new();
             let status_sym = ruby.to_symbol(result.status.as_str());
@@ -356,7 +373,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     native.define_singleton_method("abi_compatible?", function!(native_abi_compatible, 0))?;
     native.define_singleton_method("versions", function!(native_versions, 0))?;
     native.define_singleton_method("sign", function!(native_sign, 5))?;
-    native.define_singleton_method("verify", function!(native_verify, 5))?;
+    native.define_singleton_method("verify", function!(native_verify, 6))?;
     native.define_singleton_method("inspect_sig", function!(native_inspect, 2))?;
 
     Ok(())

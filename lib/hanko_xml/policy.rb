@@ -100,7 +100,9 @@ module HankoXml
         )
       end
 
-      # Everything libxmlsec1 supports. Documented as unsafe.
+      # Allows everything the Ruby checks cover. Documented as unsafe. The
+      # native layer still refuses XPath/XSLT transforms (S-10) and reads an
+      # external URI only from referenced_documents: (#74), whatever this says.
       def permissive
         @permissive ||= new(
           signature_methods: Algorithms.signature.names,
@@ -152,12 +154,16 @@ module HankoXml
     #   about what is legitimate to produce, so {Signer} deliberately signs
     #   a caller-chosen fragment (opted into via `references:`, R5) without
     #   tripping it; only {Verifier} checks it.
+    # @param referenced_uris [Array<String>] URIs the caller serves through
+    #   `referenced_documents:` (#74). An external reference to one of them
+    #   is allowed whatever +allow_external_references+ says: it is read from
+    #   the caller's map, never fetched.
     #
     # +min_rsa_key_bits+ / +min_ec_key_bits+ are not checked here -- they
     # need the actual signing/trust key material, which is only available
     # once Signer/Verifier have resolved it. See #enforce_key_size!.
     def violations(signature_info, document: nil, sig_node: nil, id_attributes: nil, xml_bytes: nil,
-                   check_root_signed: true)
+                   check_root_signed: true, referenced_uris: [])
       errors = []
 
       errors << algorithm_violation(:signature, signature_info.signature_method)
@@ -179,7 +185,7 @@ module HankoXml
         )
       end
 
-      errors.concat(reference_violations(signature_info.references))
+      errors.concat(reference_violations(signature_info.references, referenced_uris))
       errors << root_signed_violation(document, sig_node, signature_info, id_attributes) if check_root_signed
       errors << duplicate_id_violation(document, id_attributes)
       errors << document_size_violation(xml_bytes&.bytesize)
@@ -191,9 +197,10 @@ module HankoXml
     # message) if +signature_info+ violates this policy. Accepts the same
     # optional context keywords as #violations.
     def enforce!(signature_info, document: nil, sig_node: nil, id_attributes: nil, xml_bytes: nil,
-                 check_root_signed: true)
+                 check_root_signed: true, referenced_uris: [])
       errors = violations(signature_info, document: document, sig_node: sig_node, id_attributes: id_attributes,
-                                          xml_bytes: xml_bytes, check_root_signed: check_root_signed)
+                                          xml_bytes: xml_bytes, check_root_signed: check_root_signed,
+                                          referenced_uris: referenced_uris)
       return if errors.empty?
 
       raise HankoXml::PolicyError, errors.map(&:message).join("; ")
@@ -224,7 +231,7 @@ module HankoXml
 
     private
 
-    def reference_violations(references)
+    def reference_violations(references, referenced_uris)
       references.flat_map do |ref|
         errors = [
           algorithm_violation(:digest, ref.digest_method, reference_uri: ref.uri)
@@ -241,7 +248,7 @@ module HankoXml
           errors << algorithm_violation(:transform, transform_uri, reference_uri: ref.uri)
         end
 
-        if !allow_external_references && ref.external?
+        if !allow_external_references && ref.external? && !referenced_uris.include?(ref.document_uri)
           errors << HankoXml::PolicyError.new(
             "reference URI #{ref.uri.inspect} is external, and allow_external_references is false"
           )

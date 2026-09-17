@@ -444,11 +444,16 @@ malformed `<SignedInfo>` is rejected without reaching libxmlsec1's parser at
 all. `schema: :default` uses the bundled XSD; `nil` (the default) skips it.
 `Policy.strict` sets `schema: :default`.
 
-**`referenced_documents:`** — a `URI => document` map for references that point
+**`referenced_documents:`** — a `URI => bytes` map for references that point
 outside the document. It is the *only* way a non-fragment reference can resolve:
-`allow_external_references` stays `false`, nothing is fetched, and a reference
-whose URI is not a key in this map raises `ReferenceError`. This gives
-`xmldsig`'s `referenced_documents:` feature without its network surface.
+it works with `allow_external_references` still `false`, nothing is fetched, and
+a reference whose URI is not a key in this map fails with `ReferenceError`. Keys
+are the Reference URI without any `#fragment`. Values are the exact signed bytes
+as a `String`; a `Nokogiri::XML::Document` is serialized first, which matches
+only if that reproduces those bytes. At init the extension replaces xmlsec's
+file/HTTP/FTP readers with one that serves only this map, for the verification
+in progress (#74). This gives `xmldsig`'s `referenced_documents:` feature without
+its network surface.
 
 Trust sources are mutually exclusive: passing more than one of `certificate:`,
 `certificates:`, `store:`, `key:`, `keys:` — or omitting all of them — raises
@@ -790,7 +795,8 @@ HankoXml::Policy.fragment      # strict, minus require_signed_root — for proto
 HankoXml::Policy.legacy_sha1   # strict + SHA-1 digest and RSA-SHA1 signature
 HankoXml::Policy.interop       # fragment + SHA-1 with RSA or DSA, 1024-bit RSA — for
                                # legacy foreign signatures (W3C interop vectors), never a default
-HankoXml::Policy.permissive    # everything libxmlsec1 supports. Documented as unsafe.
+HankoXml::Policy.permissive    # allows everything Ruby checks. Documented as unsafe. The native
+                               # layer still refuses XPath/XSLT transforms and never fetches a URI.
 
 policy = HankoXml::Policy.strict.with(
   digest_methods:    %i[sha1 sha256],

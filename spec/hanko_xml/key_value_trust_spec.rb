@@ -59,13 +59,13 @@ RSpec.describe "S-01 KeyValue trust" do
 
   describe "Native.verify" do
     it "does not accept an attacker KeyValue when the trusted PEM is signer.crt (K1)" do
-      result = HankoXml::Native.verify(forged_by_other, [signer_cert_pem], [], id_attrs, 0)
+      result = HankoXml::Native.verify(forged_by_other, [signer_cert_pem], [], id_attrs, 0, [])
 
       expect(result[:status]).not_to eq(:succeeded)
     end
 
     it "fails closed when the trust list is empty (K2)" do
-      result = HankoXml::Native.verify(forged_by_other, [], [], id_attrs, 0)
+      result = HankoXml::Native.verify(forged_by_other, [], [], id_attrs, 0, [])
 
       expect(result[:status]).not_to eq(:succeeded)
       expect(result[:errors].join).to match(/no trusted key or certificate/)
@@ -82,7 +82,7 @@ RSpec.describe "S-01 KeyValue trust" do
       x509.add_child(cert)
       key_info.add_child(x509)
 
-      result = HankoXml::Native.verify(doc.to_xml, [signer_cert_pem], [], id_attrs, 0)
+      result = HankoXml::Native.verify(doc.to_xml, [signer_cert_pem], [], id_attrs, 0, [])
 
       expect(result[:status]).not_to eq(:succeeded)
     end
@@ -96,7 +96,7 @@ RSpec.describe "S-01 KeyValue trust" do
       der.content = [OpenSSL::PKey::RSA.new(other_key_pem).public_key.to_der].pack("m0")
       key_info.add_child(der)
 
-      result = HankoXml::Native.verify(doc.to_xml, [signer_cert_pem], [], id_attrs, 0)
+      result = HankoXml::Native.verify(doc.to_xml, [signer_cert_pem], [], id_attrs, 0, [])
 
       expect(result[:status]).not_to eq(:succeeded)
     end
@@ -121,35 +121,35 @@ RSpec.describe "S-01 KeyValue trust" do
       object.add_child(key_value)
       sig.add_child(object)
 
-      result = HankoXml::Native.verify(doc.to_xml, [signer_cert_pem], [], id_attrs, 0)
+      result = HankoXml::Native.verify(doc.to_xml, [signer_cert_pem], [], id_attrs, 0, [])
 
       expect(result[:status]).not_to eq(:succeeded)
     end
 
     it "verifies a legit document with no KeyInfo against signer.crt (K7)" do
       signed = sign_with(no_keyinfo_template, signer_key_pem)
-      result = HankoXml::Native.verify(signed, [signer_cert_pem], [], id_attrs, 0)
+      result = HankoXml::Native.verify(signed, [signer_cert_pem], [], id_attrs, 0, [])
 
       expect(result[:status]).to eq(:succeeded)
     end
 
     it "rejects a legit document when trusted is a different certificate (K8)" do
       signed = sign_with(key_value_template, signer_key_pem)
-      result = HankoXml::Native.verify(signed, [other_cert_pem], [], id_attrs, 0)
+      result = HankoXml::Native.verify(signed, [other_cert_pem], [], id_attrs, 0, [])
 
       expect(result[:status]).not_to eq(:succeeded)
     end
 
     it "verifies a legit KeyValue signature against the signer certificate" do
       signed = sign_with(key_value_template, signer_key_pem)
-      result = HankoXml::Native.verify(signed, [signer_cert_pem], [], id_attrs, 0)
+      result = HankoXml::Native.verify(signed, [signer_cert_pem], [], id_attrs, 0, [])
 
       expect(result[:status]).to eq(:succeeded)
     end
 
     it "accepts any one of several pinned certificates" do
       signed = sign_with(key_value_template, signer_key_pem)
-      result = HankoXml::Native.verify(signed, [other_cert_pem, signer_cert_pem], [], id_attrs, 0)
+      result = HankoXml::Native.verify(signed, [other_cert_pem, signer_cert_pem], [], id_attrs, 0, [])
 
       expect(result[:status]).to eq(:succeeded)
     end
