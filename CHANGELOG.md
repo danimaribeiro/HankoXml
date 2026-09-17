@@ -269,6 +269,12 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Changed
 
+- **#89:** **Breaking:** `HankoXml.verify` is removed and `HankoXml.valid?` is
+  added, as `API_CONTRACT.md` §5.1 always specified. A `Verification` is always
+  truthy, so `if HankoXml.verify(doc, ...)` passed for a forged document. Use
+  `HankoXml.valid?` for a boolean, `HankoXml.verify!` to raise, or
+  `HankoXml::Verifier.new(...).verify(doc)` for the `Verification`.
+
 - **#87:** **Breaking:** `HankoXml.signed?(xml)` is now
   `HankoXml.signature_present?(xml)`, and the Nokogiri extension's `doc.signed?`
   is now `doc.signature_present?`. The check is structural (a populated

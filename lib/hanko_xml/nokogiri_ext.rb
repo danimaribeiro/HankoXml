@@ -18,7 +18,7 @@ module HankoXml
     end
 
     def signature_valid?(**kwargs)
-      HankoXml.verify(self, **kwargs).valid?
+      HankoXml.valid?(self, **kwargs)
     end
 
     def signatures

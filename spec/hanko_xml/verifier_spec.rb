@@ -99,18 +99,19 @@ RSpec.describe HankoXml::Verifier do
     let(:signer_cert) { OpenSSL::X509::Certificate.new(signer_cert_pem) }
 
     it "is the pinned certificate, or the one in certificates: that verified" do
-      expect(HankoXml.verify(signed, certificate: signer_cert_pem).certificate).to eq(signer_cert)
-      expect(HankoXml.verify(signed, certificates: [other_cert_pem, signer_cert_pem]).certificate).to eq(signer_cert)
+      expect(HankoXml::Verifier.new(certificate: signer_cert_pem).verify(signed).certificate).to eq(signer_cert)
+      expect(HankoXml::Verifier.new(certificates: [other_cert_pem,
+                                                   signer_cert_pem]).verify(signed).certificate).to eq(signer_cert)
     end
 
     it "is the chain leaf under store:" do
       store = OpenSSL::X509::Store.new.tap { |s| s.add_cert(signer_cert) }
-      expect(HankoXml.verify(signed, store: store).certificate).to eq(signer_cert)
+      expect(HankoXml::Verifier.new(store: store).verify(signed).certificate).to eq(signer_cert)
     end
 
     it "is nil for a bare key, or when nothing verified" do
-      expect(HankoXml.verify(signed, key: signer_cert.public_key).certificate).to be_nil
-      expect(HankoXml.verify(signed, certificate: other_cert_pem).certificate).to be_nil
+      expect(HankoXml::Verifier.new(key: signer_cert.public_key).verify(signed).certificate).to be_nil
+      expect(HankoXml::Verifier.new(certificate: other_cert_pem).verify(signed).certificate).to be_nil
     end
   end
 
@@ -121,12 +122,12 @@ RSpec.describe HankoXml::Verifier do
     it "validates against the signing public key" do
       signed = HankoXml.sign(unsigned_xml, key: signer_key_pem, certificate: signer_cert_pem)
 
-      expect(HankoXml.verify(signed.to_s, key: signer_key.public_key).valid?).to be true
+      expect(HankoXml.valid?(signed.to_s, key: signer_key.public_key)).to be true
     end
 
     it "rejects a public key that did not produce the signature" do
       signed = HankoXml.sign(unsigned_xml, key: signer_key_pem, certificate: signer_cert_pem)
-      result = HankoXml.verify(signed.to_s, key: other_key.public_key)
+      result = HankoXml::Verifier.new(key: other_key.public_key).verify(signed.to_s)
 
       expect(result.valid?).to be false
     end
@@ -137,13 +138,13 @@ RSpec.describe HankoXml::Verifier do
       cert_node = doc.at_xpath("//ds:X509Certificate", HankoXml::NS)
       cert_node.content = pem_body(other_cert_pem)
 
-      expect(HankoXml.verify(doc, key: signer_key.public_key).valid?).to be true
+      expect(HankoXml.valid?(doc, key: signer_key.public_key)).to be true
     end
 
     it "validates a signature that has no KeyInfo at all" do
       signed = HankoXml.sign(unsigned_xml, key: signer_key_pem, key_info: [])
 
-      expect(HankoXml.verify(signed.to_s, key: signer_key.public_key).valid?).to be true
+      expect(HankoXml.valid?(signed.to_s, key: signer_key.public_key)).to be true
     end
   end
 
@@ -196,20 +197,20 @@ RSpec.describe HankoXml::Verifier do
     it "validates a chain when only the root is in the store" do
       signed = sign_chain([leaf_cert, intermediate_cert])
 
-      expect(HankoXml.verify(signed, store: root_store).valid?).to be true
+      expect(HankoXml.valid?(signed, store: root_store)).to be true
     end
 
     it "validates when KeyInfo lists the intermediate before the leaf" do
       signed = reverse_keyinfo_certificates(sign_chain([leaf_cert, intermediate_cert]))
 
-      expect(HankoXml.verify(signed, store: root_store).valid?).to be true
+      expect(HankoXml.valid?(signed, store: root_store)).to be true
     end
 
     it "rejects a chain that does not reach the store" do
       store = OpenSSL::X509::Store.new
       store.add_cert(OpenSSL::X509::Certificate.new(other_cert_pem))
       signed = sign_chain([leaf_cert, intermediate_cert])
-      result = HankoXml.verify(signed, store: store)
+      result = HankoXml::Verifier.new(store: store).verify(signed)
 
       expect(result.valid?).to be false
       expect(result.errors.first).to be_a(HankoXml::UntrustedCertificate)
@@ -217,7 +218,7 @@ RSpec.describe HankoXml::Verifier do
 
     it "rejects KeyInfo with no certificates" do
       signed = HankoXml.sign(unsigned_xml, key: leaf_key, key_info: []).to_s
-      result = HankoXml.verify(signed, store: root_store)
+      result = HankoXml::Verifier.new(store: root_store).verify(signed)
 
       expect(result.valid?).to be false
       expect(result.errors.first).to be_a(HankoXml::UntrustedCertificate)
@@ -226,7 +227,7 @@ RSpec.describe HankoXml::Verifier do
 
     it "applies verification_time to the signing cert, not an intermediate listed first" do
       signed = reverse_keyinfo_certificates(sign_chain([@expired_leaf_cert, intermediate_cert]))
-      result = HankoXml.verify(signed, store: root_store, verification_time: Time.now)
+      result = HankoXml::Verifier.new(store: root_store, verification_time: Time.now).verify(signed)
 
       expect(result.valid?).to be false
       expect(result.errors.first).to be_a(HankoXml::UntrustedCertificate)
@@ -239,7 +240,7 @@ RSpec.describe HankoXml::Verifier do
       store.define_singleton_method(:time=) { |time| assigned = time }
 
       signed = sign_chain([leaf_cert, intermediate_cert])
-      result = HankoXml.verify(signed, store: store, verification_time: Time.now)
+      result = HankoXml::Verifier.new(store: store, verification_time: Time.now).verify(signed)
 
       expect(result.valid?).to be true
       expect(assigned).to be_nil
@@ -250,7 +251,7 @@ RSpec.describe HankoXml::Verifier do
         sign_chain([leaf_cert, intermediate_cert]),
         @other_leaf_cert
       )
-      result = HankoXml.verify(signed, store: root_store)
+      result = HankoXml::Verifier.new(store: root_store).verify(signed)
 
       expect(result.valid?).to be false
       expect(result.errors.first).to be_a(HankoXml::UntrustedCertificate)
@@ -259,7 +260,7 @@ RSpec.describe HankoXml::Verifier do
 
     it "threads id_attributes through a failed store check" do
       signed = HankoXml.sign(unsigned_xml, key: leaf_key, key_info: []).to_s
-      result = HankoXml.verify(signed, store: root_store, id_attributes: ["CustomId"])
+      result = HankoXml::Verifier.new(store: root_store, id_attributes: ["CustomId"]).verify(signed)
 
       expect(result.valid?).to be false
       expect(result.id_attributes).to eq(["CustomId"])
@@ -289,12 +290,12 @@ RSpec.describe HankoXml::Verifier do
 
     it "accepts digitalSignature, nonRepudiation alone, or no KeyUsage extension" do
       [leaf(11), leaf(12, key_usage: "nonRepudiation"), leaf(13, key_usage: :none)].each do |cert|
-        expect(HankoXml.verify(signed_by(cert), store: store).valid?).to be(true), cert.extensions.map(&:to_s).inspect
+        expect(HankoXml.valid?(signed_by(cert), store: store)).to be(true), cert.extensions.map(&:to_s).inspect
       end
     end
 
     it "rejects a KeyUsage without digitalSignature or nonRepudiation under Policy.strict" do
-      result = HankoXml.verify(signed_by(leaf(14, key_usage: "keyEncipherment")), store: store)
+      result = HankoXml::Verifier.new(store: store).verify(signed_by(leaf(14, key_usage: "keyEncipherment")))
 
       expect(result.valid?).to be false
       expect(result.errors.first).to be_a(HankoXml::UntrustedCertificate)
@@ -303,25 +304,27 @@ RSpec.describe HankoXml::Verifier do
 
     it "skips the KeyUsage check when require_signing_key_usage is false" do
       policy = HankoXml::Policy.strict.with(require_signing_key_usage: false)
-      result = HankoXml.verify(signed_by(leaf(15, key_usage: "keyEncipherment")), store: store, policy: policy)
+      result = HankoXml::Verifier.new(store: store,
+                                      policy: policy).verify(signed_by(leaf(15,
+                                                                            key_usage: "keyEncipherment")))
 
       expect(result.valid?).to be true
     end
 
     it "does not apply the KeyUsage check to a pinned certificate:" do
       cert = leaf(16, key_usage: "keyEncipherment")
-      expect(HankoXml.verify(signed_by(cert), certificate: cert).valid?).to be true
+      expect(HankoXml.valid?(signed_by(cert), certificate: cert)).to be true
     end
 
     describe "certificate_subject:" do
       it "accepts a String equal to the only CN" do
-        expect(HankoXml.verify(signed_by(leaf(20)), store: store, certificate_subject: "usage-leaf").valid?)
+        expect(HankoXml.valid?(signed_by(leaf(20)), store: store, certificate_subject: "usage-leaf"))
           .to be true
       end
 
       it "rejects a different CN, including a prefix or suffix match" do
         %w[usage-lea usage-leaf.evil other].each do |cn|
-          result = HankoXml.verify(signed_by(leaf(21)), store: store, certificate_subject: cn)
+          result = HankoXml::Verifier.new(store: store, certificate_subject: cn).verify(signed_by(leaf(21)))
 
           expect(result.valid?).to be false
           expect(result.errors.first).to be_a(HankoXml::UntrustedCertificate)
@@ -331,7 +334,10 @@ RSpec.describe HankoXml::Verifier do
 
       it "rejects a String when the subject has more than one CN" do
         name = OpenSSL::X509::Name.parse("/CN=usage-leaf/CN=attacker")
-        result = HankoXml.verify(signed_by(leaf(22, subject: name)), store: store, certificate_subject: "usage-leaf")
+        result = HankoXml::Verifier.new(store: store,
+                                        certificate_subject: "usage-leaf").verify(signed_by(leaf(
+                                                                                              22, subject: name
+                                                                                            )))
 
         expect(result.valid?).to be false
       end
@@ -340,9 +346,9 @@ RSpec.describe HankoXml::Verifier do
         name = OpenSSL::X509::Name.parse("/O=Example/CN=usage-leaf")
         cert = leaf(23, subject: name)
 
-        expect(HankoXml.verify(signed_by(cert), store: store, certificate_subject: name).valid?).to be true
-        expect(HankoXml.verify(signed_by(cert), store: store,
-                                                certificate_subject: OpenSSL::X509::Name.parse("/CN=usage-leaf"))
+        expect(HankoXml.valid?(signed_by(cert), store: store, certificate_subject: name)).to be true
+        expect(HankoXml::Verifier.new(store: store,
+                                      certificate_subject: OpenSSL::X509::Name.parse("/CN=usage-leaf")).verify(signed_by(cert))
           .valid?).to be false
       end
 
@@ -376,18 +382,18 @@ RSpec.describe HankoXml::Verifier do
     it "selects a public-key entry by KeyName" do
       doc = sign_with_key_name("idp-1")
 
-      expect(HankoXml.verify(doc, keys: { "idp-1" => signer_key.public_key }).valid?).to be true
+      expect(HankoXml.valid?(doc, keys: { "idp-1" => signer_key.public_key })).to be true
     end
 
     it "selects a certificate entry by KeyName" do
       doc = sign_with_key_name("idp-1")
 
-      expect(HankoXml.verify(doc, keys: { "idp-1" => signer_cert_pem }).valid?).to be true
+      expect(HankoXml.valid?(doc, keys: { "idp-1" => signer_cert_pem })).to be true
     end
 
     it "fails closed when KeyName is missing from the map" do
       doc = sign_with_key_name("idp-1")
-      result = HankoXml.verify(doc, keys: { "other-idp" => signer_key.public_key })
+      result = HankoXml::Verifier.new(keys: { "other-idp" => signer_key.public_key }).verify(doc)
 
       expect(result.valid?).to be false
       expect(result.errors.first).to be_a(HankoXml::UntrustedCertificate)

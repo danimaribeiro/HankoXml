@@ -19,39 +19,55 @@ RSpec.describe HankoXml do
     expect(HankoXml::Native.check_version).to be true
   end
 
-  describe ".verify" do
+  # #89: API_CONTRACT §5.1. A Verification is always truthy, so a module-level
+  # .verify would make `if HankoXml.verify(doc, ...)` pass for a forged document.
+  it "does not expose a module-level .verify" do
+    expect(described_class).not_to respond_to(:verify)
+  end
+
+  describe ".valid?" do
+    it "returns a plain boolean, never a Verification" do
+      expect(described_class.valid?(signed_xml, certificate: signer_cert_pem)).to be(true)
+      expect(described_class.valid?(signed_xml, certificate: other_cert_pem)).to be(false)
+    end
+
+    it "forwards Verifier keywords" do
+      expect { described_class.valid?(signed_xml, certificate: signer_cert_pem, bogus: 1) }
+        .to raise_error(ArgumentError)
+    end
+
     it "validates a signed XML String against a PEM cert String" do
-      expect(described_class.verify(signed_xml, certificate: signer_cert_pem).valid?).to be true
+      expect(described_class.valid?(signed_xml, certificate: signer_cert_pem)).to be true
     end
 
     it "validates from a Pathname to the signed file, cert as a Pathname" do
-      expect(described_class.verify(signed_xml_path, certificate: fixtures.join("signer.crt")).valid?).to be true
+      expect(described_class.valid?(signed_xml_path, certificate: fixtures.join("signer.crt"))).to be true
     end
 
     it "validates a Nokogiri::XML::Document via its #pointer_id, cert as OpenSSL::X509::Certificate" do
       doc = Nokogiri::XML(signed_xml)
       cert = OpenSSL::X509::Certificate.new(signer_cert_pem)
 
-      expect(described_class.verify(doc, certificate: cert).valid?).to be true
+      expect(described_class.valid?(doc, certificate: cert)).to be true
     end
 
     it "returns false when the signature doesn't chain to the given certificate" do
-      expect(described_class.verify(signed_xml, certificate: other_cert_pem).valid?).to be false
+      expect(described_class.valid?(signed_xml, certificate: other_cert_pem)).to be false
     end
 
     it "validates with a trust store using the certificate chain in KeyInfo" do
       store = OpenSSL::X509::Store.new
       store.add_cert(OpenSSL::X509::Certificate.new(signer_cert_pem))
 
-      expect(described_class.verify(signed_xml, store: store).valid?).to be true
+      expect(described_class.valid?(signed_xml, store: store)).to be true
     end
 
     it "validates with a trusted public key, ignoring KeyInfo" do
       signer_key = OpenSSL::X509::Certificate.new(signer_cert_pem).public_key
       other_key = OpenSSL::X509::Certificate.new(other_cert_pem).public_key
 
-      expect(described_class.verify(signed_xml, key: signer_key).valid?).to be true
-      expect(described_class.verify(signed_xml, key: other_key).valid?).to be false
+      expect(described_class.valid?(signed_xml, key: signer_key)).to be true
+      expect(described_class.valid?(signed_xml, key: other_key)).to be false
     end
 
     it "raises HankoXml::SignatureMissing when the document has no <Signature> element (using verify!)" do
@@ -69,11 +85,11 @@ RSpec.describe HankoXml do
     end
 
     it "raises ArgumentError for an unsupported xml argument type" do
-      expect { described_class.verify(42, certificate: signer_cert_pem) }.to raise_error(ArgumentError)
+      expect { HankoXml::Verifier.new(certificate: signer_cert_pem).verify(42) }.to raise_error(ArgumentError)
     end
 
     it "raises ArgumentError for an unsupported certificate argument type" do
-      expect { described_class.verify(signed_xml, certificate: 42) }.to raise_error(ArgumentError)
+      expect { HankoXml::Verifier.new(certificate: 42).verify(signed_xml) }.to raise_error(ArgumentError)
     end
 
     describe "different signature formats" do
@@ -103,8 +119,8 @@ RSpec.describe HankoXml do
                      HankoXml::Policy.strict
                    end
 
-          expect(described_class.verify(xml, certificate: signer_cert_pem, policy: policy).valid?).to be true
-          expect(described_class.verify(xml, certificate: other_cert_pem, policy: policy).valid?).to be false
+          expect(described_class.valid?(xml, certificate: signer_cert_pem, policy: policy)).to be true
+          expect(described_class.valid?(xml, certificate: other_cert_pem, policy: policy)).to be false
         end
       end
     end
@@ -127,7 +143,7 @@ RSpec.describe HankoXml do
       end
       expect(tampered).not_to eq(signed_xml)
       expect(described_class.signature_present?(tampered)).to be true
-      expect(described_class.verify(tampered, certificate: signer_cert_pem).valid?).to be false
+      expect(described_class.valid?(tampered, certificate: signer_cert_pem)).to be false
     end
 
     it "is not reachable under the old name, which collided with Verification#signed?(node)" do

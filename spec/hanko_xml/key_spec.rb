@@ -42,9 +42,9 @@ RSpec.describe HankoXml::Key do
         expect { described_class.from_der(encrypted_der) }.to raise_error(HankoXml::KeyLoadError)
       end
 
-      it "fails the same way through Signer.new and HankoXml.verify" do
+      it "fails the same way through Signer.new and Verifier#verify" do
         expect { HankoXml::Signer.new(key: encrypted_pem) }.to raise_error(HankoXml::KeyLoadError)
-        expect { HankoXml.verify(fixtures.join("signed.xml").read, key: encrypted_pem) }
+        expect { HankoXml::Verifier.new(key: encrypted_pem).verify(fixtures.join("signed.xml").read) }
           .to raise_error(HankoXml::KeyLoadError)
       end
 

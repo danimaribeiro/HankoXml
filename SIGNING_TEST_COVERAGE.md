@@ -95,7 +95,7 @@ and set a `minimum_coverage` for `lib/hanko_xml/signer.rb`,
 ### B. Algorithms through the Ruby API
 
 For each cell: sign with the Ruby `Signer`, inspect `<SignedInfo>`, then verify
-with `Native.verify` **and** `HankoXml.verify` (strict or `legacy_sha1`).
+with `Native.verify` **and** `Verifier#verify` (strict or `legacy_sha1`).
 
 | # | `signature_method` | `digest_method` | `canonicalization_method` | Expected today |
 |---|--------------------|-----------------|---------------------------|----------------|
@@ -229,7 +229,7 @@ now do too.
 |---|------|-------|
 | K1 | Template with `<KeyInfo><KeyValue/></KeyInfo>` signed by `other.key` → `Native.verify(xml, [signer.crt], [], ids, 0)[:status] != :succeeded` | Native |
 | K2 | Same with `trusted = []` → not `:succeeded` | Native |
-| K3 | `HankoXml.verify(forged, certificate: signer_crt).valid? == false` and `errors` contains `UntrustedCertificate` (or a new `UntrustedKey`) | Verifier |
+| K3 | `Verifier.new(certificate: signer_crt).verify(forged).valid? == false` and `errors` contains `UntrustedCertificate` (or a new `UntrustedKey`) | Verifier |
 | K4 | Forged doc with **both** attacker `X509Certificate` and attacker `KeyValue` → invalid | Verifier |
 | K5 | Forged doc with `<DEREncodedKeyValue>` (dsig11) → invalid | Native |
 | K6 | Forged doc with `<RetrievalMethod URI="#k">` pointing at an in-document `<KeyValue>` → invalid | Native |

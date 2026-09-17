@@ -69,7 +69,7 @@ RSpec.describe "S-13 native error classification and messages" do
     end
 
     it "does not use xmlsec log lines as the VerificationError message" do
-      result = HankoXml.verify(tampered_xml, certificate: signer_cert_pem)
+      result = HankoXml::Verifier.new(certificate: signer_cert_pem).verify(tampered_xml)
       error = result.errors.first
 
       expect(result.valid?).to be false

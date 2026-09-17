@@ -63,7 +63,7 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
 
       expect(doc.xpath("//ds:DigestValue", ds).map { |d| d.text.strip }).to all(match(%r{\A[A-Za-z0-9+/=]{40,}\z}))
       expect(doc.at_xpath("//ds:SignatureValue", ds).text.strip).not_to be_empty
-      expect(HankoXml.verify(signed, certificate: cert_pem, policy: HankoXml::Policy.fragment).valid?).to be true
+      expect(HankoXml.valid?(signed, certificate: cert_pem, policy: HankoXml::Policy.fragment)).to be true
     end
 
     it "E3 writes the certificate into an adopted empty <X509Data/>" do
@@ -71,7 +71,7 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
       certificates = key_info(signed).xpath("ds:X509Data/ds:X509Certificate", ds)
 
       expect(certificates.map { |c| c.text.gsub(/\s/, "") }).to eq([pem_body(cert_pem)])
-      expect(HankoXml.verify(signed, certificate: cert_pem).valid?).to be true
+      expect(HankoXml.valid?(signed, certificate: cert_pem)).to be true
     end
 
     it "E4 replaces a stale certificate in an adopted template (#72)" do
@@ -109,7 +109,7 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
       expect(written).to contain_exactly(pem_body(leaf.to_pem), pem_body(intermediate.to_pem))
       store = OpenSSL::X509::Store.new
       store.add_cert(root)
-      expect(HankoXml.verify(signed, store: store).valid?).to be true
+      expect(HankoXml.valid?(signed, store: store)).to be true
     end
 
     it "E6 writes an RSA <KeyValue>" do
@@ -120,7 +120,7 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
       expect(rsa).not_to be_nil
       expect(rsa.at_xpath("ds:Modulus", ds).text.gsub(/\s/, "").unpack1("m").unpack1("H*").to_i(16))
         .to eq(public_key.n.to_i)
-      expect(HankoXml.verify(signed, key: public_key.public_to_pem).valid?).to be true
+      expect(HankoXml.valid?(signed, key: public_key.public_to_pem)).to be true
     end
 
     it "E6 writes an EC <KeyValue>" do
@@ -132,7 +132,7 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
       signed = sign_in_place(key: ec.to_pem, certificate: nil, key_info: [:key_value], signature_method: :ecdsa_sha256)
 
       expect(key_info(signed).at_xpath("ds:KeyValue/dsig11:ECKeyValue", dsig11)).not_to be_nil
-      expect(HankoXml.verify(signed, key: ec.public_to_pem).valid?).to be true
+      expect(HankoXml.valid?(signed, key: ec.public_to_pem)).to be true
     end
 
     it "E6 writes both X509Data and KeyValue when asked for both" do
@@ -140,13 +140,13 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
 
       expect(key_info(signed).element_children.map(&:name)).to eq(%w[X509Data KeyValue])
       expect(key_info(signed).at_xpath("ds:KeyValue/ds:RSAKeyValue", ds)).not_to be_nil
-      expect(HankoXml.verify(signed, certificate: cert_pem).valid?).to be true
+      expect(HankoXml.valid?(signed, certificate: cert_pem)).to be true
     end
 
     it "E7 writes the key name into <KeyName> (#67)" do
       signed = sign_in_place(key_info: [{ key_name: "idp-1" }, :x509_certificate])
       expect(key_info(signed).at_xpath("ds:KeyName", ds).text).to eq("idp-1")
-      expect(HankoXml.verify(signed, keys: { "idp-1" => cert_pem }).valid?).to be true
+      expect(HankoXml.valid?(signed, keys: { "idp-1" => cert_pem })).to be true
     end
 
     it "E7 takes the key name in the block form (#67)" do
@@ -208,14 +208,14 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
 
         expect(key_info(signed).xpath("ds:X509Data/*", ds).map(&:name))
           .to eq(%w[X509Certificate X509SubjectName X509IssuerSerial X509SKI])
-        expect(HankoXml.verify(signed, certificate: cert_pem).valid?).to be true
+        expect(HankoXml.valid?(signed, certificate: cert_pem)).to be true
       end
     end
 
     it "E10 keeps signature_id: on the Signature" do
       signed = sign_in_place(signature_id: "sig-1")
       expect(Nokogiri::XML(signed).at_xpath("//ds:Signature", ds)["Id"]).to eq("sig-1")
-      expect(HankoXml.verify(signed, certificate: cert_pem).valid?).to be true
+      expect(HankoXml.valid?(signed, certificate: cert_pem)).to be true
     end
   end
 
@@ -246,7 +246,7 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
         written = key_info(signed).xpath("ds:X509Data/ds:X509Certificate", ds).map { |c| c.text.gsub(/\s/, "") }
 
         expect(written.uniq).to contain_exactly(pem_body(leaf.to_pem), pem_body(ca.to_pem))
-        expect(HankoXml.verify(signed, certificate: leaf.to_pem).valid?).to be true
+        expect(HankoXml.valid?(signed, certificate: leaf.to_pem)).to be true
       end
     end
 
@@ -271,8 +271,8 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
       store = OpenSSL::X509::Store.new
       store.add_cert(root)
 
-      expect(HankoXml.verify(signed, certificate: leaf.to_pem).valid?).to be true
-      expect(HankoXml.verify(signed, store: store).valid?).to be false
+      expect(HankoXml.valid?(signed, certificate: leaf.to_pem)).to be true
+      expect(HankoXml.valid?(signed, store: store)).to be false
     end
   end
 end
