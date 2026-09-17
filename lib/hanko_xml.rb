@@ -98,7 +98,7 @@ module HankoXml
     #
     # @param xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The XML to check.
     # @return [Boolean] True if a non-empty <ds:SignatureValue> exists, false otherwise.
-    def signed?(xml)
+    def signature_present?(xml)
       doc = HankoXml.coerce_document(xml)
       sigs = doc.xpath(".//ds:Signature", ds: NS["ds"])
       sigs.any? do |sig|

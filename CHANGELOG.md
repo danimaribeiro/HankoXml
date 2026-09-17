@@ -269,6 +269,12 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Changed
 
+- **#87:** **Breaking:** `HankoXml.signed?(xml)` is now
+  `HankoXml.signature_present?(xml)`, and the Nokogiri extension's `doc.signed?`
+  is now `doc.signature_present?`. The check is structural (a populated
+  `<Signature>` exists) and runs no crypto, and the old name read like the trust
+  check that `Verification#signed?(node)` actually is. There is no alias.
+
 - **#75:** Verification and signing no longer resolve the references inside an
   `<Object><Manifest>` (xmlsec's `XMLSEC_DSIG_FLAGS_IGNORE_MANIFESTS`). Policy
   only inspects `<SignedInfo>`, so a Manifest's URIs, transforms and digest

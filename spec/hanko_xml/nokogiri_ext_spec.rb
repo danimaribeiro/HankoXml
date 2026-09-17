@@ -20,13 +20,13 @@ RSpec.describe "Nokogiri Core Extensions" do
     expect(doc.signature_valid?(certificate: signer_cert_pem, policy: fragment_policy)).to be true
   end
 
-  it "adds #signatures and #signed? to Nokogiri::XML::Document" do
+  it "adds #signatures and #signature_present? to Nokogiri::XML::Document" do
     doc = Nokogiri::XML(signed_xml)
-    expect(doc.signed?).to be true
+    expect(doc.signature_present?).to be true
     expect(doc.signatures.size).to eq(1)
 
     unsigned_doc = Nokogiri::XML(unsigned_xml)
-    expect(unsigned_doc.signed?).to be false
+    expect(unsigned_doc.signature_present?).to be false
   end
 
   it "adds #sign to Nokogiri::XML::Document" do
@@ -36,13 +36,13 @@ RSpec.describe "Nokogiri Core Extensions" do
     expect(signed_doc.valid?(certificate: signer_cert_pem, policy: fragment_policy)).to be true
 
     # Original is untouched
-    expect(doc.signed?).to be false
+    expect(doc.signature_present?).to be false
   end
 
   it "adds #sign! to Nokogiri::XML::Document" do
     doc = Nokogiri::XML(unsigned_xml)
     doc.sign!(key: signer_key_pem, certificate: signer_cert_pem, references: ["#payload-1"])
-    expect(doc.signed?).to be true
+    expect(doc.signature_present?).to be true
     expect(doc.signature_valid?(certificate: signer_cert_pem, policy: fragment_policy)).to be true
   end
 end

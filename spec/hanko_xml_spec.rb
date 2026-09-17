@@ -109,4 +109,29 @@ RSpec.describe HankoXml do
       end
     end
   end
+
+  # #87: structural only. The name must not read like a trust check.
+  describe ".signature_present?" do
+    it "is true for a document with a populated <Signature>" do
+      expect(described_class.signature_present?(signed_xml)).to be true
+    end
+
+    it "is false for an unsigned template, whose <SignatureValue> is empty" do
+      expect(described_class.signature_present?(fixtures.join("template.xml").read)).to be false
+    end
+
+    it "is true for a tampered document, because it runs no crypto" do
+      tampered = signed_xml.sub(/(?<open><SignatureValue>\s*)(?<first>.)/) do
+        m = Regexp.last_match
+        "#{m[:open]}#{m[:first] == "A" ? "B" : "A"}"
+      end
+      expect(tampered).not_to eq(signed_xml)
+      expect(described_class.signature_present?(tampered)).to be true
+      expect(described_class.verify(tampered, certificate: signer_cert_pem).valid?).to be false
+    end
+
+    it "is not reachable under the old name, which collided with Verification#signed?(node)" do
+      expect(described_class).not_to respond_to(:signed?)
+    end
+  end
 end
