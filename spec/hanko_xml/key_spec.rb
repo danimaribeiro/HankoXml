@@ -23,6 +23,46 @@ RSpec.describe HankoXml::Key do
     it "raises HankoXml::KeyLoadError for garbage input" do
       expect { described_class.from_pem("not a key") }.to raise_error(HankoXml::KeyLoadError)
     end
+
+    # S-15: classification by PEM block label, not substring.
+    it "raises instead of silently dropping the certificate from a key + certificate bundle" do
+      [key_pem + cert_pem, cert_pem + key_pem].each do |bundle|
+        expect { described_class.from_pem(bundle) }
+          .to raise_error(HankoXml::KeyLoadError, /both a certificate and a key/) do |error|
+            expect(error.message).not_to include("-----BEGIN")
+          end
+      end
+    end
+
+    it "loads a key whose surrounding text mentions CERTIFICATE" do
+      key = described_class.from_pem("Bag Attributes: see CERTIFICATE below\n#{key_pem}")
+      expect(key.private_key?).to be true
+    end
+
+    it "loads a public key PEM as a public, non-private key" do
+      public_pem = OpenSSL::PKey::RSA.new(key_pem).public_to_pem
+      key = described_class.from_pem(public_pem)
+
+      expect(key.certificate?).to be false
+      expect(key.private_key?).to be false
+    end
+  end
+
+  describe "#private_key?" do
+    it "is false for public-only keys of every type, true for their private halves" do
+      rsa = OpenSSL::PKey::RSA.new(key_pem)
+      ec = OpenSSL::PKey::EC.generate("prime256v1")
+      ed25519 = OpenSSL::PKey.generate_key("ED25519")
+
+      [rsa, ec, ed25519].each do |pkey|
+        expect(described_class.new(pkey).private_key?).to be(true), pkey.class.name
+        expect(described_class.new(OpenSSL::PKey.read(pkey.public_to_pem)).private_key?).to be(false), pkey.class.name
+      end
+    end
+
+    it "is false for a certificate" do
+      expect(described_class.from_pem(cert_pem).private_key?).to be false
+    end
   end
 
   describe ".from_file" do
@@ -71,6 +111,7 @@ RSpec.describe HankoXml::Key do
 
       expect(key.disposed?).to be true
       expect { key.to_pem }.to raise_error(HankoXml::KeyLoadError)
+      expect { key.to_openssl }.to raise_error(HankoXml::KeyLoadError)
     end
   end
 

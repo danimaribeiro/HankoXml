@@ -44,6 +44,15 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **S-15 / #45:** `Key#private_key?` is false for a public-only key (it was
+  true for any `PKey`). `Key.from_pem` classifies by PEM block label, and a
+  PEM containing both a certificate and a key raises `KeyLoadError` instead
+  of silently dropping the certificate. `Key#to_openssl` raises after
+  `#dispose!`, like `#to_pem`, and `#dispose!` no longer claims to zeroize.
+  `Signer.new` raises `ConfigurationError` when `key:` is not a private key
+  or `certificate:` is not a certificate.
+- **S-14 / #44:** `Signer.new` raises `ConfigurationError` when `key:` does
+  not match `certificate:`.
 - **S-13 / #43:** Native errors are classified by the step that failed
   instead of by searching the message for "parse", "key" or "certificate",
   which the xmlsec log could contain from the document itself (an unknown

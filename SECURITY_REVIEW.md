@@ -52,7 +52,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-12 | **Low** | Native | `xml.len() as i32` in `OwnedXmlDoc::parse` truncates documents over 2 GiB; no size guard before the FFI boundary and `max_document_size` is unenforced | **fixed** | code review |
 | S-13 | **Low** | Native / Ruby | Exceptions are classified by substring (`msg.contains("key")`, `contains("parse")`); xmlsec error text (with attacker-controlled URIs/paths) is echoed verbatim into Ruby exception messages | **fixed** | confirmed |
 | S-14 | **Low** | Signer | A mismatched `key:`/`certificate:` pair is accepted at sign time; the output verifies with neither certificate | **fixed** | confirmed, re-checked |
-| S-15 | **Low** | Key | `Key#dispose!` claims in-place zeroization but only nils the reference; `Key#private_key?` is true for public-only `PKey`s; PEM-vs-cert detection is a substring heuristic | **open** | code review |
+| S-15 | **Low** | Key | `Key#dispose!` claims in-place zeroization but only nils the reference; `Key#private_key?` is true for public-only `PKey`s; PEM-vs-cert detection is a substring heuristic | **fixed** | code review |
 | S-16 | **Low** | Algorithms | `Algorithms.register(..., replace: true)` is process-global and can re-point a Symbol used by `Policy.strict` (e.g. `:sha256`) at another URI, silently changing what "strict" means | **open** | code review |
 | S-17 | **Low** | SignedDocument | `#document` exposes the mutable Nokogiri document; `FrozenSignatureError` exists but is never raised | **open** | code review |
 | S-18 | **Low** | Build | `build/vendor.rs` shells out to `curl`/`tar`/`configure`/`make` and hand-parses `dependencies.yml`; SHA-256 pinning is good, but `HANKO_XML_VENDOR_CACHE` and `tmp/vendor-build/.stamp-complete` are trusted build-time inputs | **open** | code review |
@@ -91,7 +91,7 @@ trust source → `ConfigurationError`).
 - [x] **S-12** (#42) `xml.len() as i32` + `max_document_size`
 - [x] **S-13** (#43) error classification and xmlsec log in messages
 - [x] **S-14** (#44) reject mismatched `key:` / `certificate:` at sign time
-- [ ] **S-15** (#45) `Key#dispose!` / `private_key?` / PEM heuristic
+- [x] **S-15** (#45) `Key#dispose!` / `private_key?` / PEM heuristic
 - [ ] **S-16** (#46) freeze or snapshot `Algorithms.register`
 - [ ] **S-17** (#47) `SignedDocument` mutability / unused `FrozenSignatureError`
 - [ ] **S-18** (#48) document vendored cache/stamp as trusted inputs
@@ -502,11 +502,23 @@ certificate: signer.crt)` succeeded; `verify` with either cert was false.
 output verifies with neither `signer.crt` nor `other.crt`. `Signer#initialize`
 should check `certificate.to_openssl.check_private_key(key.to_openssl)`.
 
-### S-15 -- `Key` hygiene  [code review, Low, **open**]
+### S-15 -- `Key` hygiene  [code review, Low, **fixed**]
 
-**Disposition:** still open. The `private_key?` heuristic no longer gates
-S-08 (that path uses `to_pem` unconditionally), but the three hygiene bugs
-remain.
+**Disposition:** fixed. `private_key?` uses `PKey#private?` (or, for a
+generic `PKey` such as Ed25519, whether `private_to_der` succeeds), so it is
+false for public-only keys. `from_pem` counts `-----BEGIN <label>-----`
+lines: certificate labels without key labels load a certificate, key labels
+load a key, and both raise `KeyLoadError` rather than drop the certificate.
+`dispose!` cannot zeroize from Ruby, so its docs (here, `API_CONTRACT.md`
+§5.6, and the guide/reference pages) now say it only drops the reference;
+`to_openssl` raises after it, like `to_pem`. `Signer` uses the corrected
+predicates to reject a non-private `key:` and a non-certificate
+`certificate:` at construction (F5/F7), so private key PEM no longer goes
+down the certificate path. A PEM with several certificates still loads only
+the first. Specs: `spec/hanko_xml/key_spec.rb`, "key:/certificate: material
+(S-15)" in `spec/hanko_xml/signer_spec.rb`.
+
+Original report:
 
 `Key#dispose!` documents "Overwrites the Ruby-side PEM buffer in place" but
 only sets `@material = nil`; every `to_pem` call materialises an unencrypted
@@ -584,9 +596,9 @@ accept path Strings explicitly.
 
 ## Suggested remediation order
 
-S-01 through S-14 are done. Remaining, in order:
+S-01 through S-15 are done. Remaining, in order:
 
-1. S-15 through S-21 -- hygiene.
+1. S-16 through S-21 -- hygiene.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /

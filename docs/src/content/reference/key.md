@@ -34,6 +34,10 @@ bundle.certificates  # => [leaf, *ca_chain]
 signer = HankoXml::Signer.new(**bundle.to_h)   # key:, certificate:, certificates:
 ```
 
+`from_pem` decides between a key and a certificate from the `-----BEGIN …-----` labels. A PEM with
+both a certificate and a key block (a `cat key.pem cert.pem` bundle) raises `KeyLoadError`: pass the
+two parts separately as `key:` and `certificate:`.
+
 ## PEM normalization
 
 Everything crossing into Rust is **PEM**, always. No `key_format` parameter exists in the public API
@@ -45,8 +49,13 @@ format enum.
 ## Instance methods
 
 ```ruby
-key.dispose!   # overwrites the Ruby-side buffer in place and marks the key unusable
+key.private_key?  # true only when the private half is present (false for a public key)
+key.certificate?  # true for an OpenSSL::X509::Certificate
+key.dispose!      # #to_pem / #to_openssl raise KeyLoadError from now on
 ```
+
+`Signer` raises `ConfigurationError` at construction when `key:` is not a private key or
+`certificate:` is not a certificate.
 
 ## Safety
 
@@ -55,5 +64,6 @@ key.dispose!   # overwrites the Ruby-side buffer in place and marks the key unus
   `Signer#inspect` shows `#<HankoXml::Signer key=[FILTERED] …>`.
 - `HankoXml::Error` and subclasses never carry key material.
 
-Ruby strings are GC-managed and not zeroized, so `#dispose!` is a best-effort way to bound the
-window a key's bytes remain in memory, not a hard guarantee.
+`#dispose!` does not zeroize anything. The key bytes live in OpenSSL memory that is freed when Ruby's
+GC collects the object, and every String `#to_pem` has returned belongs to the caller. It stops later
+accidental use of the `Key`; it is not a memory-hygiene guarantee.

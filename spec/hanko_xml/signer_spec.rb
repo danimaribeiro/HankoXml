@@ -57,6 +57,33 @@ RSpec.describe HankoXml::Signer do
     expect { described_class.new(key: key_pem, template: :nonsense) }.to raise_error(HankoXml::ConfigurationError)
   end
 
+  describe "key:/certificate: material (S-15)" do
+    it "rejects a public key as key:" do
+      public_pem = OpenSSL::PKey::RSA.new(key_pem).public_to_pem
+      expect { described_class.new(key: public_pem) }
+        .to raise_error(HankoXml::ConfigurationError, /key: must be a private key \(got a public key\)/)
+    end
+
+    it "rejects a certificate as key:" do
+      expect { described_class.new(key: cert_pem) }
+        .to raise_error(HankoXml::ConfigurationError, /got a certificate/)
+    end
+
+    it "rejects a key as certificate:, without echoing it" do
+      expect { described_class.new(key: key_pem, certificate: key_pem) }
+        .to raise_error(HankoXml::ConfigurationError, /certificate: must be an X.509 certificate/) do |error|
+          expect(error.message).not_to include("-----BEGIN")
+        end
+    end
+
+    it "raises KeyLoadError for a disposed key instead of misreporting its kind" do
+      key = HankoXml::Key.from_pem(key_pem)
+      key.dispose!
+
+      expect { described_class.new(key: key) }.to raise_error(HankoXml::KeyLoadError, /disposed/)
+    end
+  end
+
   describe "key:/certificate: pairing (S-14)" do
     let(:other_key_pem) { fixtures.join("other.key").read }
     let(:other_cert_pem) { fixtures.join("other.crt").read }

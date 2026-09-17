@@ -12,11 +12,17 @@ module HankoXml
   # A Key never appears in #inspect or #to_s, and its constructor filters
   # any value coming from a Key out of exception messages (see errors.rb).
   class Key
+    # The label of each `-----BEGIN <label>-----` line.
+    PEM_LABEL = /^-----BEGIN ([A-Z0-9 ]+)-----\s*$/
+
     class << self
+      # Decides certificate vs key from the PEM block labels, not from
+      # substrings anywhere in the text (S-15). A PEM holding both a
+      # certificate and a key raises instead of silently keeping one.
       def from_pem(pem, password: nil)
         pem = pem.to_s
         material =
-          if pem.include?("CERTIFICATE") && !pem.include?("PRIVATE KEY")
+          if certificate_pem?(pem)
             begin
               ::OpenSSL::X509::Certificate.new(pem)
             rescue ::OpenSSL::X509::CertificateError => e
@@ -32,6 +38,18 @@ module HankoXml
 
         new(material)
       end
+
+      def certificate_pem?(pem)
+        labels = pem.scan(PEM_LABEL).flatten
+        certificates = labels.count { |label| label.end_with?("CERTIFICATE") }
+        keys = labels.count { |label| label.end_with?("KEY") }
+        return false if certificates.zero?
+        return true if keys.zero?
+
+        raise HankoXml::KeyLoadError,
+              "PEM contains both a certificate and a key; pass them separately as key: and certificate:"
+      end
+      private :certificate_pem?
 
       def from_der(der)
         material =
@@ -98,8 +116,18 @@ module HankoXml
       @material.is_a?(::OpenSSL::X509::Certificate)
     end
 
+    # True only for a key that has its private half (S-15). A public-only
+    # OpenSSL::PKey::PKey is false.
     def private_key?
-      @material.is_a?(::OpenSSL::PKey::PKey) && !certificate?
+      return false unless @material.is_a?(::OpenSSL::PKey::PKey)
+      return @material.private? if @material.respond_to?(:private?)
+
+      # Generic PKey (e.g. Ed25519) has no #private?; only a private key
+      # serializes its private half.
+      @material.private_to_der
+      true
+    rescue ::OpenSSL::PKey::PKeyError
+      false
     end
 
     def to_pem
@@ -109,13 +137,17 @@ module HankoXml
     end
 
     def to_openssl
+      raise HankoXml::KeyLoadError, "this key has been disposed" if @disposed
+
       @material
     end
 
-    # Overwrites the Ruby-side PEM buffer in place and marks the key
-    # unusable, for callers who want to bound the window key material is
-    # resident in memory. Best-effort: Ruby Strings are GC-managed and not
-    # guaranteed zeroized.
+    # Drops this Key's reference to its OpenSSL object and makes #to_pem /
+    # #to_openssl raise from then on. It does NOT zeroize anything (S-15):
+    # the key bytes live in OpenSSL-owned memory freed whenever Ruby's GC
+    # collects the object, and every String #to_pem already returned is the
+    # caller's, untouched. Use it to stop later accidental use, not as a
+    # memory-hygiene guarantee.
     def dispose!
       return if @disposed
 

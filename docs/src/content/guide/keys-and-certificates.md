@@ -54,8 +54,10 @@ with xmlsec's format enum.
 this cannot be promised otherwise. What is promised:
 
 - the native layer copies what it needs and retains nothing after the call returns;
-- `Key#dispose!` overwrites the Ruby-side buffer in place and marks the key unusable, for callers who
-  want to bound the window;
+- `Key#dispose!` drops the `Key`'s reference to its OpenSSL object and makes `#to_pem` /
+  `#to_openssl` raise `KeyLoadError` afterwards. It does **not** zeroize: the key bytes live in
+  OpenSSL memory freed when Ruby's GC collects the object, and PEM Strings already returned by
+  `#to_pem` are untouched;
 - a `Key` never appears in `#inspect`, `#to_s`, or an exception message —
   `Signer#inspect` shows `#<HankoXml::Signer key=[FILTERED] …>`.
 

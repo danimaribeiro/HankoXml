@@ -160,9 +160,9 @@ signed.
 | F2 | Encrypted PEM key with `Key.from_pem(pem, password:)` | signs | pass |
 | F3 | Encrypted PEM key passed as a raw String to `Signer.new` (no password) | `KeyLoadError`, message never contains the PEM | pass |
 | F4 | `Key.from_pkcs12` bundle → `Signer.new(**bundle.to_h)` | signs; certificate chain emitted | ? |
-| F5 | `key:` is a **public** key | `KeyLoadError`/`SigningError` at sign time (not a silent bad signature); ideally `ConfigurationError` at construction | ? |
+| F5 | `key:` is a **public** key | `KeyLoadError`/`SigningError` at sign time (not a silent bad signature); ideally `ConfigurationError` at construction | pass (S-15, `ConfigurationError` at construction) |
 | F6 | `key:` and `certificate:` do not match | `ConfigurationError` at construction | pass (S-14, `spec/hanko_xml/signer_spec.rb`) |
-| F7 | `certificate:` given as a private key PEM | `ConfigurationError` | ? |
+| F7 | `certificate:` given as a private key PEM | `ConfigurationError` | pass (S-15) |
 | F8 | RSA-1024 key | strict `Signer` refuses (`min_rsa_key_bits`) | pass (S-06, `Policy#enforce_key_size!`) |
 | F9 | EC P-256 / P-384 / Ed25519 keys | ECDSA signs; Ed25519 raises a clear error (no XML-DSig URI registered) | ? |
 | F10 | `Key#dispose!` then `sign` | `KeyLoadError "disposed"` | pass |

@@ -70,7 +70,8 @@ module HankoXml
 
       yield self if block_given?
 
-      # After the block, which may reassign key/certificate (S-14).
+      # After the block, which may reassign key/certificate (S-14, S-15).
+      check_key_material!
       check_key_matches_certificate!
 
       freeze
@@ -201,6 +202,29 @@ module HankoXml
     end
 
     private
+
+    # A certificate or public key as key: can only fail later inside xmlsec,
+    # and a key as certificate: would send private key PEM down the
+    # certificate path (S-15, F5/F7). Only checks what coercion produced;
+    # raw values assigned in the block are left to the native layer.
+    def check_key_material!
+      # A disposed Key raises KeyLoadError here rather than being misreported
+      # as the wrong kind of key below.
+      [key, certificate].grep(HankoXml::Key).each(&:to_openssl)
+
+      if key.is_a?(HankoXml::Key) && !key.private_key?
+        raise HankoXml::ConfigurationError, "key: must be a private key (got a #{key_kind(key)})"
+      end
+      return unless certificate.is_a?(HankoXml::Key) && !certificate.certificate?
+
+      raise HankoXml::ConfigurationError, "certificate: must be an X.509 certificate (got a #{key_kind(certificate)})"
+    end
+
+    def key_kind(key)
+      return "certificate" if key.certificate?
+
+      key.private_key? ? "private key" : "public key"
+    end
 
     # A key that does not belong to certificate: produces a signature that
     # verifies against neither that certificate nor any other (S-14). Only
