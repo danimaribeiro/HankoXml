@@ -11,6 +11,11 @@ on:
   # guards main, rather than keeping a second copy of it in sync by hand.
   workflow_call:
 
+# Read-only GITHUB_TOKEN unless a job asks for more (S-19). When called from
+# release.yml, the caller's permissions cap these anyway.
+permissions:
+  contents: read
+
 # Superseded runs are pointless: only the tip commit's result matters.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -45,7 +50,7 @@ jobs:
             ruby: '3.4'
 
     steps:
-    - uses: actions/checkout@v7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
     # libclang is not optional: ext/hanko_xml/build.rs runs bindgen against the
     # xmlsec1 headers on every build. The GitHub runners happen to ship clang
@@ -60,7 +65,7 @@ jobs:
       run: brew install libxmlsec1 libxml2 pkg-config
 
     - name: Set up Ruby & Rust
-      uses: oxidize-rb/actions/setup-ruby-and-rust@v1
+      uses: oxidize-rb/actions/setup-ruby-and-rust@ec90b4aa48795518d79be3f5cc478d1d7ccd02a8 # v1.5.0
       with:
         ruby-version: ${{ matrix.ruby }}
         bundler-cache: true

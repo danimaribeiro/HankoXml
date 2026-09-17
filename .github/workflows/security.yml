@@ -39,9 +39,9 @@ jobs:
           - advisories
           - bans licenses sources
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check ${{ matrix.checks }}
           manifest-path: ./Cargo.toml
@@ -50,14 +50,14 @@ jobs:
     name: clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # build.rs runs bindgen against libxmlsec1 headers, same as main.yml.
       - name: Install libxmlsec1
         run: sudo apt-get update && sudo apt-get install -y libxmlsec1-dev libxml2-dev pkg-config libclang-dev
 
       - name: Set up Ruby & Rust
-        uses: oxidize-rb/actions/setup-ruby-and-rust@v1
+        uses: oxidize-rb/actions/setup-ruby-and-rust@ec90b4aa48795518d79be3f5cc478d1d7ccd02a8 # v1.5.0
         with:
           ruby-version: '3.4'
           rust-version: stable
@@ -74,9 +74,9 @@ jobs:
     name: bundler-audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - uses: ruby/setup-ruby@v1
+      - uses: ruby/setup-ruby@984c0c890880bbf811283d6f09c4607c62d210a4 # v1.323.0
         with:
           ruby-version: '3.4'
           bundler-cache: true

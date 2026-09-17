@@ -56,7 +56,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-16 | **Low** | Algorithms | `Algorithms.register(..., replace: true)` is process-global and can re-point a Symbol used by `Policy.strict` (e.g. `:sha256`) at another URI, silently changing what "strict" means | **fixed** | code review |
 | S-17 | **Low** | SignedDocument | `#document` exposes the mutable Nokogiri document; `FrozenSignatureError` exists but is never raised | **fixed** | code review |
 | S-18 | **Low** | Build | `build/vendor.rs` shells out to `curl`/`tar`/`configure`/`make` and hand-parses `dependencies.yml`; SHA-256 pinning is good, but `HANKO_XML_VENDOR_CACHE` and `tmp/vendor-build/.stamp-complete` are trusted build-time inputs | **fixed** (documented) | code review |
-| S-19 | **Low** | CI | Actions pinned by major tag, not commit SHA; `main.yml` has no top-level `permissions:` | **open** | code review |
+| S-19 | **Low** | CI | Actions pinned by major tag, not commit SHA; `main.yml` has no top-level `permissions:` | **fixed** | code review |
 | S-20 | **Info** | Native | Whether the root element's own `Id` is registered by `xmlSecAddIDs(doc, root, ids)` depends on xmlsec walking `cur` or `cur->children`; `URI="#rootId"` is untested | **open** | code review |
 | S-21 | **Info** | Docs | README passes file *paths* as `key:`/`certificate:` Strings (`key: "private.pem"`); `Key.coerce(String)` treats them as PEM and raises `KeyLoadError`. Fails closed, but misleading | **open** | code review, re-checked |
 
@@ -95,7 +95,7 @@ trust source → `ConfigurationError`).
 - [x] **S-16** (#46) freeze or snapshot `Algorithms.register`
 - [x] **S-17** (#47) `SignedDocument` mutability / unused `FrozenSignatureError`
 - [x] **S-18** (#48) document vendored cache/stamp as trusted inputs
-- [ ] **S-19** (#49) pin Actions to SHAs; `permissions:` on `main.yml`
+- [x] **S-19** (#49) pin Actions to SHAs; `permissions:` on `main.yml`
 - [ ] **S-20** (#50) spec (and fix if needed) root-element `Id` registration
 - [ ] **S-21** (#51) README path Strings vs PEM `Key.coerce`
 - [x] **S-02** `store:` / `key:` ignored — fixed in #30 (also closed #12)
@@ -596,10 +596,20 @@ threat model should say so. Also `Cargo.toml` pins `bindgen = "0.72"` while
 `Cargo.lock` and a Dependabot branch move to 0.73 -- fine, just keep the lock
 committed.
 
-### S-19 -- CI hardening  [code review, Low, **open**]
+### S-19 -- CI hardening  [code review, Low, **fixed**]
 
-**Disposition:** still open. `release.yml` / `vendored-deps.yml` already set
-`permissions:`; `main.yml` does not.
+**Disposition:** fixed. Every third-party `uses:` in all five workflows is
+pinned to a full commit SHA with a `# vX.Y.Z` comment, which Dependabot's
+`github-actions` updater keeps current. `main.yml` and `cross-gem.yml` now set
+top-level `permissions: contents: read` (the other three already had
+`permissions:`). Resolving the tags turned up a release blocker:
+`rubygems/configure-rubygems-credentials@v1` does not exist (the repo has only
+`v1.0.0`, `v2.0.0`, `v2.1.0` tags and no `v1` branch), so the first
+non-dry-run release would have failed at the credentials step. It is now
+pinned to `v2.1.0`, which has the same inputs as `v1.0.0` on the Node 24
+runtime.
+
+Original report:
 
 `actions/checkout@v7`, `oxidize-rb/actions/*@v1`, `ruby/setup-ruby@v1`,
 `actions/upload-artifact@v7`, `actions/download-artifact@v8` are tag-pinned;
@@ -630,9 +640,9 @@ accept path Strings explicitly.
 
 ## Suggested remediation order
 
-S-01 through S-18 are done. Remaining, in order:
+S-01 through S-19 are done. Remaining, in order:
 
-1. S-19 through S-21 -- hygiene.
+1. S-20, S-21 -- hygiene.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /

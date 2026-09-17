@@ -28,6 +28,8 @@ updates:
   # The one that would have caught a real bug in this repo: the cross-compile
   # workflow pinned oxidize-rb/actions/cross-gem@v1, a tag old enough to lack
   # the `pre-script` input the docs described, and the mismatch failed silently.
+  # Actions are pinned to commit SHAs with a `# vX.Y.Z` comment (S-19);
+  # Dependabot bumps both together.
   - package-ecosystem: github-actions
     directory: "/"
     schedule:

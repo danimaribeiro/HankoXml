@@ -51,13 +51,13 @@ jobs:
       id-token: write   # OIDC exchange for RubyGems trusted publishing
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install libxmlsec1
         run: sudo apt-get update && sudo apt-get install -y libxmlsec1-dev libxml2-dev pkg-config libclang-dev
 
       - name: Set up Ruby & Rust
-        uses: oxidize-rb/actions/setup-ruby-and-rust@v1
+        uses: oxidize-rb/actions/setup-ruby-and-rust@ec90b4aa48795518d79be3f5cc478d1d7ccd02a8 # v1.5.0
         with:
           ruby-version: '3.3'
           bundler-cache: true
@@ -125,7 +125,7 @@ jobs:
       # artifacts it uploaded into the same pkg/ the source gem was built
       # into, so every gem below is pushed and released together.
       - name: Collect the precompiled platform gems
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: gem-*
           path: pkg
@@ -140,7 +140,7 @@ jobs:
       # exchange the OIDC token for a scoped API key and push that artifact.
       - name: Configure RubyGems trusted publishing credentials
         if: inputs.dry_run != true
-        uses: rubygems/configure-rubygems-credentials@v1
+        uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
 
       # One `gem push` per file -- the command only ever takes a single gem.
       # Source gem plus whichever platform gems cross-gem.yml produced.
@@ -179,7 +179,7 @@ jobs:
             cat release-notes.md
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: hanko_xml-${{ steps.version.outputs.version }}-gems
           path: pkg/*.gem
