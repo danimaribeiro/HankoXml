@@ -60,6 +60,11 @@ module HankoXml
   # Verification did not succeed (raised by #verify!).
   class VerificationError < Error; end
 
+  # The signature verified as XML-DSig, but its XAdES signed properties do not
+  # hold: they are not the ones xmlsec digested, or they do not commit to the
+  # certificate that verified (#58).
+  class XadesError < VerificationError; end
+
   # Cryptographic mismatch.
   class SignatureInvalid < VerificationError; end
 

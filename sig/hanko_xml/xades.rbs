@@ -41,3 +41,27 @@ module HankoXml
     end
   end
 end
+
+module HankoXml
+  class XadesError < VerificationError
+  end
+
+  module Xades
+    class SignedProperties
+      attr_reader signing_time: Time?
+      attr_reader signature_policy: (SignaturePolicy | :implied)?
+      attr_reader claimed_roles: Array[String]
+      attr_reader data_object_formats: Array[Hash[Symbol, String?]]
+    end
+
+    class Verification < HankoXml::Verification
+      attr_reader signed_properties: SignedProperties?
+    end
+
+    class Verifier < HankoXml::Verifier
+      def initialize: (?signature_policy: (SignaturePolicy | Hash[Symbol, untyped] | :implied)?, **untyped) -> void
+      def verify: (untyped xml) -> Verification
+      def verify_all: (untyped xml) -> Array[Verification]
+    end
+  end
+end

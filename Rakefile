@@ -29,3 +29,35 @@ RbSys::ExtensionTask.new("hanko_xml", GEMSPEC) do |ext|
 end
 
 task default: %i[compile spec rubocop]
+
+namespace :interop do
+  desc "Fetch the EU DSS XAdES vectors not vendored in spec/interop/xades/dss (see its MANIFEST.tsv)"
+  task :dss do
+    require "digest"
+    require "fileutils"
+    require "net/http"
+
+    root = File.expand_path("spec/interop/xades/dss", __dir__)
+    manifest = File.readlines(File.join(root, "MANIFEST.tsv"), chomp: true)
+    commit = manifest.first[/commit (\h{40})/, 1]
+    rows = manifest.reject { |line| line.start_with?("#") }.map { |line| line.split("\t") }
+
+    rows.each do |blob, size, vendored, path|
+      next if vendored == "yes"
+
+      target = File.join(root, "corpus", path)
+      git_blob = ->(bytes) { Digest::SHA1.hexdigest("blob #{bytes.bytesize}\0#{bytes}") }
+      next if File.exist?(target) && git_blob.call(File.binread(target)) == blob
+
+      uri = URI("https://raw.githubusercontent.com/esig/dss/#{commit}/dss-xades/src/test/resources/#{path}")
+      bytes = Net::HTTP.get_response(uri).tap(&:value).body.b
+      unless bytes.bytesize == Integer(size) && git_blob.call(bytes) == blob
+        abort "#{path}: does not match MANIFEST.tsv (expected git blob #{blob})"
+      end
+
+      FileUtils.mkdir_p(File.dirname(target))
+      File.binwrite(target, bytes)
+      puts "fetched #{path}"
+    end
+  end
+end

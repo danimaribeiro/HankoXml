@@ -858,6 +858,11 @@ pub struct VerifyResult {
     /// reference was never processed (verification aborted before reaching
     /// it), not when we simply do not know.
     pub reference_valid: Vec<Option<bool>>,
+    /// Index into `trusted_pems` of the PEM whose key verified the signature,
+    /// or `None` when none did. Lets Ruby name the certificate that verified
+    /// (`Verification#certificate`), which `certificates:` otherwise leaves
+    /// ambiguous.
+    pub trusted_index: Option<usize>,
 }
 
 const DSIG_NS: &str = "http://www.w3.org/2000/09/xmldsig#";
@@ -1051,11 +1056,15 @@ pub fn verify_document(
 
     let mut pinned_key_pems: Vec<&[u8]> = Vec::new();
     let mut cert_pems: Vec<&[u8]> = Vec::new();
-    for pem in trusted_pems {
+    let mut key_indexes = Vec::new();
+    let mut cert_indexes = Vec::new();
+    for (index, pem) in trusted_pems.iter().enumerate() {
         if pem_is_certificate(pem) {
             cert_pems.push(pem);
+            cert_indexes.push(index);
         } else {
             pinned_key_pems.push(pem);
+            key_indexes.push(index);
         }
     }
 
@@ -1070,6 +1079,8 @@ pub fn verify_document(
     let mngr = KeysMngr::new(&[], untrusted_pems).map_err(DsigError::key_load)?;
 
     let keys_to_try = load_pinned_keys(&pinned_key_pems, &cert_pems)?;
+    // load_pinned_keys tries the one key PEM alone, or else every certificate.
+    let tried_indexes = if pinned_key_pems.is_empty() { cert_indexes } else { key_indexes };
     let reference_element_indexes =
         collect_reference_element_indexes(&doc, root, sig_node);
 
@@ -1079,13 +1090,15 @@ pub fn verify_document(
             errors: vec!["no trusted key or certificate provided".into()],
             reference_valid: vec![None; reference_element_indexes.len()],
             reference_element_indexes,
+            trusted_index: None,
         });
     }
 
     let mut status = VerifyStatus::Invalid;
     let mut captured_errors = Vec::new();
     let mut reference_valid = Vec::new();
-    for key in keys_to_try {
+    let mut trusted_index = None;
+    for (key, index) in keys_to_try.into_iter().zip(tried_indexes) {
         errors::clear_errors();
         let mut ctx = DsigCtx::for_signing(&mngr, key).map_err(DsigError::native)?;
         if serves_external {
@@ -1095,6 +1108,7 @@ pub fn verify_document(
         captured_errors = errors::drain_errors();
         reference_valid = ctx.reference_statuses();
         if status == VerifyStatus::Succeeded {
+            trusted_index = Some(index);
             break;
         }
     }
@@ -1104,6 +1118,7 @@ pub fn verify_document(
         errors: captured_errors,
         reference_element_indexes,
         reference_valid,
+        trusted_index,
     })
 }
 
