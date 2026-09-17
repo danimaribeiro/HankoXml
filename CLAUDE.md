@@ -40,6 +40,15 @@ Nokogiri is the optional DOM layer.
 
 ## Security conventions
 
+- Let xmlsec1 do the security work. The library exists to build on its years of
+  hardening, so canonicalization, digests, signature math, reference resolution
+  and key handling belong in xmlsec, reached through its own flags and APIs
+  (for example `XMLSEC_DSIG_FLAGS_USE_VISA3D_HACK` for bare `#id` lookup). Don't
+  reimplement them in Ruby or Rust. Ruby may reject input earlier to give a
+  clearer error, like the key-type check before signing, but must never accept
+  something xmlsec would reject or make a trust decision xmlsec should make.
+  When a fix seems to need new security logic, look for the xmlsec mechanism
+  first.
 - Fail closed. `Policy.strict` is the default and denies SHA-1, HMAC, XSLT and
   XPath transforms, and external references unless a policy allows them.
 - Verification pins the trusted key as xmlsec's `signKey`, and the document's
