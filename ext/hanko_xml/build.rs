@@ -210,6 +210,7 @@ fn generate_bindings(headers: &Headers) {
              #include <xmlsec/keys.h>\n\
              #include <xmlsec/keyinfo.h>\n\
              #include <xmlsec/app.h>\n\
+             #include <xmlsec/io.h>\n\
              #include <xmlsec/openssl/app.h>\n\
              #include <xmlsec/openssl/crypto.h>\n\
              #include <libxml/tree.h>\n\

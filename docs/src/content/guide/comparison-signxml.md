@@ -145,10 +145,9 @@ Not “pass every merlin file under `Policy.strict`.” That would force XPath/X
 
 `spec/interop/` vendors merlin-xmldsig-twenty-three and phaos-xmldsig-three from the pinned xmlsec1 1.3.12 tarball and pins every vector's outcome under `Policy.interop`, next to xmlsec's own expectation:
 
-- **Valid (19):** merlin enveloped/enveloping DSA and RSA (keys from `<KeyValue>`), phaos DSA and RSA enveloped/enveloping (through a CA `store:` and against the pinned leaf certificate), and the 11 phaos signatures over a `<Manifest>`. Manifest references are not resolved (#75): the Manifest element is what is signed.
+- **Valid (29 of 44):** merlin enveloped/enveloping DSA and RSA (keys from `<KeyValue>`), phaos DSA and RSA enveloped/enveloping (through a CA `store:` and against the pinned leaf certificate), the 11 phaos signatures over a `<Manifest>` (Manifest references are not resolved, #75, so the Manifest element is what is signed), and the 10 detached or external signatures, whose data is served through `referenced_documents:` (#74).
 - **Refused by policy, by design:** HMAC (7; there is no HMAC key API), RetrievalMethod (3), XPath transform (1), more than 8 references (1).
 - **Refused, as xmlsec also refuses them:** the bad digest and bad signature vectors.
-- **Blocked on #74:** external references (`http://…`, `document.xml`), because `referenced_documents:` is not wired into xmlsec yet.
 - **Schema:** merlin `signature.xml` puts a no-namespace element where the XML-DSig schema's `##other` wildcard does not allow one.
 
 No vector showed HankoXml's Ruby layer rejecting a signature that xmlsec accepts, outside those explicit policy choices.

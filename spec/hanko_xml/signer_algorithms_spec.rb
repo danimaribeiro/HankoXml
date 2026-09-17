@@ -56,7 +56,7 @@ RSpec.describe "HankoXml::Signer algorithms" do
         signature: HankoXml::Algorithms.uri_for(:signature, signature_method),
         digest: HankoXml::Algorithms.uri_for(:digest, digest_method)
       )
-      expect(HankoXml::Native.verify(signed, [cert_pem], [], id_attrs, 0)[:status]).to eq(:succeeded)
+      expect(HankoXml::Native.verify(signed, [cert_pem], [], id_attrs, 0, [])[:status]).to eq(:succeeded)
       expect(HankoXml.verify(signed, certificate: cert_pem, policy: policy).valid?).to be true
     end
   end

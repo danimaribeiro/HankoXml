@@ -31,6 +31,12 @@ module HankoXml
         !(uri.to_s.empty? || fragment?)
       end
 
+      # The URI xmlsec reads an external reference from: everything before
+      # any `#` fragment.
+      def document_uri
+        uri.to_s.split("#", 2).first.to_s
+      end
+
       # Same-document XPointer, e.g. `#xpointer(/)` or `#xpointer(id('x'))` --
       # not a bare `#id` fragment (S-06, `allow_same_document_xpointer`).
       def same_document_xpointer?

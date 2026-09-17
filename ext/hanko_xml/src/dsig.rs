@@ -17,6 +17,10 @@
 
 use crate::errors;
 use crate::sys;
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::CStr;
+use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
 // ---------------------------------------------------------------------------
@@ -601,6 +605,23 @@ impl<'mngr> DsigCtx<'mngr> {
         }
     }
 
+    /// Lets References name URIs outside the document, for a verification
+    /// whose caller passed `referenced_documents:` (#74). Only the IO
+    /// callbacks installed by [`init_xmlsec`] can open such a URI, and they
+    /// serve nothing but that map: no filesystem, no network.
+    fn allow_referenced_documents(&mut self) {
+        let allowed = sys::URI_TYPE_EMPTY
+            | sys::URI_TYPE_SAME_DOCUMENT
+            | sys::xmlSecTransformUriTypeLocal
+            | sys::xmlSecTransformUriTypeRemote;
+        // SAFETY: same fields and caveat as
+        // restrict_reference_uris_to_same_document.
+        unsafe {
+            (*self.ptr).enabledReferenceUris = allowed;
+            (*self.ptr).transformCtx.enabledUris = allowed;
+        }
+    }
+
     /// Restricts `enabledReferenceTransforms` to core DSig transforms only.
     ///
     /// xmlSecDSigCtxCreate leaves `enabledReferenceTransforms` as NULL, so
@@ -1011,8 +1032,11 @@ pub fn verify_document(
     untrusted_pems: &[Vec<u8>],
     id_attrs: &[String],
     signature_index: usize,
+    referenced_documents: HashMap<Vec<u8>, Vec<u8>>,
 ) -> Result<VerifyResult, DsigError> {
     errors::clear_errors();
+    let serves_external = !referenced_documents.is_empty();
+    let _referenced = ReferencedDocuments::activate(referenced_documents);
 
     let doc = OwnedXmlDoc::parse(xml).map_err(DsigError::parse)?;
     let root = doc
@@ -1064,6 +1088,9 @@ pub fn verify_document(
     for key in keys_to_try {
         errors::clear_errors();
         let mut ctx = DsigCtx::for_signing(&mngr, key).map_err(DsigError::native)?;
+        if serves_external {
+            ctx.allow_referenced_documents();
+        }
         status = ctx.verify(sig_node);
         captured_errors = errors::drain_errors();
         reference_valid = ctx.reference_statuses();
@@ -1241,8 +1268,116 @@ pub fn init_xmlsec() -> Result<(), &'static str> {
             return Err("xmlSecOpenSSLInit failed");
         }
         errors::install_error_callback();
+
+        // xmlSecInit registers file, HTTP and FTP readers for Reference
+        // URIs. Replace them with one that reads only the caller's
+        // referenced_documents: map (#74), so no URI can ever reach the
+        // filesystem or network, whatever enabledReferenceUris allows. This
+        // is xmlsec's own input list; libxml2's parser I/O (Nokogiri's) is
+        // untouched.
+        sys::xmlSecIOCleanupCallbacks();
+        if sys::xmlSecIORegisterCallbacks(
+            Some(referenced_match),
+            Some(referenced_open),
+            Some(referenced_read),
+            Some(referenced_close),
+        ) < 0
+        {
+            return Err("xmlSecIORegisterCallbacks failed");
+        }
     }
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// ReferencedDocuments — the only source xmlsec may read a URI from
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    /// The `referenced_documents:` of the verification running on this
+    /// thread, keyed by URI (the Reference URI up to any `#`). The GVL is held
+    /// for the whole native call, and xmlsec calls the IO callbacks on the
+    /// calling thread, so a thread-local is enough (§7.1).
+    static REFERENCED: RefCell<HashMap<Vec<u8>, Vec<u8>>> = RefCell::new(HashMap::new());
+}
+
+/// Makes a map visible to the IO callbacks until dropped, so an early
+/// return cannot leave one verification's documents readable by the next.
+struct ReferencedDocuments;
+
+impl ReferencedDocuments {
+    fn activate(documents: HashMap<Vec<u8>, Vec<u8>>) -> Self {
+        REFERENCED.with(|map| *map.borrow_mut() = documents);
+        Self
+    }
+}
+
+impl Drop for ReferencedDocuments {
+    fn drop(&mut self) {
+        REFERENCED.with(|map| map.borrow_mut().clear());
+    }
+}
+
+/// An open referenced document: its bytes and the read position.
+struct ReferencedReader {
+    data: Vec<u8>,
+    pos: usize,
+}
+
+/// # Safety
+///
+/// `uri` is null or a NUL-terminated string, per `xmlInputMatchCallback`.
+unsafe extern "C" fn referenced_match(uri: *const c_char) -> c_int {
+    if uri.is_null() {
+        return 0;
+    }
+    // SAFETY: non-null and NUL-terminated (see above).
+    let uri = unsafe { CStr::from_ptr(uri) }.to_bytes();
+    REFERENCED.with(|map| map.try_borrow().map(|m| m.contains_key(uri)).unwrap_or(false)) as c_int
+}
+
+/// # Safety
+///
+/// `uri` is null or a NUL-terminated string, per `xmlInputOpenCallback`.
+unsafe extern "C" fn referenced_open(uri: *const c_char) -> *mut c_void {
+    if uri.is_null() {
+        return ptr::null_mut();
+    }
+    // SAFETY: non-null and NUL-terminated (see above).
+    let uri = unsafe { CStr::from_ptr(uri) }.to_bytes();
+    let data = REFERENCED.with(|map| map.try_borrow().ok().and_then(|m| m.get(uri).cloned()));
+    match data {
+        Some(data) => Box::into_raw(Box::new(ReferencedReader { data, pos: 0 })).cast(),
+        None => ptr::null_mut(),
+    }
+}
+
+/// # Safety
+///
+/// `context` came from [`referenced_open`] and has not been closed;
+/// `buffer` has room for `len` bytes.
+unsafe extern "C" fn referenced_read(context: *mut c_void, buffer: *mut c_char, len: c_int) -> c_int {
+    if context.is_null() || buffer.is_null() || len < 0 {
+        return -1;
+    }
+    // SAFETY: context is a live ReferencedReader (see above).
+    let reader = unsafe { &mut *context.cast::<ReferencedReader>() };
+    let count = (reader.data.len() - reader.pos).min(len as usize);
+    // SAFETY: count <= len bytes fit in buffer, and count bytes remain in data.
+    unsafe { ptr::copy_nonoverlapping(reader.data.as_ptr().add(reader.pos), buffer.cast::<u8>(), count) };
+    reader.pos += count;
+    count as c_int
+}
+
+/// # Safety
+///
+/// `context` came from [`referenced_open`] and is closed exactly once.
+unsafe extern "C" fn referenced_close(context: *mut c_void) -> c_int {
+    if !context.is_null() {
+        // SAFETY: context is the Box leaked by referenced_open.
+        drop(unsafe { Box::from_raw(context.cast::<ReferencedReader>()) });
+    }
+    0
 }
 
 /// True when the linked libxmlsec1 matches the version these bindings were
