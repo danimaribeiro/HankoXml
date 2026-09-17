@@ -2,7 +2,6 @@
 
 require "spec_helper"
 require "nokogiri"
-require "base64"
 require "pathname"
 
 # S-09: Verification#references[].valid? surfaces xmlsec's real per-Reference
@@ -22,7 +21,7 @@ RSpec.describe "S-09 per-reference validity" do
   def tamper_digest!(doc, reference_index)
     digest_value = doc.xpath(".//ds:Reference", HankoXml::NS)[reference_index]
                       .at_xpath("./ds:DigestValue", HankoXml::NS)
-    digest_value.content = Base64.strict_encode64("\x00" * 32)
+    digest_value.content = ["\x00" * 32].pack("m0")
   end
 
   it "reports the tampered reference invalid, the untouched one valid, though the signature as a whole is invalid" do
