@@ -28,7 +28,7 @@ module HankoXml
   def self.sign!: (Nokogiri::XML::Node | Nokogiri::XML::Document doc, **untyped kwargs) -> (Nokogiri::XML::Node | Nokogiri::XML::Document)
   def self.verify: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml, **untyped kwargs) -> HankoXml::Verification
   def self.verify!: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml, **untyped kwargs) -> HankoXml::Verification
-  def self.signed?: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml) -> bool
+  def self.signature_present?: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml) -> bool
   def self.zero_copy_available?: () -> bool
   def self.parse: (String | IO | _ToPath source) -> Nokogiri::XML::Document
   def self.serialize: (Nokogiri::XML::Document | Nokogiri::XML::Node doc) -> String
@@ -45,7 +45,7 @@ module Nokogiri
       def sign!: (**untyped kwargs) -> self
       def signature_valid?: (**untyped kwargs) -> bool
       def signatures: () -> Nokogiri::XML::NodeSet
-      def signed?: () -> bool
+      def signature_present?: () -> bool
     end
 
     class Document < Node

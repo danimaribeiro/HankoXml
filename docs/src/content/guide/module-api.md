@@ -26,10 +26,10 @@ HankoXml.valid?(xml, certificate: cert)        # => true / false
 HankoXml.verify!(xml, certificate: cert)       # => Verification, or raises
 
 # Is there a signature at all? (structural, no crypto)
-HankoXml.signed?(xml)                          # => true / false
+HankoXml.signature_present?(xml)               # => true / false
 ```
 
-`valid?`, `verify!` and `signed?` run with or without Nokogiri. `sign` and `sign!` need Nokogiri
+`valid?`, `verify!` and `signature_present?` run with or without Nokogiri. `sign` and `sign!` need Nokogiri
 unless the document already carries a `<Signature>` template.
 
 ## Verification
@@ -58,7 +58,7 @@ puts signed_doc.to_s
 
 ## There is deliberately no `HankoXml.verify`
 
-Only `sign` / `sign!` and `verify!` / `valid?` / `signed?` are exposed at the module level. There is
+Only `sign` / `sign!` and `verify!` / `valid?` / `signature_present?` are exposed at the module level. There is
 no `HankoXml.verify` returning a rich object: a `Verification` instance is always truthy, so
 `if HankoXml.verify(doc, ...)` would be a security bug that reads like correct code. The rich
 `Verification` object (see [Reference: Verification](/reference/verification)) is reachable only

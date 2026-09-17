@@ -202,13 +202,20 @@ HankoXml.valid?(xml, certificate: cert)        # => true / false
 HankoXml.verify!(xml, certificate: cert)       # => Verification, or raises
 
 # Is there a signature at all? (structural, no crypto)
-HankoXml.signed?(xml)                          # => true / false
+HankoXml.signature_present?(xml)               # => true / false
 ```
 
 Every keyword accepted by `Signer.new` / `Verifier.new` is accepted here and
 forwarded; these are constructor + single call, nothing more.
 
-`valid?`, `verify!` and `signed?` run with or without Nokogiri. `sign` and
+`signature_present?` is named that way on purpose (#87). It only reports that a
+`<Signature>` with a non-empty `<SignatureValue>` exists: no key, no crypto, no
+trust. It is not called `signed?` because `Verification#signed?(node)` (§5.4) is
+the trust check, and `if HankoXml.signed?(xml)` would read like verification
+while verifying nothing. Use it to route documents ("does this still need
+signing?"), never to decide whether to believe one.
+
+`valid?`, `verify!` and `signature_present?` run with or without Nokogiri. `sign` and
 `sign!` need Nokogiri unless the document already carries a `<Signature>`
 template (§5.2, §6.1).
 
@@ -1174,7 +1181,7 @@ answerable by reading one file.
 
 ### 6.2 Accepted inputs
 
-Everywhere a document is taken (`sign`, `sign!`, `verify`, `valid?`, `signed?`):
+Everywhere a document is taken (`sign`, `sign!`, `verify`, `valid?`, `signature_present?`):
 
 - `Nokogiri::XML::Document` — used as-is
 - `Nokogiri::XML::Node` / `::Element` — its `#document` is used; for signing,
@@ -1295,7 +1302,7 @@ doc.sign(key: key, certificate: cert)     # => new Nokogiri::XML::Document
 doc.sign!(key: key, certificate: cert)    # => doc
 doc.signature_valid?(certificate: cert)   # => true / false
 doc.signatures                            # => NodeSet of <ds:Signature>
-doc.signed?                               # => structural, no crypto
+doc.signature_present?                    # => structural, no crypto
 ```
 
 Namespaced deliberately as `signature_valid?` rather than `valid?` — Nokogiri

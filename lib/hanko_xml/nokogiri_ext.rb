@@ -25,8 +25,8 @@ module HankoXml
       xpath(".//ds:Signature", ds: NS["ds"])
     end
 
-    def signed?
-      HankoXml.signed?(self)
+    def signature_present?
+      HankoXml.signature_present?(self)
     end
   end
 end
