@@ -44,6 +44,13 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **S-17 / #47:** `SignedDocument` now delegates read-only Nokogiri methods
+  (`#at_xpath`, `#xpath`, `#root`, …) and raises `FrozenSignatureError` from
+  mutators (`#add_child`, `#root=`, `#remove`, …), as `API_CONTRACT.md` §6.7
+  specified. Its serializers raise `FrozenSignatureError` if the document
+  changed after signing (through a returned node or `#document`).
+  `#to_xml(declaration: false)` no longer raises `NameError` (it referenced a
+  nonexistent `SaveOptions::NO_DECL`).
 - **S-16 / #46:** Built-in `Algorithms` names and URIs can no longer be
   re-registered, even with `replace: true` (previously
   `register(:digest, :sha256, sha1_uri, replace: true)` made

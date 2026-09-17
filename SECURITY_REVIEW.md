@@ -54,7 +54,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-14 | **Low** | Signer | A mismatched `key:`/`certificate:` pair is accepted at sign time; the output verifies with neither certificate | **fixed** | confirmed, re-checked |
 | S-15 | **Low** | Key | `Key#dispose!` claims in-place zeroization but only nils the reference; `Key#private_key?` is true for public-only `PKey`s; PEM-vs-cert detection is a substring heuristic | **fixed** | code review |
 | S-16 | **Low** | Algorithms | `Algorithms.register(..., replace: true)` is process-global and can re-point a Symbol used by `Policy.strict` (e.g. `:sha256`) at another URI, silently changing what "strict" means | **fixed** | code review |
-| S-17 | **Low** | SignedDocument | `#document` exposes the mutable Nokogiri document; `FrozenSignatureError` exists but is never raised | **open** | code review |
+| S-17 | **Low** | SignedDocument | `#document` exposes the mutable Nokogiri document; `FrozenSignatureError` exists but is never raised | **fixed** | code review |
 | S-18 | **Low** | Build | `build/vendor.rs` shells out to `curl`/`tar`/`configure`/`make` and hand-parses `dependencies.yml`; SHA-256 pinning is good, but `HANKO_XML_VENDOR_CACHE` and `tmp/vendor-build/.stamp-complete` are trusted build-time inputs | **open** | code review |
 | S-19 | **Low** | CI | Actions pinned by major tag, not commit SHA; `main.yml` has no top-level `permissions:` | **open** | code review |
 | S-20 | **Info** | Native | Whether the root element's own `Id` is registered by `xmlSecAddIDs(doc, root, ids)` depends on xmlsec walking `cur` or `cur->children`; `URI="#rootId"` is untested | **open** | code review |
@@ -93,7 +93,7 @@ trust source → `ConfigurationError`).
 - [x] **S-14** (#44) reject mismatched `key:` / `certificate:` at sign time
 - [x] **S-15** (#45) `Key#dispose!` / `private_key?` / PEM heuristic
 - [x] **S-16** (#46) freeze or snapshot `Algorithms.register`
-- [ ] **S-17** (#47) `SignedDocument` mutability / unused `FrozenSignatureError`
+- [x] **S-17** (#47) `SignedDocument` mutability / unused `FrozenSignatureError`
 - [ ] **S-18** (#48) document vendored cache/stamp as trusted inputs
 - [ ] **S-19** (#49) pin Actions to SHAs; `permissions:` on `main.yml`
 - [ ] **S-20** (#50) spec (and fix if needed) root-element `Id` registration
@@ -549,9 +549,22 @@ replace: true)` re-points the Symbol `Policy.strict` compares through
 "strict" without touching a Policy object. Freeze the built-in tables or have
 Policy snapshot URIs at construction.
 
-### S-17 -- `SignedDocument` is not actually immutable  [code review, Low, **open**]
+### S-17 -- `SignedDocument` is not actually immutable  [code review, Low, **fixed**]
 
-**Disposition:** still open.
+**Disposition:** fixed as far as Ruby allows. `SignedDocument` implements
+§6.7: read-only Nokogiri methods are delegated, and mutators raise
+`FrozenSignatureError` pointing at `#document`. Because the readers return
+live nodes, it also records its serialization at construction, and
+`#to_xml` / `#to_s` / `#bytes` / `#write_to` raise `FrozenSignatureError` when
+the document no longer matches, however it was changed. `#document` stays as
+the documented escape hatch, serialized with `HankoXml.serialize`. The
+`#valid?` part of this entry was already stale: it forwards every keyword to
+`Verifier.new`, including `policy:`, `schema:` and `signature:` (now covered
+by a spec). Adding the first spec for `to_xml(declaration: false)` found it
+always raised `NameError` (`SaveOptions::NO_DECL` does not exist); fixed.
+Specs: "immutability (S-17)" in `spec/hanko_xml/signed_document_spec.rb`.
+
+Original report:
 
 `attr_reader :document` hands out the live Nokogiri document; `FrozenSignatureError`
 is never raised. `#valid?` only accepts trust keywords and cannot pass
@@ -607,9 +620,9 @@ accept path Strings explicitly.
 
 ## Suggested remediation order
 
-S-01 through S-16 are done. Remaining, in order:
+S-01 through S-17 are done. Remaining, in order:
 
-1. S-17 through S-21 -- hygiene.
+1. S-18 through S-21 -- hygiene.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /

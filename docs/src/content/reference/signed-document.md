@@ -40,6 +40,11 @@ raise `HankoXml::FrozenSignatureError` with a message pointing at `#document` fo
 genuinely mean it. Any mutation invalidates the signature; failing loudly at the mutation beats
 failing mysteriously at the counterparty.
 
+Nodes returned by the readers are still the live tree, so `SignedDocument` records its serialization
+when it is created. `#to_xml`, `#to_s`, `#bytes` and `#write_to` raise `FrozenSignatureError` if the
+document has changed since, whether through a reader's node or through `#document`. To write out a
+document you changed on purpose, use `HankoXml.serialize(signed.document)`.
+
 ## `sign` vs `sign!`
 
 `sign!` still returns the caller's own `Nokogiri::XML::Document`, unwrapped, because the caller

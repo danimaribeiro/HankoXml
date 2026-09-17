@@ -1211,6 +1211,13 @@ a message pointing at `#document` for callers who genuinely mean it. Any
 mutation invalidates the signature; failing loudly at the mutation beats failing
 mysteriously at the counterparty.
 
+Nodes returned by the delegated readers are still the live tree, so
+`SignedDocument` also records its serialization when it is created, and
+`#to_xml` / `#to_s` / `#bytes` / `#write_to` raise `FrozenSignatureError` if the
+document no longer serializes to those bytes, whether it was changed through a
+reader's node or through `#document`. To write out an intentionally modified
+document, use `HankoXml.serialize(signed.document)`.
+
 `sign!` still returns the caller's own `Nokogiri::XML::Document`, unwrapped,
 because the caller already holds that object and wrapping it would be a lie
 about what they have. The `sign` / `sign!` asymmetry is therefore: `sign` is
