@@ -159,6 +159,7 @@ RSpec.describe "HankoXml::Native" do
         template_exc_c14n.xml
         template_sha512.xml
         template_nfe.xml
+        template_saml_inclusive_namespaces.xml
       ].each do |filename|
         template_xml = fixtures.join(filename).read
         signed_xml = HankoXml::Native.sign(template_xml, signer_key_pem, [signer_cert_pem], id_attrs, 0)

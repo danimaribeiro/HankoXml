@@ -90,6 +90,16 @@ module HankoXml
         node.add_child(xpath_node)
       end
 
+      prefixes = transform.inclusive_prefixes
+      node.add_child(build_inclusive_namespaces(prefixes)) unless prefixes.empty?
+
+      node
+    end
+
+    def build_inclusive_namespaces(prefixes)
+      node = element("InclusiveNamespaces")
+      node.namespace = node.add_namespace_definition("ec", Transform::EXC_C14N_NS)
+      node["PrefixList"] = prefixes.join(" ")
       node
     end
 

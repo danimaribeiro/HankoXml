@@ -153,6 +153,16 @@ module HankoXml
       end
     end
 
+    # The bundled XML-DSig schema used by `schema: :default`. Parsed with its
+    # own path as the base URL so its relative import of exc-c14n.xsd
+    # resolves (#61), and only once: a racing first call just parses it twice.
+    def self.default_schema
+      @default_schema ||= begin
+        path = File.expand_path("xmldsig-core-schema.xsd", __dir__)
+        ::Nokogiri::XML::Schema.from_document(::Nokogiri::XML(File.read(path), path))
+      end
+    end
+
     private
 
     # xmlSecAddIDs (the native ID table verification resolves "#id" against)
@@ -200,7 +210,7 @@ module HankoXml
       # Schema validation before any crypto
       if @schema
         xsd = if @schema == :default
-                ::Nokogiri::XML::Schema(File.read(File.expand_path("xmldsig-core-schema.xsd", __dir__)))
+                self.class.default_schema
               else
                 @schema
               end

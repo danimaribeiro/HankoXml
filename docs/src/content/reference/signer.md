@@ -42,6 +42,30 @@ end
 The block runs against a mutable builder; `Signer.new` **freezes the instance before returning it**.
 A `Signer` is therefore immutable, reusable, and safe to share across threads.
 
+## Exclusive c14n with InclusiveNamespaces (SAML)
+
+```ruby
+xs_aware = HankoXml::Transform.exc_c14n(inclusive_prefixes: %w[xs])
+# same as HankoXml::Transform.new(:exc_c14n, inclusive_prefixes: %w[xs])
+
+HankoXml::Signer.new(
+  key: key, certificate: cert,
+  policy: HankoXml::Policy.fragment,
+  placement: HankoXml::Placement.after("//saml:Assertion/saml:Issuer", namespaces: SAML_NS),
+  references: [HankoXml::Reference.new(uri: "#assertion-1",
+                                       transforms: [:enveloped_signature, xs_aware])]
+)
+```
+
+This emits `<ec:InclusiveNamespaces PrefixList="xs"/>` inside the `<Transform>`. Each listed prefix
+(or `"#default"`) is canonicalized the inclusive way: its in-scope declaration is digested even when
+it is declared on an ancestor outside the signed element, as SAML's `xsi:type="xs:string"` needs.
+`inclusive_prefixes:` on any transform other than `:exc_c14n` / `:exc_c14n_with_comments` raises
+`ConfigurationError`.
+
+Verification needs no option. libxmlsec1 reads `InclusiveNamespaces` from a `<Transform>` or from
+`<CanonicalizationMethod>`, and the default `schema: :default` accepts both.
+
 ## Methods
 
 ```ruby

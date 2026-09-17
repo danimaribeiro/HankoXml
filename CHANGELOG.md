@@ -10,6 +10,14 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Added
 
+- **#61:** `Transform.exc_c14n(inclusive_prefixes:)` and
+  `Transform.new(:exc_c14n, inclusive_prefixes:)` emit an
+  `<ec:InclusiveNamespaces PrefixList="...">` child, as SAML 2.0 assertions
+  need. `API_CONTRACT.md` already documented this, but it did not exist.
+  `Transform.c14n` and `Transform.enveloped_signature` shorthands were added
+  alongside. Verification of foreign InclusiveNamespaces signatures already
+  worked natively, apart from the schema fix below.
+
 - **#63:** `Policy#require_signing_key_usage` (on in `Policy.strict`, off in
   `Policy.permissive`): with `store:`, a signing certificate whose KeyUsage
   extension allows neither `digitalSignature` nor `nonRepudiation` fails
@@ -51,6 +59,13 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   calls to the wrong library.
 
 ### Fixed
+
+- **#61:** The default `schema: :default` check rejected any
+  `<ec:InclusiveNamespaces>` under `<CanonicalizationMethod>`, where the
+  XML-DSig schema has a strict wildcard. That is the shape most SAML IdPs
+  emit, so their signatures failed with `SchemaError`. The bundled schema now
+  imports the W3C exc-c14n schema, and is parsed once rather than on every
+  verification.
 
 - **S-21 / #51:** README and guide examples passed file names as Strings
   (`key: "private.pem"`), which are parsed as PEM and raise `KeyLoadError`;

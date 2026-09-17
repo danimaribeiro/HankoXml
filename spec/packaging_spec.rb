@@ -23,6 +23,7 @@ RSpec.describe "gem packaging" do
 
   it "ships the XML-DSig schema the Verifier validates against" do
     expect(files).to include("lib/hanko_xml/xmldsig-core-schema.xsd")
+    expect(files).to include("lib/hanko_xml/exc-c14n.xsd")
   end
 
   it "ships every Rust source file the extension is built from" do

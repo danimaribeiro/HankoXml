@@ -1,14 +1,20 @@
 module HankoXml
   class Transform
+    EXC_C14N_NS: String
+
+    attr_reader name: Symbol?
     attr_reader uri: String
-    
-    def self.exc_c14n: (?inclusive_prefixes: Array[String]) -> instance
+    attr_reader xpath: String?
+    attr_reader inclusive_prefixes: Array[String]
+
+    def self.exc_c14n: (?inclusive_prefixes: Array[String | Symbol], ?with_comments: bool) -> instance
     def self.c14n: () -> instance
     def self.enveloped_signature: () -> instance
-    def self.coerce: (instance | Symbol input) -> instance
+    def self.coerce: (instance | Symbol | String input) -> instance
 
-    def initialize: (String | Symbol algorithm) -> void
+    def initialize: (String | Symbol algorithm, ?xpath: String?, ?inclusive_prefixes: Array[String | Symbol]) -> void
     def enveloped_signature?: () -> bool
+    def secure?: () -> bool
   end
 
   class Reference

@@ -32,7 +32,7 @@ HankoXml is a general Ruby XML-DSig library with a strict policy and an XSW API.
 | KeyUsage `digitalSignature` | `store:` under `Policy.strict`: KeyUsage, when present, must allow `digitalSignature` or `nonRepudiation` | Enforced on end-entity by default |
 | HMAC | Registered (`hmac-sha256`) but **no HMAC key API**; blocked by default `signature_methods` | First-class `hmac_key=` |
 | RSA-PSS (MGF1), SHA3, ECDSA-SHA3 | Not built in (registerable) | Built in and allowed by default |
-| InclusiveNamespaces PrefixList | Claimed in `API_CONTRACT.md`; **not on `Transform`** | First-class (`inclusive_ns_prefixes`) |
+| InclusiveNamespaces PrefixList | `Transform.exc_c14n(inclusive_prefixes:)`; verified on `Transform` and `CanonicalizationMethod` | First-class (`inclusive_ns_prefixes`) |
 | XPath / XSLT / XPointer transforms | Registered as insecure; **denied by `Policy.strict`** | Disabled by default (no network, XSLT, or XPath) |
 | External references | Denied by default; native URI types limited to empty/same-document | Only if you pass `uri_resolver` |
 | Schema check of `<ds:Signature>` | On by default (`Policy.strict.schema == :default`); `schema: nil` opts out | `validate_schema=True` by default |
@@ -62,7 +62,7 @@ HankoXml is a general Ruby XML-DSig library with a strict policy and an XSW API.
 
 ### Where SignXML is stronger
 
-1. **XAdES and XML-DSig 1.1 breadth.** RSA-PSS, SHA3, ECDSA-SHA3, InclusiveNamespaces, XAdES signed properties. HankoXml would need `Algorithms.register` plus a looser policy, and InclusiveNamespaces is not actually implemented on `Transform`.
+1. **XAdES and XML-DSig 1.1 breadth.** RSA-PSS, SHA3, ECDSA-SHA3, XAdES signed properties. HankoXml would need `Algorithms.register` plus a looser policy.
 2. **Certificate path policy.** SignXML supports `ee_policy` / `ca_policy`. HankoXml’s `store:` checks KeyUsage (`require_signing_key_usage`) and exact subject matching (`certificate_subject:`), but has no equivalent of arbitrary end-entity/CA policy objects beyond what `OpenSSL::X509::Store` configures.
 3. **Comment / c14n truncation.** SignXML documents comment-induced truncation and excises comments from `signed_xml` when they were not signed. HankoXml leaves “read the node you checked with `signed?`” to the caller.
 4. **Maturity.** Years of interop vectors and two published HMAC CVEs that were fixed. HankoXml is new and has no foreign interop corpus yet (below).
@@ -78,7 +78,6 @@ Every finding in `SECURITY_REVIEW.md` (S-01 to S-21) is fixed. What remains are 
 | `signature: :first` is still available | The default (`nil`) fails closed on more than one `<Signature>`, but an explicit `:first` ignores extra wrapping signatures. SignXML’s `location` is the analogous footgun. |
 | `#signed?` under `Policy.permissive` | XPath/XSLT/Manifest are not modeled. Safe under `Policy.strict`, which denies those transforms. |
 | No HMAC key API | `allow_hmac` only gates the `SignatureMethod`; HMAC interop is not possible. |
-| InclusiveNamespaces PrefixList | `API_CONTRACT.md` documents `Transform.exc_c14n(inclusive_prefixes:)`, but it does not exist yet (#61). Many SAML signatures need it. |
 | `clock_skew` on `store:` | `OpenSSL::X509::StoreContext` has no skew, so `clock_skew` applies only to pinned trust. |
 
 ### Remaining SignXML gaps (5.1.0)
@@ -124,7 +123,7 @@ There is no merlin/phaos corpus. `SIGNING_TEST_COVERAGE.md` already records that
 
 HankoXml delegates canonicalization and crypto to libxmlsec1, and xmlsec *was* one of the original W3C interop reporters. Algorithm-level merlin failures are therefore unlikely. The remaining risk is **HankoXml’s Ruby layer**:
 
-- `Policy.strict` rejecting a signature another library would accept (SHA-1, HMAC, InclusiveNamespaces, extra transforms)
+- `Policy.strict` rejecting a signature another library would accept (SHA-1, HMAC, extra transforms)
 - ID-attribute registration and `#signed?` mapping disagreeing with how the foreign document named its nodes
 - KeyInfo pinning rejecting `X509IssuerSerial` / `X509SKI` shapes that xmlsec would have resolved
 - `HankoXml.serialize` / write-back changing bytes that xmlsec digested
@@ -198,7 +197,7 @@ HankoXml is the same kind of library: general XML-DSig. The NFe-shaped spec fixt
 | XML shape | What XML-DSig must do | HankoXml today | SignXML today |
 |---|---|---|---|
 | **NFe-shaped fixture** | Enveloped, RSA-SHA1, SHA-1, C14N, `X509Data` end-entity only, `Id` on a child, PKCS#12 | Supported (`Policy.legacy_sha1`, `Key.from_pkcs12`, `Placement.after`) | Possible with a SHA-1 `SignatureConfiguration` |
-| **SAML 2.0** | Enveloped **fragment** (Assertion, not Response), exclusive c14n, often **InclusiveNamespaces PrefixList**, Assertion `ID` | `Policy.fragment` + `#at_signed`; InclusiveNamespaces **missing** | Documented; InclusiveNamespaces first-class; `location=` for the Assertion |
+| **SAML 2.0** | Enveloped **fragment** (Assertion, not Response), exclusive c14n, often **InclusiveNamespaces PrefixList**, Assertion `ID` | `Policy.fragment` + `#at_signed` + `Transform.exc_c14n(inclusive_prefixes:)` | Documented; InclusiveNamespaces first-class; `location=` for the Assertion |
 | **WS-Security** | Sign SOAP Body / Timestamp; `wsu:Id`; sometimes STR-Transform / `BinarySecurityToken` | Custom `id_attributes` might cover `wsu:Id`; STR-Transform no | Some interop fixtures; not a WSS stack |
 | **EBICS** | XML-DSig over order data + X.509 | Generic XML-DSig | Generic XML-DSig |
 | **XAdES / eIDAS / ICP-Brasil AD-\*** | Extra signed properties, later timestamps/revocation | No | Baseline XAdES yes; archival incomplete |
@@ -206,14 +205,14 @@ HankoXml is the same kind of library: general XML-DSig. The NFe-shaped spec fixt
 ### Practical takeaway
 
 - **Ruby XML-DSig with pinned trust and `#signed?(node)`:** HankoXml. Use `signature: :only` (or `verify_all`) and `result.at_signed(...)` rather than trusting `valid?` alone.
-- **Python, SAML with InclusiveNamespaces, XAdES, RSA-PSS, HMAC, or merlin/phaos interop:** SignXML. Always pass an explicit trust anchor, set `expect_config=SignatureConfiguration(location=...)`, and only consume `verify().signed_xml`.
-- **Do not treat either as a drop-in for the other.** HankoXml has no XAdES, no RSA-PSS/SHA3, no HMAC key, and no InclusiveNamespaces helper. SignXML has no Ruby/Nokogiri integration and a much looser default trust story.
+- **Python, XAdES, RSA-PSS, HMAC, or merlin/phaos interop:** SignXML. Always pass an explicit trust anchor, set `expect_config=SignatureConfiguration(location=...)`, and only consume `verify().signed_xml`.
+- **Do not treat either as a drop-in for the other.** HankoXml has no XAdES, no RSA-PSS/SHA3, and no HMAC key. SignXML has no Ruby/Nokogiri integration and a much looser default trust story.
 
 ---
 
 ## Plan to close the gap with SignXML
 
-The main **feature** gap is XAdES. SignXML can emit and verify baseline qualifying properties; HankoXml cannot. Closing that is the work that makes the two libraries comparable for EU eIDAS / ICP-Brasil AD-RB documents. Smaller XML-DSig 1.1 gaps (RSA-PSS, InclusiveNamespaces, interop vectors) support XAdES and SAML but are not the headline.
+The main **feature** gap is XAdES. SignXML can emit and verify baseline qualifying properties; HankoXml cannot. Closing that is the work that makes the two libraries comparable for EU eIDAS / ICP-Brasil AD-RB documents. Smaller XML-DSig 1.1 gaps (RSA-PSS, interop vectors) support XAdES but are not the headline.
 
 Stay at **XAdES-B** (BES / baseline B) to match what SignXML actually ships. Do not start with XAdES-T/C/XL/A (RFC 3161 timestamps, OCSP, archive timestamps) — that is a PKI-lifetime product, not SignXML parity.
 
@@ -233,9 +232,9 @@ SignXML’s default allowlist includes RSA-PSS (MGF1) and SHA-3. EU XAdES profil
 2. Keep them **out** of `Policy.strict` until opted in (`Policy.xades` or `Policy.strict.with(signature_methods: …)`), same pattern as `legacy_sha1`.
 3. Confirm libxmlsec1/OpenSSL in the vendored build actually implements `rsa-pss` for these URIs before advertising them.
 
-### Phase 3 — InclusiveNamespaces (SAML, some XAdES)
+### Phase 3 — InclusiveNamespaces (done)
 
-`Transform.exc_c14n(inclusive_prefixes:)` is in `API_CONTRACT.md` and not on `Transform`. Implement `ec:InclusiveNamespaces PrefixList` on exclusive c14n transforms. Needed for many SAML signatures; some XAdES issuers emit it too. This is the next XML-DSig gap after XAdES-B, not a substitute for it.
+`Transform.exc_c14n(inclusive_prefixes:)` emits `ec:InclusiveNamespaces PrefixList` (#61), and a SAML-shaped fixture with it on both `CanonicalizationMethod` and the Reference transform verifies under `Policy.fragment`.
 
 ### Phase 4 — Foreign-signature interop (not a protocol)
 
@@ -255,5 +254,4 @@ Vendor merlin-twenty-three / phaos-three under `spec/interop/`. Verify with `Pol
 1. XAdES-B types + template (`QualifyingProperties` + second Reference) + sign/verify round-trip
 2. Cross-check against SignXML-produced XAdES-B XML
 3. RSA-PSS (and SHA-3 if xmlsec supports it) behind `Policy.xades`
-4. InclusiveNamespaces on exclusive c14n
-5. merlin/phaos interop corpus under `Policy.interop`
+4. merlin/phaos interop corpus under `Policy.interop`

@@ -31,6 +31,10 @@
         targetNamespace="http://www.w3.org/2000/09/xmldsig#"
         version="0.1" elementFormDefault="qualified"> 
 
+<!-- HankoXml: <ec:InclusiveNamespaces> may appear under the strict
+     CanonicalizationMethod wildcard (#61). -->
+<import namespace="http://www.w3.org/2001/10/xml-exc-c14n#" schemaLocation="exc-c14n.xsd"/>
+
 <!-- Basic Types Defined for Signatures -->
 
 <simpleType name="CryptoBinary">
