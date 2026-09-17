@@ -112,4 +112,34 @@ RSpec.describe "ID resolution (S-03 / #28)" do
     expect(result).not_to be_signed(signed.at_xpath("//Invoice"))
     expect(result).not_to be_signed(signed.at_xpath("//Order"))
   end
+
+  # S-20: xmlSecAddIDs(doc, root, ids) is handed the root itself, so the
+  # root's own Id must be registered too, or URI="#rootId" would fail natively
+  # while Ruby's XPath resolves it.
+  describe "root-element Id (S-20)" do
+    let(:root_id_xml) { %(<Envelope xmlns="urn:hanko_xml:example" Id="root-1"><Data>A</Data></Envelope>) }
+    let(:signed_xml) do
+      HankoXml.sign(root_id_xml, key: signer_key, certificate: signer_cert, references: ["#root-1"]).to_xml
+    end
+
+    it "signs and verifies a Reference to the root element's own Id under Policy.strict" do
+      result = HankoXml.verify(signed_xml, certificate: signer_cert)
+
+      expect(result.valid?).to be true
+      expect(result.covers_root?).to be true
+      expect(result.signed?(result.document.root)).to be true
+    end
+
+    it "resolves the root Id natively to the root element" do
+      native = HankoXml::Native.verify(signed_xml, [signer_cert.read], [], %w[Id ID id], 0)
+
+      expect(native[:status]).to eq(:succeeded)
+      expect(native[:reference_element_indexes]).to eq([0])
+      expect(native[:reference_valid]).to eq([true])
+    end
+
+    it "detects tampering inside the root-referenced content" do
+      expect(HankoXml.verify(signed_xml.sub(">A<", ">B<"), certificate: signer_cert).valid?).to be false
+    end
+  end
 end

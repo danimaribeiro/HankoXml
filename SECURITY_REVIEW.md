@@ -57,7 +57,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-17 | **Low** | SignedDocument | `#document` exposes the mutable Nokogiri document; `FrozenSignatureError` exists but is never raised | **fixed** | code review |
 | S-18 | **Low** | Build | `build/vendor.rs` shells out to `curl`/`tar`/`configure`/`make` and hand-parses `dependencies.yml`; SHA-256 pinning is good, but `HANKO_XML_VENDOR_CACHE` and `tmp/vendor-build/.stamp-complete` are trusted build-time inputs | **fixed** (documented) | code review |
 | S-19 | **Low** | CI | Actions pinned by major tag, not commit SHA; `main.yml` has no top-level `permissions:` | **fixed** | code review |
-| S-20 | **Info** | Native | Whether the root element's own `Id` is registered by `xmlSecAddIDs(doc, root, ids)` depends on xmlsec walking `cur` or `cur->children`; `URI="#rootId"` is untested | **open** | code review |
+| S-20 | **Info** | Native | Whether the root element's own `Id` is registered by `xmlSecAddIDs(doc, root, ids)` depends on xmlsec walking `cur` or `cur->children`; `URI="#rootId"` is untested | **fixed** (spec; no bug) | confirmed |
 | S-21 | **Info** | Docs | README passes file *paths* as `key:`/`certificate:` Strings (`key: "private.pem"`); `Key.coerce(String)` treats them as PEM and raises `KeyLoadError`. Fails closed, but misleading | **open** | code review, re-checked |
 
 What is done well (so the fixing agent does not undo it): PEM-only FFI
@@ -96,7 +96,7 @@ trust source → `ConfigurationError`).
 - [x] **S-17** (#47) `SignedDocument` mutability / unused `FrozenSignatureError`
 - [x] **S-18** (#48) document vendored cache/stamp as trusted inputs
 - [x] **S-19** (#49) pin Actions to SHAs; `permissions:` on `main.yml`
-- [ ] **S-20** (#50) spec (and fix if needed) root-element `Id` registration
+- [x] **S-20** (#50) spec (and fix if needed) root-element `Id` registration
 - [ ] **S-21** (#51) README path Strings vs PEM `Key.coerce`
 - [x] **S-02** `store:` / `key:` ignored — fixed in #30 (also closed #12)
 - [x] **S-08** `keys:` public key empty trust set — fixed in #30
@@ -617,9 +617,18 @@ pin to commit SHAs for the release path at least. `main.yml` inherits default
 `GITHUB_TOKEN` permissions; add `permissions: contents: read`. The release job
 correctly uses OIDC trusted publishing and `environment: rubygems`.
 
-### S-20 -- Root-element `Id` registration  [code review, Info, **open**]
+### S-20 -- Root-element `Id` registration  [confirmed, Info, **fixed** (spec; no bug)]
 
-**Disposition:** still open. Spec gap; related to S-03.
+**Disposition:** closed with a spec; the suspected bug does not exist.
+`xmlSecAddIDs` registers the attributes of the node it is given as well as
+its descendants: a `Reference URI="#root-1"` pointing at the root's own `Id`
+signs, verifies under `Policy.strict`, resolves natively to element index 0
+with `reference_valid == [true]`, covers the root, and fails after tampering
+(checked on vendored xmlsec 1.3.12; CI runs the same spec against the system
+xmlsec builds). Specs: "root-element Id (S-20)" in
+`spec/hanko_xml/id_resolution_spec.rb`.
+
+Original report:
 
 `register_id_attributes(root, …)` calls `xmlSecAddIDs(doc, root, ids)`. In
 xmlsec, `xmlSecAddIDs` walks the *children* of `cur`, so an `Id` on the root
@@ -640,9 +649,9 @@ accept path Strings explicitly.
 
 ## Suggested remediation order
 
-S-01 through S-19 are done. Remaining, in order:
+S-01 through S-20 are done. Remaining, in order:
 
-1. S-20, S-21 -- hygiene.
+1. S-21 -- hygiene.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /
