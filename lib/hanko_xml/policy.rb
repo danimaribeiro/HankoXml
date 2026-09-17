@@ -210,6 +210,15 @@ module HankoXml
     # +max_document_size+. Separate from #enforce! so Signer/Verifier can
     # apply it before parsing and before any native call -- #enforce! needs
     # Native.inspect_sig output, which already means a native parse (S-12).
+    # Raises HankoXml::PolicyError unless +uri_or_name+ is in this policy's
+    # allowlist for +slot+ (:signature, :digest, :canonicalization,
+    # :transform). For algorithms named outside <SignedInfo>, such as a XAdES
+    # certificate digest.
+    def enforce_algorithm!(slot, uri_or_name)
+      error = algorithm_violation(slot, uri_or_name)
+      raise error if error
+    end
+
     def enforce_document_size!(bytesize)
       error = document_size_violation(bytesize)
       raise error if error

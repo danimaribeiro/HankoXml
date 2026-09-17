@@ -29,3 +29,6 @@ docs/public/api/
 # than ext/hanko_xml/vendor/ so it cannot collide with the build/vendor.rs
 # module path.)
 /tmp/vendor-cache/
+
+# Untested EU DSS XAdES vectors, fetched by `rake interop:dss` (see spec/interop/xades/README.md).
+/spec/interop/xades/dss/corpus/

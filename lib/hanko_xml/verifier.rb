@@ -282,7 +282,7 @@ module HankoXml
       end
 
       # 3. Resolve trust material and call Native.verify
-      trusted, untrusted, trust_error = collect_trust(sig_info)
+      trusted, untrusted, trust_error, store_leaf = collect_trust(sig_info)
       return failed_verification(doc, sig_node, [trust_error], signature_info: sig_info) if trust_error
 
       # min_rsa_key_bits / min_ec_key_bits (S-06): only the actually
@@ -359,7 +359,8 @@ module HankoXml
         id_attributes: @id_attributes,
         resolver: @resolver,
         reference_element_indexes: verify_result[:reference_element_indexes],
-        reference_valid: verify_result[:reference_valid]
+        reference_valid: verify_result[:reference_valid],
+        certificate: valid ? verifying_certificate(trusted, verify_result[:trusted_index], store_leaf) : nil
       )
     end
     # rubocop:enable Metrics/CyclomaticComplexity, Metrics/AbcSize
@@ -441,8 +442,9 @@ module HankoXml
       # xmlsec treats trusted cert PEMs as CA anchors and still X509-verifies
       # every KeyInfo cert. A CA:FALSE leaf therefore cannot be "pinned" that
       # way. After Ruby has enforced chain policy, pin the leaf public key as
-      # signKey (same path as `key:`) so KeyInfo is ignored.
-      [[leaf.public_key.to_pem], [], nil]
+      # signKey (same path as `key:`) so KeyInfo is ignored. The leaf itself is
+      # what trust resolved to, for Verification#certificate.
+      [[leaf.public_key.to_pem], [], nil, leaf]
     end
 
     def load_embedded_certificates(sig_info)
@@ -553,6 +555,18 @@ module HankoXml
 
     def issued_by?(cert, issuer)
       !cert.equal?(issuer) && cert.issuer.to_der == issuer.subject.to_der
+    end
+
+    # API_CONTRACT.md §5.4 `v.certificate`: the certificate whose key verified
+    # the signature. Native reports which trusted PEM that was; under store:
+    # it is the chain leaf Ruby validated. nil for a bare key (key:, or a
+    # public key in keys:).
+    def verifying_certificate(trusted, trusted_index, store_leaf)
+      return store_leaf if store_leaf
+      return nil if trusted_index.nil?
+
+      pem = trusted[trusted_index]
+      pem && certificate_pem?(pem) ? OpenSSL::X509::Certificate.new(pem) : nil
     end
 
     def certificate_pem?(pem)

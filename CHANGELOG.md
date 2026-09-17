@@ -10,6 +10,15 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Added
 
+- **#58:** `HankoXml::Xades::Verifier`, XAdES-B verification. After XML-DSig
+  verification, it checks that the SignedProperties xmlsec digested is the one in
+  the signature's single `QualifyingProperties` (so a decoy is never read), and
+  that `SigningCertificate`/`SigningCertificateV2` names the certificate that
+  verified. It returns `Xades::Verification#signed_properties`; failures are
+  `HankoXml::XadesError`. `Policy#enforce_algorithm!` is public. Real-world
+  XAdES samples (from SignXML) and the EU DSS signature-wrapping attacks are pinned in
+  `spec/interop/`, and `rake interop:dss` fetches the rest of the DSS corpus.
+
 - **#57:** `HankoXml::Xades::Signer`, XAdES-B (baseline) signing: a
   `<xades:QualifyingProperties>` object with `SigningTime`, `SigningCertificateV2`
   and optional `SignaturePolicyIdentifier`, `SignerRoleV2` and `DataObjectFormat`,
@@ -77,6 +86,11 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   calls to the wrong library.
 
 ### Fixed
+
+- `Verification#certificate` was always `nil`, although API_CONTRACT.md §5.4
+  documents it. It now names the certificate whose key verified: the pinned or
+  matching listed certificate, or the `store:` chain leaf. `Native.verify`
+  reports the index of the trusted PEM that verified as `:trusted_index`.
 
 - **#74:** `Verifier`'s `referenced_documents:` was documented but never used,
   so no external reference could verify. It is now the only source an external

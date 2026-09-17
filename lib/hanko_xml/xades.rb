@@ -11,6 +11,13 @@ module HankoXml
   # Reference. See API_CONTRACT.md §12 and docs/src/content/guide/comparison-signxml.md.
   module Xades
     NS = "http://uri.etsi.org/01903/v1.3.2#"
+
+    # RFC 5035 IssuerSerial: issuer as GeneralNames { directoryName [4] Name }.
+    def self.issuer_serial_der(certificate)
+      name = OpenSSL::ASN1.decode(certificate.issuer.to_der)
+      general_names = OpenSSL::ASN1::Sequence([OpenSSL::ASN1::ASN1Data.new([name], 4, :CONTEXT_SPECIFIC)])
+      OpenSSL::ASN1::Sequence([general_names, OpenSSL::ASN1::Integer(certificate.serial)]).to_der
+    end
     # The Reference Type that marks the Reference over <xades:SignedProperties>.
     SIGNED_PROPERTIES_TYPE = "http://uri.etsi.org/01903#SignedProperties"
 
@@ -37,6 +44,17 @@ module HankoXml
           raise HankoXml::ConfigurationError, "data_object_format: needs a mime_type:, description: or encoding:"
         end
 
+        super
+        freeze
+      end
+    end
+
+    # The authenticated view of a verified <xades:SignedProperties>
+    # (Xades::Verification#signed_properties). Unsigned properties
+    # (timestamps, validation data) are never read.
+    SignedProperties = Struct.new(:signing_time, :signature_policy, :claimed_roles, :data_object_formats,
+                                  keyword_init: true) do
+      def initialize(**)
         super
         freeze
       end
@@ -191,11 +209,8 @@ module HankoXml
         xades(cert, "IssuerSerialV2").content = [issuer_serial_der(certificate)].pack("m0")
       end
 
-      # RFC 5035 IssuerSerial: issuer as GeneralNames { directoryName [4] Name }.
       def issuer_serial_der(certificate)
-        name = OpenSSL::ASN1.decode(certificate.issuer.to_der)
-        general_names = OpenSSL::ASN1::Sequence([OpenSSL::ASN1::ASN1Data.new([name], 4, :CONTEXT_SPECIFIC)])
-        OpenSSL::ASN1::Sequence([general_names, OpenSSL::ASN1::Integer(certificate.serial)]).to_der
+        Xades.issuer_serial_der(certificate)
       end
 
       def build_signature_policy(parent)
@@ -248,3 +263,5 @@ module HankoXml
     end
   end
 end
+
+require_relative "xades/verifier"

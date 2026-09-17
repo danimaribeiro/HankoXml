@@ -93,6 +93,27 @@ RSpec.describe HankoXml::Verifier do
     end
   end
 
+  # API_CONTRACT.md §5.4: the certificate whose key verified.
+  describe "Verification#certificate" do
+    let(:signed) { HankoXml.sign(unsigned_xml, key: signer_key_pem, certificate: signer_cert_pem).to_s }
+    let(:signer_cert) { OpenSSL::X509::Certificate.new(signer_cert_pem) }
+
+    it "is the pinned certificate, or the one in certificates: that verified" do
+      expect(HankoXml.verify(signed, certificate: signer_cert_pem).certificate).to eq(signer_cert)
+      expect(HankoXml.verify(signed, certificates: [other_cert_pem, signer_cert_pem]).certificate).to eq(signer_cert)
+    end
+
+    it "is the chain leaf under store:" do
+      store = OpenSSL::X509::Store.new.tap { |s| s.add_cert(signer_cert) }
+      expect(HankoXml.verify(signed, store: store).certificate).to eq(signer_cert)
+    end
+
+    it "is nil for a bare key, or when nothing verified" do
+      expect(HankoXml.verify(signed, key: signer_cert.public_key).certificate).to be_nil
+      expect(HankoXml.verify(signed, certificate: other_cert_pem).certificate).to be_nil
+    end
+  end
+
   describe "key:" do
     let(:signer_key) { OpenSSL::PKey::RSA.new(signer_key_pem) }
     let(:other_key) { OpenSSL::PKey::RSA.new(fixtures.join("other.key").read) }

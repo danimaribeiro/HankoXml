@@ -516,7 +516,8 @@ v.digest_methods          # => [:sha256]
 v.signed_info             # => HankoXml::SignedInfo (frozen value object)
 
 # --- Who signed -----------------------------------------------------------
-v.certificate        # => OpenSSL::X509::Certificate that trust resolved to, or nil
+v.certificate        # => OpenSSL::X509::Certificate whose key verified (the pinned or listed
+                     #    certificate, or the store: chain leaf), or nil (a bare key, or invalid)
 v.certificate_chain  # => Array<OpenSSL::X509::Certificate> as validated
 v.key_info           # => HankoXml::KeyInfo::Parsed — what the document *claimed*
 
@@ -996,9 +997,37 @@ each of the Signer's own references gets an `Id` (if it had none), which its
 
 It always builds a new `<Signature>` (`template:` other than `:build` raises
 `ConfigurationError`). The output conforms to the ETSI XAdES 1.3.2 schema and
-verifies with a plain `Verifier` under `Policy.strict`. Checking the
-signed properties on verification (the certificate binding) is #58, and
-timestamps and validation data (XAdES-T/LT/LTA) are #81 and #82.
+verifies with a plain `Verifier` under `Policy.strict`. Timestamps and
+validation data (XAdES-T/LT/LTA) are #81 and #82.
+
+#### `HankoXml::Xades::Verifier`
+
+A `Verifier` (every keyword, except that trust must be `certificate:`,
+`certificates:` or `store:`, since the signed properties commit to a
+certificate), plus an optional `signature_policy:` the signed
+`SignaturePolicyIdentifier` must equal. `#verify` returns a
+`HankoXml::Xades::Verification`, a `Verification` whose `#valid?`, `#signed?` and
+`#at_signed` also fail closed on the XAdES checks, and whose
+`#signed_properties` is a frozen
+`Xades::SignedProperties(signing_time:, signature_policy:, claimed_roles:, data_object_formats:)`
+(`nil` unless valid).
+
+After the XML-DSig signature verifies (#58):
+
+1. `<SignedInfo>` has exactly one Reference of `Type` SignedProperties, and it
+   verified.
+2. The element xmlsec resolved and digested for it is the `<xades:SignedProperties>`
+   inside the signature's single `<xades:QualifyingProperties>`, whose `Target`
+   is `#` + the `<Signature>` Id. A decoy SignedProperties where an XPath
+   lookup would find it is never read (XAdES signature wrapping).
+3. `SigningCertificateV2` or legacy `SigningCertificate` lists a `CertDigest` of
+   `v.certificate`, the certificate that verified, with a digest method the
+   policy allows. `IssuerSerialV2` must decode to its issuer and serial;
+   a v1 `IssuerSerial` must carry its serial (its DN string is not compared).
+4. `SigningTime`, when present, is an `xs:dateTime`.
+
+A failure is a `HankoXml::XadesError < VerificationError` in `#errors`. Unsigned
+properties are never read. Only the XAdES 1.3.2 namespace is recognised.
 
 ### 5.10 Errors
 

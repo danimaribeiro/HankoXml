@@ -225,6 +225,13 @@ fn native_verify(
             hash.aset(ruby.to_symbol("reference_valid"), reference_valid)
                 .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
 
+            let trusted_index = match result.trusted_index {
+                Some(i) => ruby.integer_from_i64(i as i64).as_value(),
+                None => ruby.qnil().as_value(),
+            };
+            hash.aset(ruby.to_symbol("trusted_index"), trusted_index)
+                .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
+
             Ok(hash)
         }
         Err(err) => Err(dsig_error(ruby, err)),
