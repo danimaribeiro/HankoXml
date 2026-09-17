@@ -545,6 +545,7 @@ impl<'mngr> DsigCtx<'mngr> {
         }
         ctx.restrict_reference_uris_to_same_document();
         ctx.resolve_bare_fragments_by_id();
+        ctx.ignore_manifests();
         ctx.restrict_transforms()?;
         Ok(ctx)
     }
@@ -563,6 +564,22 @@ impl<'mngr> DsigCtx<'mngr> {
         // initialized. Same ABI caveat as the signKey write.
         unsafe {
             (*self.ptr).flags |= sys::XMLSEC_DSIG_FLAGS_USE_VISA3D_HACK;
+        }
+    }
+
+    /// By default xmlsec also resolves and digests the references inside
+    /// every `<Object><Manifest>`, whose URIs, transforms and digest methods
+    /// never reach Ruby Policy, which reads only `<SignedInfo>` (#75). XML-DSig
+    /// core validation leaves Manifest references to the application, and
+    /// this library never treats their targets as signed: a `<Reference>` to
+    /// the `<Manifest>` still digests the Manifest element itself, and nothing
+    /// it points to.
+    fn ignore_manifests(&mut self) {
+        // SAFETY: self.ptr is a live xmlSecDSigCtx we exclusively own; flags
+        // is application-settable and read while processing the Signature.
+        // Same ABI caveat as the signKey write.
+        unsafe {
+            (*self.ptr).flags |= sys::XMLSEC_DSIG_FLAGS_IGNORE_MANIFESTS;
         }
     }
 

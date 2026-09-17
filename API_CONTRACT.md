@@ -580,6 +580,13 @@ an extra line gets skipped, and one that saves a line gets adopted.
 enveloped whole-document reference, `#signed?` is true for every node except
 those under `<ds:Signature>`.
 
+Only `<SignedInfo>` references count. The references inside an
+`<Object><Manifest>` are neither resolved nor digest-checked (xmlsec's
+`XMLSEC_DSIG_FLAGS_IGNORE_MANIFESTS`, #75), because Policy never inspects them.
+XML-DSig core validation leaves them to the application. A `<SignedInfo>`
+reference to the `<Manifest>` signs the Manifest element, including the digests
+it lists, and not what those references point to.
+
 Metadata accessors (`signature_method`, `references`, …) are populated on both
 valid and invalid verifications, because "what did it claim" is exactly what you
 want when debugging a failure. Everything on a `Verification` whose `valid?` is
