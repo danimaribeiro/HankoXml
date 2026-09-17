@@ -193,10 +193,17 @@ module HankoXml
       when Integer
         [sigs[signature_option], signature_option]
       when String
-        # XPath
-        node = sigs.document.at_xpath(signature_option)
-        index = sigs.index(node)
-        [node, index]
+        # XPath. It must pick exactly one <ds:Signature>: taking the first of
+        # several matches would be `:first` again under another name (S-11, #95).
+        namespaces = HankoXml::NS.merge(@namespaces.transform_keys(&:to_s))
+        matches = sigs.document.xpath(signature_option, namespaces).to_a & sigs.to_a
+        if matches.size > 1
+          raise HankoXml::MultipleSignatures,
+                "signature: XPath must select exactly 1 <Signature>, selected #{matches.size}"
+        end
+
+        node = matches.first
+        [node, node && sigs.index(node)]
       else
         raise HankoXml::ConfigurationError, "Invalid signature: option"
       end

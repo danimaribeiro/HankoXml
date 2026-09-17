@@ -67,6 +67,46 @@ RSpec.describe "S-11 multiple signatures" do
     end
   end
 
+  # #95: API_CONTRACT §5.3. A String `signature:` is an XPath that must pick
+  # exactly one <ds:Signature>.
+  describe "signature: XPath" do
+    def verifier(xpath, **kwargs)
+      HankoXml::Verifier.new(certificate: signer_cert_pem, signature: xpath, policy: fragment_policy, **kwargs)
+    end
+
+    it "selects the one signature it matches, with the ds: prefix already bound" do
+      doc = two_signature_doc
+      result = verifier("(//ds:Signature)[2]").verify(doc)
+
+      expect(result.valid?).to be true
+      expect(result.signature_node).to eq(doc.xpath(".//ds:Signature", HankoXml::NS)[1])
+      expect(result).to be_signed(doc.at_xpath("//*[@Id='b']"))
+      expect(result).not_to be_signed(doc.at_xpath("//*[@Id='a']"))
+    end
+
+    it "raises MultipleSignatures when it matches more than one, instead of taking the first" do
+      expect { verifier("//ds:Signature").verify(two_signature_doc) }
+        .to raise_error(HankoXml::MultipleSignatures, /selected 2/)
+    end
+
+    it "honors the caller's namespaces: map" do
+      doc = two_signature_doc
+      result = verifier("//ex:Envelope/sig:Signature[1]",
+                        namespaces: { "ex" => "urn:hanko_xml:example", "sig" => HankoXml::NS["ds"] }).verify(doc)
+
+      expect(result.valid?).to be true
+      expect(result.signature_node).to eq(doc.xpath(".//ds:Signature", HankoXml::NS)[0])
+    end
+
+    it "reports SignatureMissing when it matches nothing, or something that is not a <Signature>" do
+      ["//ds:Signature[99]", "//*[@Id='a']"].each do |xpath|
+        result = verifier(xpath).verify(two_signature_doc)
+        expect(result.valid?).to be false
+        expect(result.errors).to all(be_a(HankoXml::SignatureMissing))
+      end
+    end
+  end
+
   describe "M3/M4: selecting a specific signature" do
     it "signature: 1 (Integer, document order) selects the second signature" do
       doc = two_signature_doc
