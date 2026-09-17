@@ -55,6 +55,7 @@ HankoXml::Policy.new(
   # --- keys ---------------------------------------------------------------
   min_rsa_key_bits:          2048,
   min_ec_key_bits:           256,
+  min_dsa_key_bits:          2048,
   allow_hmac:                false,
   check_certificate_validity: true,  # notBefore / notAfter against Time.now
   clock_skew:                60,     # seconds of tolerance for the above
