@@ -60,6 +60,12 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **#52:** Loading an encrypted private key without `password:` made OpenSSL
+  prompt `Enter PEM pass phrase:` on the controlling terminal and block the
+  process (a server with a TTY would hang). `Key.from_pem`, `Key.from_der`,
+  `Signer.new(key:)` and `Verifier` key parsing now raise `KeyLoadError`, with
+  a hint to pass `password:`.
+
 - **#61:** The default `schema: :default` check rejected any
   `<ec:InclusiveNamespaces>` under `<CanonicalizationMethod>`, where the
   XML-DSig schema has a strict wildcard. That is the shape most SAML IdPs

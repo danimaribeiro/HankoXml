@@ -30,14 +30,31 @@ module HankoXml
             end
           else
             begin
-              ::OpenSSL::PKey.read(pem, password)
+              read_pkey(pem, password)
             rescue ::OpenSSL::PKey::PKeyError => e
-              raise HankoXml::KeyLoadError, "could not parse key PEM: #{e.message}#{path_hint(pem)}"
+              raise HankoXml::KeyLoadError,
+                    "could not parse key PEM: #{e.message}#{encrypted_hint(pem, password)}#{path_hint(pem)}"
             end
           end
 
         new(material)
       end
+
+      # OpenSSL::PKey.read with a nil password falls back to OpenSSL's
+      # default callback, which prompts "Enter PEM pass phrase:" on the
+      # controlling terminal and blocks the process until someone types.
+      # An empty String never prompts: an encrypted key just fails to load.
+      def read_pkey(material, password)
+        ::OpenSSL::PKey.read(material, password.nil? ? "" : password.to_s)
+      end
+
+      def encrypted_hint(pem, password)
+        return "" unless password.nil?
+        return "" unless pem.include?("ENCRYPTED")
+
+        ". The key is encrypted; pass password: (HankoXml::Key.from_pem(pem, password: ...))"
+      end
+      private :encrypted_hint
 
       # A String is always key material, never a filename (S-21): accepting
       # both would make "which one was meant" a guess. The hint never echoes
@@ -68,7 +85,7 @@ module HankoXml
             ::OpenSSL::X509::Certificate.new(der)
           rescue ::OpenSSL::X509::CertificateError
             begin
-              ::OpenSSL::PKey.read(der)
+              read_pkey(der, nil)
             rescue ::OpenSSL::PKey::PKeyError => e
               raise HankoXml::KeyLoadError, "could not parse DER key/certificate: #{e.message}"
             end

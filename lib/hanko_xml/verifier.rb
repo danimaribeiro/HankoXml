@@ -532,7 +532,7 @@ module HankoXml
         if certificate_pem?(pem)
           OpenSSL::X509::Certificate.new(pem)
         else
-          OpenSSL::PKey.read(pem)
+          HankoXml::Key.read_pkey(pem, nil)
         end
       rescue OpenSSL::OpenSSLError
         nil
