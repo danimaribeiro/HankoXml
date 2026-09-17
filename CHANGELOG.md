@@ -238,6 +238,14 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Changed
 
+- **#75:** Verification and signing no longer resolve the references inside an
+  `<Object><Manifest>` (xmlsec's `XMLSEC_DSIG_FLAGS_IGNORE_MANIFESTS`). Policy
+  only inspects `<SignedInfo>`, so a Manifest's URIs, transforms and digest
+  methods reached xmlsec unchecked. Only the native allowlists stood in the way,
+  and a digest method the policy forbids was still used there. A `<SignedInfo>`
+  reference to the Manifest still signs the Manifest element itself, as XML-DSig
+  core validation specifies. The phaos Manifest interop vectors now verify.
+
 - `SECURITY_REVIEW.md` is the follow-up tracker (GitHub issues could not be
   opened from the cloud agent). It records which findings PR #30 closed
   (S-02, S-08) and which S-01 closed (certificate-PEM KeyValue bypass and

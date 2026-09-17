@@ -14,8 +14,8 @@ The source is the xmlsec1 1.3.12 release tarball that the vendored build pins in
 MIT licensed (`Copyright` in that tarball), and the vectors are the W3C
 interoperability samples it redistributes. Nothing under `spec/` ships in the gem.
 
-Copied: every `signature*.xml`, each suite's readme, and the certificates the spec
-uses as trust anchors. Not copied: the `.tmpl` templates, the `c14n` intermediate
+Copied: every `signature*.xml`, each suite's readme, and the certificates and the phaos
+CRL the spec uses as trust anchors. Not copied: the `.tmpl` templates, the `c14n` intermediate
 outputs, and the external data that references point to. `referenced_documents:`
 cannot serve that data yet (#74).
 

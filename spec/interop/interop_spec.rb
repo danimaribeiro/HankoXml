@@ -81,26 +81,23 @@ module InteropVectors
                                                                    RETRIEVAL_METHOD],
       "signature-rsa-detached-xslt-transform-bad-retrieval-method" => [[:certificate, "certs/rsa-cert.der"],
                                                                        RETRIEVAL_METHOD],
-      # #75: SignedInfo signs a <Manifest> whose own references are external
-      # (and some carry XPath or XSLT). Policy never sees them; xmlsec's
-      # same-document URI restriction (S-04) refuses them. #74 alone would not
-      # make these pass.
-      "signature-dsa-manifest" => [[:certificate, "certs/dsa-cert.der"], [:native, /document\.xml/]],
-      "signature-rsa-manifest" => [[:certificate, "certs/rsa-cert.der"], [:native, /document\.xml/]],
-      "signature-rsa-manifest-x509-data-cert" => [[:certificate, "certs/rsa-cert.der"], [:native, /document\.xml/]],
-      "signature-rsa-manifest-x509-data-cert-chain" => [[:certificate, "certs/rsa-cert.der"],
-                                                        [:native, /document\.xml/]],
-      "signature-rsa-manifest-x509-data-issuer-serial" => [[:certificate, "certs/rsa-cert.der"],
-                                                           [:native, /document\.xml/]],
-      "signature-rsa-manifest-x509-data-ski" => [[:certificate, "certs/rsa-cert.der"], [:native, /document\.xml/]],
-      "signature-rsa-manifest-x509-data-subject-name" => [[:certificate, "certs/rsa-cert.der"],
-                                                          [:native, /document\.xml/]],
-      # xmlsec expects this one to fail: the CRL revokes the signer.
-      "signature-rsa-~x509-data-crl" => [[:certificate, "certs/rsa-cert.der"], [:native, /document\.xml/]],
-      "signature-rsa-detached-b64-transform" => [[:certificate, "certs/rsa-cert.der"], [:native, /document\.b64/]],
-      "signature-rsa-detached-xpath-transform" => [[:certificate, "certs/rsa-cert.der"], [:native, /document\.xml/]],
-      "signature-rsa-detached-xslt-transform" => [[:certificate, "certs/rsa-cert.der"],
-                                                  [:native, /document-stylesheet\.xml/]]
+      # SignedInfo signs a <Manifest> whose own references are external (and
+      # some carry XPath or XSLT). xmlsec does not resolve those (#75): the
+      # Manifest element is what is signed, as XML-DSig core validation says.
+      "signature-dsa-manifest" => [[:certificate, "certs/dsa-cert.der"], :valid],
+      "signature-rsa-manifest" => [[:certificate, "certs/rsa-cert.der"], :valid],
+      "signature-rsa-manifest-x509-data-cert" => [[:certificate, "certs/rsa-cert.der"], :valid],
+      "signature-rsa-manifest-x509-data-cert-chain" => [[:certificate, "certs/rsa-cert.der"], :valid],
+      "signature-rsa-manifest-x509-data-issuer-serial" => [[:certificate, "certs/rsa-cert.der"], :valid],
+      "signature-rsa-manifest-x509-data-ski" => [[:certificate, "certs/rsa-cert.der"], :valid],
+      "signature-rsa-manifest-x509-data-subject-name" => [[:certificate, "certs/rsa-cert.der"], :valid],
+      "signature-rsa-detached-b64-transform" => [[:certificate, "certs/rsa-cert.der"], :valid],
+      "signature-rsa-detached-xpath-transform" => [[:certificate, "certs/rsa-cert.der"], :valid],
+      "signature-rsa-detached-xslt-transform" => [[:certificate, "certs/rsa-cert.der"], :valid],
+      # xmlsec fails this one because the CRL in its <KeyInfo> revokes the
+      # signer. The document cannot revoke (or vouch for) anything here
+      # (S-01); a CRL the caller puts in store: does, below.
+      "signature-rsa-~x509-data-crl" => [[:certificate, "certs/rsa-cert.der"], :valid]
     }
   }.freeze
 
@@ -187,6 +184,37 @@ RSpec.describe "Interop vectors (#62)" do
                                       verification_time: InteropVectors::VERIFICATION_TIME[suite]).verify(xml)
 
       expect(result.valid?).to be true
+    end
+  end
+
+  describe "#75 Manifest references" do
+    let(:suite) { InteropVectors::PHAOS }
+    let(:xml) { InteropVectors::ROOT.join(suite, "signature-rsa-manifest.xml").binread }
+
+    def verify(xml, **trust)
+      trust = { certificate: InteropVectors.certificate(suite, "certs/rsa-cert.der") } if trust.empty?
+      HankoXml::Verifier.new(**trust, policy: HankoXml::Policy.interop,
+                                      verification_time: InteropVectors::VERIFICATION_TIME[suite]).verify(xml)
+    end
+
+    it "still signs the Manifest element: editing a digest inside it breaks the signature" do
+      digest = xml[%r{<dsig:Manifest.*?<dsig:DigestValue>([^<]+)</dsig:DigestValue>}m, 1]
+      tampered = xml.sub(digest, digest.reverse)
+
+      expect(verify(xml).valid?).to be true
+      expect(verify(tampered).valid?).to be false
+    end
+
+    it "revokes the signer through a CRL in store:, not the one in the document" do
+      ca = InteropVectors.certificate(suite, "certs/rsa-ca-cert.der")
+      crl = OpenSSL::X509::CRL.new(InteropVectors::ROOT.join(suite, "certs/crl.der").binread)
+      store = OpenSSL::X509::Store.new.tap { |s| s.add_cert(ca) }
+      crl_xml = InteropVectors::ROOT.join(suite, "signature-rsa-~x509-data-crl.xml").binread
+      expect(verify(crl_xml, store: store).valid?).to be true
+
+      store.add_crl(crl)
+      store.flags = OpenSSL::X509::V_FLAG_CRL_CHECK
+      expect(verify(crl_xml, store: store).errors.first.message).to match(/revoked/)
     end
   end
 
