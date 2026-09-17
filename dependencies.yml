@@ -15,7 +15,10 @@
 # build verifies SHA256 before extracting and fails hard on a mismatch.
 #
 # Tarballs are cached in tmp/vendor-cache/ (gitignored); override with
-# HANKO_XML_VENDOR_CACHE to build offline or from a mirror.
+# HANKO_XML_VENDOR_CACHE to build offline or from a mirror. The cache is
+# verified against these checksums on every build; the compiled output in
+# tmp/vendor-build/ is not, and is a trusted input (VENDORING.md, "Trusted
+# build inputs").
 #
 # To bump: change version + sha256 together, run
 # `HANKO_XML_VENDOR=1 bundle exec rake compile spec`, and confirm

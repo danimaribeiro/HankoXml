@@ -46,7 +46,9 @@ pub fn build() -> crate::Headers {
     };
 
     // The stamp is written only after all three installs succeed, so an
-    // interrupted build is never mistaken for a complete one.
+    // interrupted build is never mistaken for a complete one. It also skips
+    // checksum verification entirely, so the prefix is a trusted input: see
+    // "Trusted build inputs" in VENDORING.md (S-18).
     let stamp = prefix.join(".stamp-complete");
     if stamp.exists() {
         eprintln!("hanko_xml: reusing vendored build at {}", prefix.display());
@@ -199,6 +201,8 @@ fn manifest_root() -> PathBuf {
     PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set")).join("../..")
 }
 
+/// Tarball cache. Not trusted: every file in it is SHA-256 verified before
+/// extraction (see `fetch_and_extract`), so it may be shared or mirrored.
 fn cache_dir() -> PathBuf {
     match env::var_os("HANKO_XML_VENDOR_CACHE") {
         Some(dir) => PathBuf::from(dir),

@@ -55,7 +55,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-15 | **Low** | Key | `Key#dispose!` claims in-place zeroization but only nils the reference; `Key#private_key?` is true for public-only `PKey`s; PEM-vs-cert detection is a substring heuristic | **fixed** | code review |
 | S-16 | **Low** | Algorithms | `Algorithms.register(..., replace: true)` is process-global and can re-point a Symbol used by `Policy.strict` (e.g. `:sha256`) at another URI, silently changing what "strict" means | **fixed** | code review |
 | S-17 | **Low** | SignedDocument | `#document` exposes the mutable Nokogiri document; `FrozenSignatureError` exists but is never raised | **fixed** | code review |
-| S-18 | **Low** | Build | `build/vendor.rs` shells out to `curl`/`tar`/`configure`/`make` and hand-parses `dependencies.yml`; SHA-256 pinning is good, but `HANKO_XML_VENDOR_CACHE` and `tmp/vendor-build/.stamp-complete` are trusted build-time inputs | **open** | code review |
+| S-18 | **Low** | Build | `build/vendor.rs` shells out to `curl`/`tar`/`configure`/`make` and hand-parses `dependencies.yml`; SHA-256 pinning is good, but `HANKO_XML_VENDOR_CACHE` and `tmp/vendor-build/.stamp-complete` are trusted build-time inputs | **fixed** (documented) | code review |
 | S-19 | **Low** | CI | Actions pinned by major tag, not commit SHA; `main.yml` has no top-level `permissions:` | **open** | code review |
 | S-20 | **Info** | Native | Whether the root element's own `Id` is registered by `xmlSecAddIDs(doc, root, ids)` depends on xmlsec walking `cur` or `cur->children`; `URI="#rootId"` is untested | **open** | code review |
 | S-21 | **Info** | Docs | README passes file *paths* as `key:`/`certificate:` Strings (`key: "private.pem"`); `Key.coerce(String)` treats them as PEM and raises `KeyLoadError`. Fails closed, but misleading | **open** | code review, re-checked |
@@ -94,7 +94,7 @@ trust source → `ConfigurationError`).
 - [x] **S-15** (#45) `Key#dispose!` / `private_key?` / PEM heuristic
 - [x] **S-16** (#46) freeze or snapshot `Algorithms.register`
 - [x] **S-17** (#47) `SignedDocument` mutability / unused `FrozenSignatureError`
-- [ ] **S-18** (#48) document vendored cache/stamp as trusted inputs
+- [x] **S-18** (#48) document vendored cache/stamp as trusted inputs
 - [ ] **S-19** (#49) pin Actions to SHAs; `permissions:` on `main.yml`
 - [ ] **S-20** (#50) spec (and fix if needed) root-element `Id` registration
 - [ ] **S-21** (#51) README path Strings vs PEM `Key.coerce`
@@ -571,11 +571,21 @@ is never raised. `#valid?` only accepts trust keywords and cannot pass
 `policy:`/`schema:`/`signature:`, so callers get strict-policy verification
 with no way to tighten or loosen from that entry point.
 
-### S-18 -- Vendored build trust  [code review, Low, **open**]
+### S-18 -- Vendored build trust  [code review, Low, **fixed** (documented)]
 
-**Disposition:** still open as a threat-model / CI residual, not a runtime
-bypass. SHA-256 pinning stays; document that cache and stamp are trusted
-inputs. Dependabot PR #29 (bindgen 0.73) is still open.
+**Disposition:** closed as documentation, which is what the entry asked for.
+`VENDORING.md` now has a "Trusted build inputs" section: `dependencies.yml` is
+the root of trust; the tarball cache (`tmp/vendor-cache/` or
+`HANKO_XML_VENDOR_CACHE`) is untrusted because it is re-verified every build;
+the build prefix with `.stamp-complete` is trusted and unverified, so it must
+never be restored from a cache less-trusted jobs can write; download hosts
+and redirects are untrusted; extraction and `configure`/`make` trust the
+pinned upstream release; the toolchain is trusted. `vendor.rs` and
+`dependencies.yml` point at that section. No code hardening
+(`--no-same-owner`, curl protocol limits) was added: with the hash checked
+before extraction it would not change what is trusted.
+
+Original report:
 
 Good: SHA-256 of every tarball is verified before extraction, every time.
 Watch-items: `HANKO_XML_VENDOR_CACHE` and `tmp/vendor-build/…/.stamp-complete`
@@ -620,9 +630,9 @@ accept path Strings explicitly.
 
 ## Suggested remediation order
 
-S-01 through S-17 are done. Remaining, in order:
+S-01 through S-18 are done. Remaining, in order:
 
-1. S-18 through S-21 -- hygiene.
+1. S-19 through S-21 -- hygiene.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /

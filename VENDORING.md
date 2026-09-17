@@ -352,6 +352,34 @@ runs. Lower urgency than it sounds: unlike ELF/Mach-O, a PE DLL does not export
 static-archive members by default in the first place, so the failure mode this
 check guards against is differently shaped on Windows, not simply unguarded.
 
+## Trusted build inputs
+
+The SHA-256 pins protect the *download*. They do not protect everything a
+vendored build reads, and the rest has to be treated as trusted: whoever can
+write to it chooses the OpenSSL, libxml2 and xmlsec1 compiled into the gem.
+
+| Input | Trust | Why |
+|---|---|---|
+| `dependencies.yml` | **Root of trust** | Its `sha256` fields decide which bytes are accepted. Changing one is trusting a new release; verify it upstream first. |
+| Tarball cache: `tmp/vendor-cache/`, or `HANKO_XML_VENDOR_CACHE` | Untrusted, verified | Every tarball, cached or fresh, is hashed and compared before extraction on every build; a mismatch deletes it and fails the build. A shared or mirrored cache is safe. |
+| Build prefix: `tmp/vendor-build/<target>/<versions>/`, with `.stamp-complete` | **Trusted, not verified** | If the stamp exists, `vendor.rs` skips download, verification, extraction *and* compilation, and links whatever headers and static libraries are in that prefix. Nothing hashes the installed output. |
+| Download hosts (`url`, `mirror`), `curl -L` redirects | Untrusted | Integrity comes only from the SHA-256 check, never from TLS or from which host answered. |
+| Tarball contents (`tar -xf`, then `configure` / `make`) | Trusted once the hash matches | Extraction has no `--no-same-owner` or path checks beyond tar's defaults, and the build runs upstream's scripts. This is trusting the pinned upstream release, the same as linking it. |
+| Toolchain and environment (`CC`, `AR`, `CFLAGS`, `PATH`, `TARGET`, the rb-sys-dock image) | Trusted | They compile the code. |
+
+Rules that follow:
+
+- Only the account running the build should be able to write to
+  `tmp/vendor-build/`. Never restore it from a cache that less-trusted jobs can
+  write (for example a CI cache shared with pull requests from forks). CI does
+  not cache it today, and release builds start from a clean checkout.
+- To force a full rebuild from verified sources, delete
+  `tmp/vendor-build/<target>/` (or just its `.stamp-complete`).
+- `HANKO_XML_VENDOR_CACHE` can point anywhere, including a shared or read-only
+  mirror: a wrong or tampered file fails the build instead of being used. It
+  must be writable if a tarball is missing, because a failed checksum deletes
+  the file.
+
 ## Files
 
 | File | Change |
