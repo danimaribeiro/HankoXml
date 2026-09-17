@@ -585,7 +585,9 @@ Coercion is uniform, and applies to `key:`, `certificate:`, `certificates:`.
 `key:` accepts:
 
 - `OpenSSL::PKey::PKey` (RSA, EC, DSA) — used directly
-- a `String` of PEM (encrypted PEM requires `key_password:`)
+- a `String` of PEM (encrypted PEM requires `key_password:`). A `String` is
+  always content, never a filename: `key: "private.pem"` raises `KeyLoadError`
+  with a hint to pass `Pathname`
 - a `Pathname` / `File` / anything responding to `#to_path` — read from disk
 - `HankoXml::Key` — the explicit wrapper
 

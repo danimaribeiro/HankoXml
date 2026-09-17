@@ -32,12 +32,23 @@ module HankoXml
             begin
               ::OpenSSL::PKey.read(pem, password)
             rescue ::OpenSSL::PKey::PKeyError => e
-              raise HankoXml::KeyLoadError, "could not parse key PEM: #{e.message}"
+              raise HankoXml::KeyLoadError, "could not parse key PEM: #{e.message}#{path_hint(pem)}"
             end
           end
 
         new(material)
       end
+
+      # A String is always key material, never a filename (S-21): accepting
+      # both would make "which one was meant" a guess. The hint never echoes
+      # the input, which may be (malformed) key material.
+      def path_hint(pem)
+        return "" if pem.include?("-----BEGIN")
+
+        ". A String is read as PEM/DER content, not a file path; to load a file, pass " \
+          "Pathname.new(path) or use HankoXml::Key.from_file(path)"
+      end
+      private :path_hint
 
       def certificate_pem?(pem)
         labels = pem.scan(PEM_LABEL).flatten

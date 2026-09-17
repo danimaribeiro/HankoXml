@@ -58,7 +58,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-18 | **Low** | Build | `build/vendor.rs` shells out to `curl`/`tar`/`configure`/`make` and hand-parses `dependencies.yml`; SHA-256 pinning is good, but `HANKO_XML_VENDOR_CACHE` and `tmp/vendor-build/.stamp-complete` are trusted build-time inputs | **fixed** (documented) | code review |
 | S-19 | **Low** | CI | Actions pinned by major tag, not commit SHA; `main.yml` has no top-level `permissions:` | **fixed** | code review |
 | S-20 | **Info** | Native | Whether the root element's own `Id` is registered by `xmlSecAddIDs(doc, root, ids)` depends on xmlsec walking `cur` or `cur->children`; `URI="#rootId"` is untested | **fixed** (spec; no bug) | confirmed |
-| S-21 | **Info** | Docs | README passes file *paths* as `key:`/`certificate:` Strings (`key: "private.pem"`); `Key.coerce(String)` treats them as PEM and raises `KeyLoadError`. Fails closed, but misleading | **open** | code review, re-checked |
+| S-21 | **Info** | Docs | README passes file *paths* as `key:`/`certificate:` Strings (`key: "private.pem"`); `Key.coerce(String)` treats them as PEM and raises `KeyLoadError`. Fails closed, but misleading | **fixed** | code review, re-checked |
 
 What is done well (so the fixing agent does not undo it): PEM-only FFI
 boundary with every Ruby argument copied before the native call; RAII wrappers
@@ -97,7 +97,7 @@ trust source → `ConfigurationError`).
 - [x] **S-18** (#48) document vendored cache/stamp as trusted inputs
 - [x] **S-19** (#49) pin Actions to SHAs; `permissions:` on `main.yml`
 - [x] **S-20** (#50) spec (and fix if needed) root-element `Id` registration
-- [ ] **S-21** (#51) README path Strings vs PEM `Key.coerce`
+- [x] **S-21** (#51) README path Strings vs PEM `Key.coerce`
 - [x] **S-02** `store:` / `key:` ignored — fixed in #30 (also closed #12)
 - [x] **S-08** `keys:` public key empty trust set — fixed in #30
 
@@ -635,10 +635,18 @@ xmlsec, `xmlSecAddIDs` walks the *children* of `cur`, so an `Id` on the root
 element itself may not be registered and `URI="#rootId"` may fail natively
 while Ruby's `//*` XPath resolves it. Needs a spec either way.
 
-### S-21 -- README examples fail closed  [code review, Info, **open**]
+### S-21 -- README examples fail closed  [code review, Info, **fixed**]
 
-**Disposition:** still open. Re-checked: `Key.coerce("public.crt")` raises
-`KeyLoadError`.
+**Disposition:** fixed in the docs, not by accepting path Strings: a String
+that could be either a filename or key material would make the library guess.
+README and the module API guide now pass `Pathname("private.pem")` /
+`Pathname("public.crt")` (the corrected example was run end to end); the keys
+guide and `API_CONTRACT.md` §5.6 say a String is always content. When a String
+without a `-----BEGIN` line fails to parse, `KeyLoadError` now adds a hint to
+pass `Pathname` or use `Key.from_file`, without echoing the input. Specs:
+`spec/hanko_xml/key_spec.rb`.
+
+Original report:
 
 `HankoXml.sign(xml, key: "private.pem", certificate: "public.crt")` and
 `HankoXml.verify!(xml, certificate: "public.crt")`: `Key.coerce(String)` calls
@@ -649,9 +657,7 @@ accept path Strings explicitly.
 
 ## Suggested remediation order
 
-S-01 through S-20 are done. Remaining, in order:
-
-1. S-21 -- hygiene.
+All findings S-01 through S-21 are closed.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /

@@ -36,11 +36,12 @@ unless the document already carries a `<Signature>` template.
 
 ```ruby
 require "hanko_xml"
+require "pathname"
 
 xml = File.read("signed.xml")
 
 # Raises HankoXml::VerificationError if the signature is invalid or tampered with
-result = HankoXml.verify!(xml, certificate: "public.crt")
+result = HankoXml.verify!(xml, certificate: Pathname("public.crt"))
 
 puts result.valid? # => true
 ```
@@ -49,7 +50,8 @@ puts result.valid? # => true
 
 ```ruby
 # Returns a safe `SignedDocument` wrapper without mutating the original
-signed_doc = HankoXml.sign(xml, key: "private.pem", certificate: "public.crt")
+# A String is PEM content, not a filename: pass files as Pathname (or File.read them).
+signed_doc = HankoXml.sign(xml, key: Pathname("private.pem"), certificate: Pathname("public.crt"))
 
 puts signed_doc.to_s
 ```

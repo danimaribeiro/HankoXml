@@ -34,6 +34,19 @@ RSpec.describe HankoXml::Key do
       end
     end
 
+    # S-21: README used to pass filenames as Strings.
+    it "treats a filename String as content, with a hint to use Pathname" do
+      expect { described_class.coerce("private.pem") }
+        .to raise_error(HankoXml::KeyLoadError, /not a file path.*Pathname/)
+    end
+
+    it "does not add the path hint to a malformed PEM, and never echoes the input" do
+      broken = key_pem.sub(%r{^[A-Za-z0-9+/]{20}}, "!!!!!!!!!!!!!!!!!!!!")
+      expect { described_class.from_pem(broken) }.to raise_error(HankoXml::KeyLoadError) do |error|
+        expect(error.message).not_to match(/Pathname|-----BEGIN/)
+      end
+    end
+
     it "loads a key whose surrounding text mentions CERTIFICATE" do
       key = described_class.from_pem("Bag Attributes: see CERTIFICATE below\n#{key_pem}")
       expect(key.private_key?).to be true

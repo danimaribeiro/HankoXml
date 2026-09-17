@@ -44,6 +44,10 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **S-21 / #51:** README and guide examples passed file names as Strings
+  (`key: "private.pem"`), which are parsed as PEM and raise `KeyLoadError`;
+  they now use `Pathname`. A String that fails to parse and has no
+  `-----BEGIN` line gets a hint in the `KeyLoadError` message.
 - **S-17 / #47:** `SignedDocument` now delegates read-only Nokogiri methods
   (`#at_xpath`, `#xpath`, `#root`, …) and raises `FrozenSignatureError` from
   mutators (`#add_child`, `#root=`, `#remove`, …), as `API_CONTRACT.md` §6.7
