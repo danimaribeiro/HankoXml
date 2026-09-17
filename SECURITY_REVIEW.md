@@ -53,7 +53,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-13 | **Low** | Native / Ruby | Exceptions are classified by substring (`msg.contains("key")`, `contains("parse")`); xmlsec error text (with attacker-controlled URIs/paths) is echoed verbatim into Ruby exception messages | **fixed** | confirmed |
 | S-14 | **Low** | Signer | A mismatched `key:`/`certificate:` pair is accepted at sign time; the output verifies with neither certificate | **fixed** | confirmed, re-checked |
 | S-15 | **Low** | Key | `Key#dispose!` claims in-place zeroization but only nils the reference; `Key#private_key?` is true for public-only `PKey`s; PEM-vs-cert detection is a substring heuristic | **fixed** | code review |
-| S-16 | **Low** | Algorithms | `Algorithms.register(..., replace: true)` is process-global and can re-point a Symbol used by `Policy.strict` (e.g. `:sha256`) at another URI, silently changing what "strict" means | **open** | code review |
+| S-16 | **Low** | Algorithms | `Algorithms.register(..., replace: true)` is process-global and can re-point a Symbol used by `Policy.strict` (e.g. `:sha256`) at another URI, silently changing what "strict" means | **fixed** | code review |
 | S-17 | **Low** | SignedDocument | `#document` exposes the mutable Nokogiri document; `FrozenSignatureError` exists but is never raised | **open** | code review |
 | S-18 | **Low** | Build | `build/vendor.rs` shells out to `curl`/`tar`/`configure`/`make` and hand-parses `dependencies.yml`; SHA-256 pinning is good, but `HANKO_XML_VENDOR_CACHE` and `tmp/vendor-build/.stamp-complete` are trusted build-time inputs | **open** | code review |
 | S-19 | **Low** | CI | Actions pinned by major tag, not commit SHA; `main.yml` has no top-level `permissions:` | **open** | code review |
@@ -92,7 +92,7 @@ trust source → `ConfigurationError`).
 - [x] **S-13** (#43) error classification and xmlsec log in messages
 - [x] **S-14** (#44) reject mismatched `key:` / `certificate:` at sign time
 - [x] **S-15** (#45) `Key#dispose!` / `private_key?` / PEM heuristic
-- [ ] **S-16** (#46) freeze or snapshot `Algorithms.register`
+- [x] **S-16** (#46) freeze or snapshot `Algorithms.register`
 - [ ] **S-17** (#47) `SignedDocument` mutability / unused `FrozenSignatureError`
 - [ ] **S-18** (#48) document vendored cache/stamp as trusted inputs
 - [ ] **S-19** (#49) pin Actions to SHAs; `permissions:` on `main.yml`
@@ -528,9 +528,20 @@ implication). `from_pem` decides cert-vs-key by `include?("CERTIFICATE") &&
 !include?("PRIVATE KEY")`, so a bundle PEM (cert + key) is parsed as a key and
 its certificate silently dropped.
 
-### S-16 -- Mutable global algorithm registry  [code review, Low, **open**]
+### S-16 -- Mutable global algorithm registry  [code review, Low, **fixed**]
 
-**Disposition:** still open.
+**Disposition:** fixed, both ways the entry suggested. Each built-in table
+calls `Table#seal_builtins!` once built, after which `register` raises
+`ArgumentError` for a built-in name or URI, `replace: true` or not; replacing
+a custom registration also drops its old URI mapping. `Policy#initialize`
+resolves the four algorithm allowlists to URIs (`snapshot_allowed_uris`),
+and `algorithm_violation` checks against that snapshot, comparing a
+document's algorithm String verbatim instead of resolving it through the
+registry (where `Algorithm="sha256"` would have matched the real URI).
+Specs: `spec/hanko_xml/algorithms_spec.rb`, "algorithm allowlist snapshot"
+in `spec/hanko_xml/policy_spec.rb`.
+
+Original report:
 
 `HankoXml::Algorithms.register(:digest, :sha256, "…#sha1", secure: true,
 replace: true)` re-points the Symbol `Policy.strict` compares through
@@ -596,9 +607,9 @@ accept path Strings explicitly.
 
 ## Suggested remediation order
 
-S-01 through S-15 are done. Remaining, in order:
+S-01 through S-16 are done. Remaining, in order:
 
-1. S-16 through S-21 -- hygiene.
+1. S-17 through S-21 -- hygiene.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /

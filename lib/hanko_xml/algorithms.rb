@@ -9,7 +9,8 @@ module HankoXml
   # (looked up here) or a String URI (used verbatim, subject to Policy).
   #
   # Registration is process-global and additive. It does NOT grant use --
-  # a Policy allowlist must separately permit the algorithm.
+  # a Policy allowlist must separately permit the algorithm. Built-in names
+  # and URIs cannot be re-pointed, even with replace: true (S-16).
   module Algorithms
     Entry = Struct.new(:slot, :name, :uri, :secure, keyword_init: true) do
       def secure?
@@ -23,11 +24,14 @@ module HankoXml
         @slot = slot
         @by_name = {}
         @by_uri = {}
+        @builtin_names = {}.freeze
+        @builtin_uris = {}.freeze
       end
 
       def register(name, uri, secure:, replace: false)
         name = name.to_sym
         uri = uri.to_s
+        check_not_builtin!(name, uri)
 
         if @by_name.key?(name) && !replace
           raise ArgumentError,
@@ -35,10 +39,23 @@ module HankoXml
                 "(pass replace: true to override)"
         end
 
-        entry = Entry.new(slot: @slot, name: name, uri: uri, secure: secure)
+        previous = @by_name[name]
+        @by_uri.delete(previous.uri) if previous && @by_uri[previous.uri].equal?(previous)
+
+        entry = Entry.new(slot: @slot, name: name, uri: uri, secure: secure).freeze
         @by_name[name] = entry
         @by_uri[uri] = entry
         entry
+      end
+
+      # Marks everything registered so far as built-in (S-16): those names
+      # and URIs are what Policy presets are written in terms of, so
+      # re-pointing one would silently change what, e.g., Policy.strict
+      # accepts for every caller in the process.
+      def seal_builtins!
+        @builtin_names = @by_name.keys.to_h { |name| [name, true] }.freeze
+        @builtin_uris = @by_uri.keys.to_h { |uri| [uri, true] }.freeze
+        self
       end
 
       def [](name_or_uri)
@@ -68,6 +85,18 @@ module HankoXml
 
       def names
         @by_name.keys
+      end
+
+      private
+
+      def check_not_builtin!(name, uri)
+        if @builtin_names.key?(name)
+          raise ArgumentError, "#{@slot} algorithm #{name.inspect} is built in and cannot be replaced"
+        end
+        return unless @builtin_uris.key?(uri)
+
+        raise ArgumentError,
+              "#{@slot} URI #{uri} is built in as #{@by_uri[uri].name.inspect} and cannot be re-registered"
       end
     end
 
@@ -128,7 +157,7 @@ module HankoXml
         table.register(:c14n11, "http://www.w3.org/2006/12/xml-c14n11", secure: true)
         table.register(:c14n11_with_comments,
                        "http://www.w3.org/2006/12/xml-c14n11#WithComments", secure: true)
-        table
+        table.seal_builtins!
       end
 
       def build_digest_table
@@ -139,7 +168,7 @@ module HankoXml
         table.register(:sha384, "http://www.w3.org/2001/04/xmldsig-more#sha384", secure: true)
         table.register(:sha512, "http://www.w3.org/2001/04/xmlenc#sha512", secure: true)
         table.register(:ripemd160, "http://www.w3.org/2001/04/xmlenc#ripemd160", secure: false)
-        table
+        table.seal_builtins!
       end
 
       def build_signature_table
@@ -154,7 +183,7 @@ module HankoXml
         table.register(:ecdsa_sha512, "http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha512", secure: true)
         table.register(:dsa_sha1, "http://www.w3.org/2000/09/xmldsig#dsa-sha1", secure: false)
         table.register(:hmac_sha256, "http://www.w3.org/2001/04/xmldsig-more#hmac-sha256", secure: true)
-        table
+        table.seal_builtins!
       end
 
       def build_transform_table
@@ -170,7 +199,7 @@ module HankoXml
         table.register(:xpath, "http://www.w3.org/TR/1999/REC-xpath-19991116", secure: false)
         table.register(:xpath_filter2, "http://www.w3.org/2002/06/xmldsig-filter2", secure: false)
         table.register(:xslt, "http://www.w3.org/TR/1999/REC-xslt-19991116", secure: false)
-        table
+        table.seal_builtins!
       end
     end
   end

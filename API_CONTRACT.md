@@ -673,9 +673,11 @@ HankoXml::Algorithms.register(
 )
 ```
 
-Registration is process-global and additive; re-registering a built-in name
-raises unless `replace: true`. Registering does **not** grant use — a `Policy`
-must also allow it (§5.8). That separation is the fix for `CryptoConfig`, where
+Registration is process-global and additive. Built-in names and URIs can never
+be re-registered, even with `replace: true`, which only replaces a non-built-in
+registration. Registering does **not** grant use — a `Policy` must also allow
+it (§5.8), and a `Policy` resolves its allowlists to URIs at construction, so a
+later registration cannot change what an existing policy accepts. That separation is the fix for `CryptoConfig`, where
 registering an algorithm silently made it acceptable to every verifier in the
 process.
 

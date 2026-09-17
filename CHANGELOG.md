@@ -44,6 +44,12 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **S-16 / #46:** Built-in `Algorithms` names and URIs can no longer be
+  re-registered, even with `replace: true` (previously
+  `register(:digest, :sha256, sha1_uri, replace: true)` made
+  `Policy.strict` accept SHA-1). `Policy` resolves its algorithm allowlists
+  to URIs at construction, and compares a document's algorithm String
+  verbatim rather than looking it up as a registry name.
 - **S-15 / #45:** `Key#private_key?` is false for a public-only key (it was
   true for any `PKey`). `Key.from_pem` classifies by PEM block label, and a
   PEM containing both a certificate and a key raises `KeyLoadError` instead

@@ -164,6 +164,42 @@ RSpec.describe HankoXml::Policy do
     end
   end
 
+  # S-16: a later Algorithms.register must not change what a Policy accepts.
+  describe "algorithm allowlist snapshot" do
+    let(:old_uri) { "http://example.com/digest-snapshot-test-v1" }
+    let(:new_uri) { "http://example.com/digest-snapshot-test-v2" }
+
+    def info_with_digest(uri)
+      HankoXml::SignatureInfo.new(
+        signature_method: compliant_info.signature_method,
+        canonicalization_method: compliant_info.canonicalization_method,
+        references: [{ uri: "", digest_method: uri,
+                       transforms: ["http://www.w3.org/2000/09/xmldsig#enveloped-signature"] }]
+      )
+    end
+
+    after do
+      table = HankoXml::Algorithms.digest
+      table.instance_variable_get(:@by_name).delete(:snapshot_test)
+      [old_uri, new_uri].each { |uri| table.instance_variable_get(:@by_uri).delete(uri) }
+    end
+
+    it "keeps the URIs a name resolved to when the Policy was built" do
+      HankoXml::Algorithms.register(:digest, :snapshot_test, old_uri, secure: true)
+      policy = described_class.strict.with(digest_methods: [:snapshot_test])
+
+      HankoXml::Algorithms.register(:digest, :snapshot_test, new_uri, secure: true, replace: true)
+
+      expect(policy.violations(info_with_digest(old_uri))).to be_empty
+      expect(policy.violations(info_with_digest(new_uri)).map(&:message).join).to match(/digest_methods/)
+    end
+
+    it "compares a document's algorithm String verbatim, not as a registry name" do
+      expect(described_class.strict.violations(info_with_digest("sha256")).map(&:message).join)
+        .to match(/digest_methods/)
+    end
+  end
+
   describe "#enforce!" do
     it "does not raise for a compliant SignatureInfo" do
       expect { described_class.strict.enforce!(compliant_info) }.not_to raise_error

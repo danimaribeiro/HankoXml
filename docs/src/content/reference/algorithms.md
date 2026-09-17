@@ -24,9 +24,12 @@ HankoXml::Algorithms.register(
 )
 ```
 
-Registration is process-global and additive; re-registering a built-in name raises unless
-`replace: true`. **Registering does not grant use** — a `Policy` must also allow it. That separation
-means registering an algorithm never silently makes it acceptable to every verifier in the process.
+Registration is process-global and additive. Built-in names and URIs can never be re-registered,
+even with `replace: true`; `replace: true` only replaces an algorithm you registered yourself.
+**Registering does not grant use** — a `Policy` must also allow it. A `Policy` resolves its
+allowlists to URIs when it is created, so registering or replacing an algorithm later never changes
+what an existing policy (including `Policy.strict`) accepts. That separation means registering an
+algorithm never silently makes it acceptable to every verifier in the process.
 
 ## Built-in tables
 

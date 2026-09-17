@@ -50,6 +50,7 @@ module HankoXml
 
       values = STRICT_DEFAULTS.merge(overrides)
       FIELDS.each { |f| instance_variable_set(:"@#{f}", values[f]) }
+      @allowed_uris = snapshot_allowed_uris
       freeze
     end
 
@@ -138,10 +139,8 @@ module HankoXml
                    check_root_signed: true)
       errors = []
 
-      errors << algorithm_violation(:signature, signature_methods, signature_info.signature_method,
-                                    "signature_methods")
-      errors << algorithm_violation(:canonicalization, canonicalization_methods,
-                                    signature_info.canonicalization_method, "canonicalization_methods")
+      errors << algorithm_violation(:signature, signature_info.signature_method)
+      errors << algorithm_violation(:canonicalization, signature_info.canonicalization_method)
       errors << hmac_violation(signature_info)
       errors << retrieval_method_violation(signature_info)
 
@@ -207,7 +206,7 @@ module HankoXml
     def reference_violations(references)
       references.flat_map do |ref|
         errors = [
-          algorithm_violation(:digest, digest_methods, ref.digest_method, "digest_methods", reference_uri: ref.uri)
+          algorithm_violation(:digest, ref.digest_method, reference_uri: ref.uri)
         ]
 
         if ref.transforms.size > max_transforms_per_reference
@@ -218,8 +217,7 @@ module HankoXml
         end
 
         ref.transforms.each do |transform_uri|
-          errors << algorithm_violation(:transform, transforms, transform_uri, "transforms",
-                                        reference_uri: ref.uri)
+          errors << algorithm_violation(:transform, transform_uri, reference_uri: ref.uri)
         end
 
         if !allow_external_references && ref.external?
@@ -347,13 +345,33 @@ module HankoXml
       end
     end
 
-    def algorithm_violation(slot, allowlist, uri_or_name, field_name, reference_uri: nil)
+    ALGORITHM_FIELDS = {
+      signature: :signature_methods,
+      digest: :digest_methods,
+      canonicalization: :canonicalization_methods,
+      transform: :transforms
+    }.freeze
+    private_constant :ALGORITHM_FIELDS
+
+    # The allowlists resolved to URIs once, at construction (S-16), so a
+    # later Algorithms.register cannot change what an existing Policy --
+    # Policy.strict included -- accepts.
+    def snapshot_allowed_uris
+      ALGORITHM_FIELDS.to_h do |slot, field|
+        uris = Array(public_send(field)).filter_map { |entry| Algorithms.uri_for(slot, entry) }
+        [slot, uris.to_h { |uri| [uri, true] }.freeze]
+      end.freeze
+    end
+
+    def algorithm_violation(slot, uri_or_name, reference_uri: nil)
       return nil if uri_or_name.nil?
 
-      allowed = allowlist.any? do |allowed_entry|
-        Algorithms.uri_for(slot, allowed_entry) == Algorithms.uri_for(slot, uri_or_name)
-      end
-      return nil if allowed
+      field_name = ALGORITHM_FIELDS.fetch(slot)
+
+      # A String from the document is compared verbatim: resolving it through
+      # the registry would let Algorithm="sha256" stand in for the real URI.
+      candidate = uri_or_name.is_a?(String) ? uri_or_name : Algorithms.uri_for(slot, uri_or_name)
+      return nil if @allowed_uris.fetch(slot).key?(candidate)
 
       name = Algorithms.name_for(slot, uri_or_name)
       location = reference_uri ? " on reference #{reference_uri.inspect}" : ""
