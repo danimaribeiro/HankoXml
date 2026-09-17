@@ -22,7 +22,7 @@ RSpec.describe "HankoXml::Signer signing" do
   end
 
   def verification(signed, **options)
-    HankoXml.verify(signed.to_s, certificate: cert_pem, **options)
+    HankoXml::Verifier.new(certificate: cert_pem, **options).verify(signed.to_s)
   end
 
   def valid?(signed, **options)

@@ -38,7 +38,7 @@ RSpec.describe HankoXml::Xades::Signer do
   end
 
   def verify(signed, **options)
-    HankoXml.verify(signed, certificate: cert_pem, **options)
+    HankoXml::Verifier.new(certificate: cert_pem, **options).verify(signed)
   end
 
   def schema_errors(signed)

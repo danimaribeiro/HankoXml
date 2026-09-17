@@ -19,7 +19,7 @@ RSpec.describe "Adversarial input" do
   let(:ds) { { "ds" => HankoXml::NS["ds"] } }
 
   def verify(xml, **options)
-    HankoXml.verify(xml, certificate: signer_cert_pem, **options)
+    HankoXml::Verifier.new(certificate: signer_cert_pem, **options).verify(xml)
   end
 
   def self_signed(key, subject: "/CN=adversary")
@@ -223,7 +223,7 @@ RSpec.describe "Adversarial input" do
       XML
 
       begin
-        HankoXml.verify(xml, certificate: signer_cert_pem)
+        HankoXml::Verifier.new(certificate: signer_cert_pem).verify(xml)
       rescue HankoXml::Error
         nil
       end
@@ -278,9 +278,9 @@ RSpec.describe "Adversarial input" do
       relaxed = HankoXml::Policy.strict.with(min_rsa_key_bits: 0)
       signed = HankoXml.sign(unsigned_xml, key: key.to_pem, certificate: cert.to_pem, policy: relaxed).to_s
 
-      expect(HankoXml.verify(signed, certificate: cert.to_pem, policy: relaxed).valid?).to be true
+      expect(HankoXml.valid?(signed, certificate: cert.to_pem, policy: relaxed)).to be true
 
-      result = HankoXml.verify(signed, certificate: cert.to_pem)
+      result = HankoXml::Verifier.new(certificate: cert.to_pem).verify(signed)
       expect(result.valid?).to be false
       expect(result.errors.map(&:message).join).to include("min_rsa_key_bits")
     end

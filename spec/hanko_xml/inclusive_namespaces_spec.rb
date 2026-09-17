@@ -39,7 +39,7 @@ RSpec.describe "Exclusive c14n InclusiveNamespaces" do
   end
 
   def verify(xml, certificate: signer_cert_pem)
-    HankoXml.verify(xml, certificate: certificate, policy: HankoXml::Policy.fragment)
+    HankoXml::Verifier.new(certificate: certificate, policy: HankoXml::Policy.fragment).verify(xml)
   end
 
   describe "signing" do

@@ -71,7 +71,7 @@ RSpec.describe "S-04 policy before crypto" do
   end
 
   it "still verifies a same-document signature under Policy.strict" do
-    expect(HankoXml.verify(signed_xml, certificate: signer_cert_pem).valid?).to be true
+    expect(HankoXml.valid?(signed_xml, certificate: signer_cert_pem)).to be true
   end
 
   it "rejects a file:// Reference under strict before Native.verify (R1)" do
@@ -80,7 +80,7 @@ RSpec.describe "S-04 policy before crypto" do
       allow(HankoXml::Native).to receive(:verify).and_call_original
 
       result = Timeout.timeout(2) do
-        HankoXml.verify(xml, certificate: signer_cert_pem)
+        HankoXml::Verifier.new(certificate: signer_cert_pem).verify(xml)
       end
 
       expect(result.valid?).to be false
@@ -93,7 +93,7 @@ RSpec.describe "S-04 policy before crypto" do
   it "does not connect to an http:// Reference under strict (R1)" do
     with_http_probe do |uri, hits|
       xml = rewrite_reference_uri(signed_xml, uri)
-      result = HankoXml.verify(xml, certificate: signer_cert_pem)
+      result = HankoXml::Verifier.new(certificate: signer_cert_pem).verify(xml)
 
       expect(result.valid?).to be false
       expect(result.errors.first).to be_a(HankoXml::PolicyError)
@@ -109,7 +109,7 @@ RSpec.describe "S-04 policy before crypto" do
       allow(HankoXml::Native).to receive(:verify).and_call_original
 
       result = Timeout.timeout(2) do
-        HankoXml.verify(xml, certificate: signer_cert_pem, policy: HankoXml::Policy.permissive)
+        HankoXml::Verifier.new(certificate: signer_cert_pem, policy: HankoXml::Policy.permissive).verify(xml)
       end
 
       expect(HankoXml::Native).not_to have_received(:verify)
@@ -121,7 +121,7 @@ RSpec.describe "S-04 policy before crypto" do
     xml = add_transforms(signed_xml, ["http://www.w3.org/TR/1999/REC-xslt-19991116"])
     allow(HankoXml::Native).to receive(:verify).and_call_original
 
-    result = HankoXml.verify(xml, certificate: signer_cert_pem)
+    result = HankoXml::Verifier.new(certificate: signer_cert_pem).verify(xml)
 
     expect(result.valid?).to be false
     expect(result.errors.first).to be_a(HankoXml::PolicyError)
@@ -134,7 +134,7 @@ RSpec.describe "S-04 policy before crypto" do
     xml = add_transforms(signed_xml, extra)
     allow(HankoXml::Native).to receive(:verify).and_call_original
 
-    result = HankoXml.verify(xml, certificate: signer_cert_pem)
+    result = HankoXml::Verifier.new(certificate: signer_cert_pem).verify(xml)
 
     expect(result.valid?).to be false
     expect(result.errors.first).to be_a(HankoXml::PolicyError)

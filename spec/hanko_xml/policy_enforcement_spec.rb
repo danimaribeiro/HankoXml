@@ -43,7 +43,7 @@ RSpec.describe "S-06 Policy enforcement" do
   describe "require_signed_root" do
     it "rejects a fragment-only signature under strict by default" do
       signed = HankoXml.sign(unsigned_xml, key: signer_key_pem, certificate: signer_cert_pem, references: ["#a"])
-      result = HankoXml.verify(signed.to_s, certificate: signer_cert_pem)
+      result = HankoXml::Verifier.new(certificate: signer_cert_pem).verify(signed.to_s)
 
       expect(result.valid?).to be false
       expect(result.errors.first).to be_a(HankoXml::PolicyError)
@@ -52,7 +52,7 @@ RSpec.describe "S-06 Policy enforcement" do
 
     it "accepts the same document under Policy.fragment" do
       signed = HankoXml.sign(unsigned_xml, key: signer_key_pem, certificate: signer_cert_pem, references: ["#a"])
-      result = HankoXml.verify(signed.to_s, certificate: signer_cert_pem, policy: HankoXml::Policy.fragment)
+      result = HankoXml::Verifier.new(certificate: signer_cert_pem, policy: HankoXml::Policy.fragment).verify(signed.to_s)
 
       expect(result.valid?).to be true
     end
@@ -60,7 +60,7 @@ RSpec.describe "S-06 Policy enforcement" do
     it "accepts a whole-document (URI=\"\") signature under strict" do
       signed = HankoXml.sign(unsigned_xml, key: signer_key_pem, certificate: signer_cert_pem)
 
-      expect(HankoXml.verify(signed.to_s, certificate: signer_cert_pem).valid?).to be true
+      expect(HankoXml.valid?(signed.to_s, certificate: signer_cert_pem)).to be true
     end
   end
 
@@ -113,8 +113,8 @@ RSpec.describe "S-06 Policy enforcement" do
       signed = sign_with_dsa(HankoXml::Policy.interop).to_s
       public_key = dsa_key.public_to_pem
 
-      expect(HankoXml.verify(signed, key: public_key, policy: HankoXml::Policy.interop).valid?).to be true
-      result = HankoXml.verify(signed, key: public_key, policy: dsa_policy)
+      expect(HankoXml.valid?(signed, key: public_key, policy: HankoXml::Policy.interop)).to be true
+      result = HankoXml::Verifier.new(key: public_key, policy: dsa_policy).verify(signed)
       expect(result.errors.first).to be_a(HankoXml::PolicyError)
       expect(result.errors.first.message).to match(/min_dsa_key_bits/)
     end
@@ -138,7 +138,7 @@ RSpec.describe "S-06 Policy enforcement" do
       permissive_key_size = HankoXml::Policy.strict.with(min_rsa_key_bits: 0)
       signed = HankoXml.sign(unsigned_xml, key: key, certificate: cert, policy: permissive_key_size)
 
-      result = HankoXml.verify(signed.to_s, certificate: cert)
+      result = HankoXml::Verifier.new(certificate: cert).verify(signed.to_s)
 
       expect(result.valid?).to be false
       expect(result.errors.first).to be_a(HankoXml::PolicyError)
@@ -148,7 +148,7 @@ RSpec.describe "S-06 Policy enforcement" do
     it "signs and verifies normally with a 2048-bit key" do
       signed = HankoXml.sign(unsigned_xml, key: signer_key_pem, certificate: signer_cert_pem)
 
-      expect(HankoXml.verify(signed.to_s, certificate: signer_cert_pem).valid?).to be true
+      expect(HankoXml.valid?(signed.to_s, certificate: signer_cert_pem)).to be true
     end
   end
 
@@ -158,7 +158,8 @@ RSpec.describe "S-06 Policy enforcement" do
       policy = HankoXml::Policy.strict.with(min_rsa_key_bits: 0, clock_skew: 60)
       signed = HankoXml.sign(unsigned_xml, key: key, certificate: cert, policy: policy)
 
-      result = HankoXml.verify(signed.to_s, certificate: cert, policy: policy, verification_time: Time.now)
+      result = HankoXml::Verifier.new(certificate: cert, policy: policy,
+                                      verification_time: Time.now).verify(signed.to_s)
 
       expect(result.valid?).to be false
       expect(result.errors.first).to be_a(HankoXml::CertificateExpired)
@@ -169,7 +170,8 @@ RSpec.describe "S-06 Policy enforcement" do
       policy = HankoXml::Policy.strict.with(min_rsa_key_bits: 0, clock_skew: 60)
       signed = HankoXml.sign(unsigned_xml, key: key, certificate: cert, policy: policy)
 
-      result = HankoXml.verify(signed.to_s, certificate: cert, policy: policy, verification_time: Time.now)
+      result = HankoXml::Verifier.new(certificate: cert, policy: policy,
+                                      verification_time: Time.now).verify(signed.to_s)
 
       expect(result.valid?).to be true
     end
@@ -186,7 +188,7 @@ RSpec.describe "S-06 Policy enforcement" do
       policy = HankoXml::Policy.strict.with(min_rsa_key_bits: 0)
       signed = HankoXml.sign(unsigned_xml, key: key, certificate: cert, policy: policy)
 
-      result = HankoXml.verify(signed.to_s, certificate: cert)
+      result = HankoXml::Verifier.new(certificate: cert).verify(signed.to_s)
 
       expect(result.valid?).to be false
       expect(result.errors.first).to be_a(HankoXml::CertificateExpired)
@@ -205,7 +207,7 @@ RSpec.describe "S-06 Policy enforcement" do
       policy = HankoXml::Policy.strict.with(min_rsa_key_bits: 0)
       signed = HankoXml.sign(unsigned_xml, key: key, certificate: cert, policy: policy)
 
-      result = HankoXml.verify(signed.to_s, certificate: cert, verification_time: Time.now - 5400)
+      result = HankoXml::Verifier.new(certificate: cert, verification_time: Time.now - 5400).verify(signed.to_s)
 
       expect(result.valid?).to be true
     end
@@ -215,7 +217,7 @@ RSpec.describe "S-06 Policy enforcement" do
       policy = HankoXml::Policy.strict.with(min_rsa_key_bits: 0, check_certificate_validity: false)
       signed = HankoXml.sign(unsigned_xml, key: key, certificate: cert, policy: policy)
 
-      result = HankoXml.verify(signed.to_s, certificate: cert, policy: policy)
+      result = HankoXml::Verifier.new(certificate: cert, policy: policy).verify(signed.to_s)
 
       expect(result.valid?).to be true
     end

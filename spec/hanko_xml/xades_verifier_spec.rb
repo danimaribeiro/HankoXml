@@ -99,7 +99,7 @@ RSpec.describe HankoXml::Xades::Verifier do
     end
 
     it "is still a valid XML-DSig signature" do
-      expect(HankoXml.verify(attacked, certificate: cert_pem).valid?).to be true
+      expect(HankoXml.valid?(attacked, certificate: cert_pem)).to be true
     end
 
     it "is refused, and the forged time is never read" do
@@ -132,7 +132,7 @@ RSpec.describe HankoXml::Xades::Verifier do
     impostor.serial = certificate.serial + 1
     impostor.sign(OpenSSL::PKey.read(key_pem), OpenSSL::Digest.new("SHA256"))
 
-    expect(HankoXml.verify(signed, certificate: impostor).valid?).to be true
+    expect(HankoXml.valid?(signed, certificate: impostor)).to be true
     expect_xades_error(verify(certificate: impostor), /does not name the certificate that verified/)
   end
 

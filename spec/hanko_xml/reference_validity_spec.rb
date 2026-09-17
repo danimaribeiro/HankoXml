@@ -30,7 +30,8 @@ RSpec.describe "S-09 per-reference validity" do
     doc = signed.document
     tamper_digest!(doc, 1)
 
-    result = HankoXml.verify(HankoXml.serialize(doc), certificate: signer_cert_pem, policy: fragment_policy)
+    result = HankoXml::Verifier.new(certificate: signer_cert_pem,
+                                    policy: fragment_policy).verify(HankoXml.serialize(doc))
 
     expect(result.valid?).to be false
     expect(result.references[0]).to be_valid
@@ -41,7 +42,7 @@ RSpec.describe "S-09 per-reference validity" do
     signed = HankoXml.sign(two_targets_xml, key: signer_key_pem, certificate: signer_cert_pem,
                                             references: ["#a", "#b"])
 
-    result = HankoXml.verify(signed.to_s, certificate: signer_cert_pem, policy: fragment_policy)
+    result = HankoXml::Verifier.new(certificate: signer_cert_pem, policy: fragment_policy).verify(signed.to_s)
 
     expect(result.valid?).to be true
     expect(result.references.map(&:valid?)).to eq([true, true])

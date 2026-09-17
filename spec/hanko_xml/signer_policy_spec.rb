@@ -65,12 +65,12 @@ RSpec.describe "S-05 Signer policy before Native.sign" do
 
   it "still signs a same-document template under Policy.strict" do
     signed = HankoXml.sign(enveloped_template, key: signer_key_pem, certificate: signer_cert_pem)
-    expect(HankoXml.verify(signed.to_xml, certificate: signer_cert_pem).valid?).to be true
+    expect(HankoXml.valid?(signed.to_xml, certificate: signer_cert_pem)).to be true
   end
 
   it "still builds and signs an unsigned document under Policy.strict" do
     signed = HankoXml.sign(unsigned_xml, key: signer_key_pem, certificate: signer_cert_pem)
-    expect(HankoXml.verify(signed.to_xml, certificate: signer_cert_pem).valid?).to be true
+    expect(HankoXml.valid?(signed.to_xml, certificate: signer_cert_pem)).to be true
   end
 
   it "rejects a file:// Reference under strict before Native.sign (R3)" do
@@ -136,7 +136,7 @@ RSpec.describe "S-05 Signer policy before Native.sign" do
     # not apply to Signer (that is the whole point of this test), but Verifier
     # still enforces it by default, so verifying it needs the explicit opt-out.
     policy = HankoXml::Policy.strict.with(require_signed_root: false)
-    expect(HankoXml.verify(signed.to_xml, certificate: signer_cert_pem, policy: policy).valid?).to be true
+    expect(HankoXml.valid?(signed.to_xml, certificate: signer_cert_pem, policy: policy)).to be true
   end
 
   it "rejects a Signer-configured file:// reference before Native.sign (H7/C15)" do

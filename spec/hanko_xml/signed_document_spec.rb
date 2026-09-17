@@ -16,7 +16,7 @@ RSpec.describe HankoXml::SignedDocument do
     signed_doc = HankoXml::SignedDocument.new(doc)
     safe = signed_doc.to_xml
     expect(safe).to eq(doc.to_xml(save_with: Nokogiri::XML::Node::SaveOptions::AS_XML))
-    expect(HankoXml.verify(safe, certificate: signer_cert_pem).valid?).to be true
+    expect(HankoXml.valid?(safe, certificate: signer_cert_pem)).to be true
   end
 
   it "delegates #signatures" do
@@ -72,7 +72,7 @@ RSpec.describe HankoXml::SignedDocument do
     it "serializes normally, with or without the declaration, when unchanged" do
       expect(signed_doc.to_xml).to start_with("<?xml")
       expect(signed_doc.to_xml(declaration: false)).not_to start_with("<?xml")
-      expect(HankoXml.verify(signed_doc.to_xml(declaration: false), certificate: signer_cert_pem).valid?).to be true
+      expect(HankoXml.valid?(signed_doc.to_xml(declaration: false), certificate: signer_cert_pem)).to be true
     end
   end
 end

@@ -96,7 +96,7 @@ module HankoXml
     #   signature:, etc).
     # @return [Boolean] True if the signature is valid.
     def valid?(**kwargs)
-      HankoXml.verify(@document, **kwargs).valid?
+      HankoXml.valid?(@document, **kwargs)
     end
 
     def inspect

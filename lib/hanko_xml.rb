@@ -70,15 +70,21 @@ module HankoXml
       HankoXml::Signer.new(**kwargs).sign!(doc)
     end
 
-    # Verifies an XML signature, returning a comprehensive {Verification} object.
-    # This is a convenience shortcut that creates a +Verifier+ and calls +#verify+.
-    # Does not raise cryptographic errors; inspect the returned object to determine validity.
+    # Verifies an XML signature and answers with a plain boolean, so it is safe
+    # directly in a conditional. This is a convenience shortcut that creates a
+    # +Verifier+ and calls +#valid?+.
+    #
+    # There is deliberately no +HankoXml.verify+: a {Verification} is always
+    # truthy, so +if HankoXml.verify(doc, ...)+ would be a security bug that reads
+    # like correct code (API_CONTRACT §5.1). For the rich object use {verify!} or
+    # {Verifier#verify}.
     #
     # @param xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The signed XML.
     # @param kwargs [Hash] Configuration options passed to {Verifier#initialize}.
-    # @return [HankoXml::Verification] The result of the verification attempt.
-    def verify(xml, **kwargs)
-      HankoXml::Verifier.new(**kwargs).verify(xml)
+    # @raise [HankoXml::Error] If parsing fails or trust sources are misconfigured.
+    # @return [Boolean] True only when the signature verified under the policy.
+    def valid?(xml, **kwargs)
+      HankoXml::Verifier.new(**kwargs).valid?(xml)
     end
 
     # Verifies an XML signature, raising an exception if invalid.

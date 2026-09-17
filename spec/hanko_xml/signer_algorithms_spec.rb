@@ -7,7 +7,7 @@ require "pathname"
 
 # #52 / SIGNING_TEST_COVERAGE.md group B: every algorithm choice made
 # through the Ruby Signer, checked in <SignedInfo> and verified both
-# natively and through HankoXml.verify.
+# natively and through Verifier#verify.
 RSpec.describe "HankoXml::Signer algorithms" do
   let(:fixtures) { Pathname.new(__dir__).join("..", "fixtures") }
   let(:key_pem) { fixtures.join("signer.key").read }
@@ -57,7 +57,7 @@ RSpec.describe "HankoXml::Signer algorithms" do
         digest: HankoXml::Algorithms.uri_for(:digest, digest_method)
       )
       expect(HankoXml::Native.verify(signed, [cert_pem], [], id_attrs, 0, [])[:status]).to eq(:succeeded)
-      expect(HankoXml.verify(signed, certificate: cert_pem, policy: policy).valid?).to be true
+      expect(HankoXml.valid?(signed, certificate: cert_pem, policy: policy)).to be true
     end
   end
 
@@ -73,8 +73,8 @@ RSpec.describe "HankoXml::Signer algorithms" do
     signed = HankoXml::Signer.new(key: key_pem, certificate: cert_pem, policy: policy, signature_method: :rsa_sha224,
                                   digest_method: :sha224).sign(xml).to_s
 
-    expect(HankoXml.verify(signed, certificate: cert_pem, policy: policy).valid?).to be true
-    expect(HankoXml.verify(signed, certificate: cert_pem).valid?).to be false
+    expect(HankoXml.valid?(signed, certificate: cert_pem, policy: policy)).to be true
+    expect(HankoXml.valid?(signed, certificate: cert_pem)).to be false
   end
 
   {
@@ -90,8 +90,8 @@ RSpec.describe "HankoXml::Signer algorithms" do
       ).sign(xml).to_s
 
       expect(algorithms(signed)[:signature]).to eq(HankoXml::Algorithms.uri_for(:signature, signature_method))
-      expect(HankoXml.verify(signed, certificate: cert.to_pem).valid?).to be true
-      expect(HankoXml.verify(signed, key: key.public_to_pem).valid?).to be true
+      expect(HankoXml.valid?(signed, certificate: cert.to_pem)).to be true
+      expect(HankoXml.valid?(signed, key: key.public_to_pem)).to be true
     end
   end
 

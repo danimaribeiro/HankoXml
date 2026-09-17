@@ -155,16 +155,16 @@ RSpec.describe "S-01 KeyValue trust" do
     end
   end
 
-  describe "HankoXml.verify" do
+  describe "Verifier#verify" do
     it "rejects a KeyValue forgery with certificate: signer.crt (K3)" do
-      result = HankoXml.verify(forged_by_other, certificate: signer_cert_pem)
+      result = HankoXml::Verifier.new(certificate: signer_cert_pem).verify(forged_by_other)
 
       expect(result.valid?).to be false
       expect(result.errors).not_to be_empty
     end
 
     it "rejects a KeyValue forgery with certificates: [signer.crt]" do
-      result = HankoXml.verify(forged_by_other, certificates: [signer_cert_pem])
+      result = HankoXml::Verifier.new(certificates: [signer_cert_pem]).verify(forged_by_other)
 
       expect(result.valid?).to be false
     end
@@ -177,7 +177,7 @@ RSpec.describe "S-01 KeyValue trust" do
       name.content = "alice"
       key_info.prepend_child(name)
 
-      result = HankoXml.verify(doc, keys: { "alice" => signer_cert_pem })
+      result = HankoXml::Verifier.new(keys: { "alice" => signer_cert_pem }).verify(doc)
 
       expect(result.valid?).to be false
     end
@@ -188,7 +188,7 @@ RSpec.describe "S-01 KeyValue trust" do
       # KeyInfo shape) fails XSD schema validation (Policy.strict.schema).
       signed = sign_with(no_keyinfo_template, signer_key_pem)
 
-      expect(HankoXml.verify(signed, certificate: signer_cert_pem).valid?).to be true
+      expect(HankoXml.valid?(signed, certificate: signer_cert_pem)).to be true
     end
   end
 end

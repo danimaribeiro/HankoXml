@@ -41,7 +41,7 @@ RSpec.describe "ID resolution (S-03 / #28)" do
   end
 
   def verify_fragment(doc)
-    HankoXml.verify(doc, certificate: signer_cert, policy: fragment_policy)
+    HankoXml::Verifier.new(certificate: signer_cert, policy: fragment_policy).verify(doc)
   end
 
   it "X1: signed? follows xmlsec's DTD ID table, not document-order XPath" do
@@ -86,7 +86,7 @@ RSpec.describe "ID resolution (S-03 / #28)" do
       certificate: signer_cert
     ).sign("<Envelope xmlns=\"urn:ex\"><Data>hi</Data></Envelope>").document
 
-    result = HankoXml.verify(signed, certificate: signer_cert)
+    result = HankoXml::Verifier.new(certificate: signer_cert).verify(signed)
 
     expect(result).to be_valid
     expect(result.references.first.node).to eq(signed.root)
@@ -97,12 +97,9 @@ RSpec.describe "ID resolution (S-03 / #28)" do
     signed = sign_fragment(dtd_duplicate_id_xml)
     resolver = ->(document, _id) { document.at_xpath("//Order") }
 
-    result = HankoXml.verify(
-      signed,
-      certificate: signer_cert,
-      policy: fragment_policy,
-      resolver: resolver
-    )
+    result = HankoXml::Verifier.new(certificate: signer_cert,
+                                    policy: fragment_policy,
+                                    resolver: resolver).verify(signed)
 
     expect(result).not_to be_valid
     expect(result.errors).to include(an_instance_of(HankoXml::ResolutionMismatch))
@@ -123,7 +120,7 @@ RSpec.describe "ID resolution (S-03 / #28)" do
     end
 
     it "signs and verifies a Reference to the root element's own Id under Policy.strict" do
-      result = HankoXml.verify(signed_xml, certificate: signer_cert)
+      result = HankoXml::Verifier.new(certificate: signer_cert).verify(signed_xml)
 
       expect(result.valid?).to be true
       expect(result.covers_root?).to be true
@@ -139,7 +136,7 @@ RSpec.describe "ID resolution (S-03 / #28)" do
     end
 
     it "detects tampering inside the root-referenced content" do
-      expect(HankoXml.verify(signed_xml.sub(">A<", ">B<"), certificate: signer_cert).valid?).to be false
+      expect(HankoXml.valid?(signed_xml.sub(">A<", ">B<"), certificate: signer_cert)).to be false
     end
   end
 end

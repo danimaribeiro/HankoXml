@@ -26,7 +26,7 @@ module HankoXml
   def self.capabilities: () -> Hash[Symbol, bool]
   def self.sign: (String | Nokogiri::XML::Node | Nokogiri::XML::Document doc_or_xml, **untyped kwargs) -> HankoXml::SignedDocument
   def self.sign!: (Nokogiri::XML::Node | Nokogiri::XML::Document doc, **untyped kwargs) -> (Nokogiri::XML::Node | Nokogiri::XML::Document)
-  def self.verify: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml, **untyped kwargs) -> HankoXml::Verification
+  def self.valid?: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml, **untyped kwargs) -> bool
   def self.verify!: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml, **untyped kwargs) -> HankoXml::Verification
   def self.signature_present?: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml) -> bool
   def self.zero_copy_available?: () -> bool

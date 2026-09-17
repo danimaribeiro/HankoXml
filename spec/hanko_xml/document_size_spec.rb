@@ -69,13 +69,13 @@ RSpec.describe "S-12 document size limits" do
     it "still verifies a document within the limit" do
       roomy = HankoXml::Policy.strict.with(max_document_size: signed_xml.bytesize * 2)
 
-      expect(HankoXml.verify(StringIO.new(signed_xml), certificate: signer_cert_pem, policy: roomy).valid?)
+      expect(HankoXml.valid?(StringIO.new(signed_xml), certificate: signer_cert_pem, policy: roomy))
         .to be true
     end
 
     it "reads an IO in full under a policy with no size limit" do
-      result = HankoXml.verify(StringIO.new(signed_xml), certificate: signer_cert_pem,
-                                                         policy: HankoXml::Policy.permissive)
+      result = HankoXml::Verifier.new(certificate: signer_cert_pem,
+                                      policy: HankoXml::Policy.permissive).verify(StringIO.new(signed_xml))
       expect(result.valid?).to be true
     end
   end
