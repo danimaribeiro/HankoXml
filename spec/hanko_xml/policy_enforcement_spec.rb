@@ -204,6 +204,26 @@ RSpec.describe "S-06 Policy enforcement" do
       expect(verifier.schema).to be_nil
     end
 
+    # libxml2 before 2.12 caps xs:integer at 24 digits; a 20-octet serial is 49.
+    it "accepts a 49-digit X509SerialNumber whatever libxml2 Nokogiri runs on, and still rejects a non-integer" do
+      signature = lambda do |serial|
+        Nokogiri::XML(<<~XML)
+          <Signature xmlns="http://www.w3.org/2000/09/xmldsig#"><SignedInfo>
+            <CanonicalizationMethod Algorithm="http://www.w3.org/2001/10/xml-exc-c14n#"/>
+            <SignatureMethod Algorithm="http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"/>
+            <Reference URI=""><DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/>
+            <DigestValue>AA==</DigestValue></Reference></SignedInfo><SignatureValue>AA==</SignatureValue>
+            <KeyInfo><X509Data><X509IssuerSerial><X509IssuerName>CN=ca</X509IssuerName>
+            <X509SerialNumber>#{serial}</X509SerialNumber></X509IssuerSerial></X509Data></KeyInfo></Signature>
+        XML
+      end
+      schema = HankoXml::Verifier.default_schema
+
+      expect(schema.validate(signature.call("9" * 49))).to be_empty
+      expect(schema.validate(signature.call(" -12 "))).to be_empty
+      expect(schema.validate(signature.call("12a"))).not_to be_empty
+    end
+
     it "defaults to nil under Policy.permissive" do
       verifier = HankoXml::Verifier.new(certificate: signer_cert_pem, policy: HankoXml::Policy.permissive)
 

@@ -201,7 +201,17 @@
 <complexType name="X509IssuerSerialType"> 
   <sequence> 
     <element name="X509IssuerName" type="string"/> 
-    <element name="X509SerialNumber" type="integer"/> 
+    <!-- HankoXml: the lexical space of xs:integer as a pattern. libxml2
+         before 2.12 rejects any xs:integer over 24 digits, and an X.509
+         serial may be 20 octets (49 digits), so a valid signature failed
+         schema: :default wherever Nokogiri ran on an older libxml2. -->
+    <element name="X509SerialNumber">
+      <simpleType>
+        <restriction base="token">
+          <pattern value="[+\-]?[0-9]+"/>
+        </restriction>
+      </simpleType>
+    </element>
   </sequence>
 </complexType>
 

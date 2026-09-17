@@ -187,9 +187,22 @@ RSpec.describe "HankoXml::Signer signing" do
         expect(valid?(signer.sign(big))).to be true
       end
 
-      it "rejects a single text node over libxml2's 10 MB limit as a ParseError" do
-        big = %(<Envelope xmlns="urn:x"><Data>#{"a" * (11 * 1024 * 1024)}</Data></Envelope>)
-        expect { signer.sign(big) }.to raise_error(HankoXml::ParseError)
+      # The 10 MB text node limit is libxml2's, and not every version has it
+      # on this path: 2.13 rejects the node, 2.9.14 (Ubuntu 24.04) accepts
+      # it. What must hold either way is that nothing is silently truncated.
+      it "rejects a single text node over libxml2's 10 MB limit as a ParseError, or signs all of it" do
+        text = "a" * (11 * 1024 * 1024)
+        big = %(<Envelope xmlns="urn:x"><Data>#{text}</Data></Envelope>)
+
+        begin
+          signed = signer.sign(big).to_s
+        rescue HankoXml::ParseError
+          next
+        end
+
+        huge = Nokogiri::XML(signed) { |config| config.strict.huge }
+        expect(huge.at_xpath("//x:Data", x_ns).text.size).to eq(text.size)
+        expect(valid?(signed)).to be true
       end
     end
   end

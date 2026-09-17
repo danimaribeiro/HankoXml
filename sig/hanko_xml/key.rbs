@@ -28,7 +28,14 @@ module HankoXml
   end
 
   module KeyInfo
-    def self.coerce: (Symbol | Array[Symbol] info) -> Array[Symbol]
+    class Clause
+      attr_reader name: Symbol
+      attr_reader value: String?
+
+      def initialize: (Symbol | String name, ?String? value) -> void
+    end
+
+    def self.coerce: (Symbol | Hash[Symbol, String] | Array[Symbol | Hash[Symbol, String] | Clause] info) -> Array[Clause]
 
     class Parsed
       attr_reader key_names: Array[String]

@@ -5,7 +5,7 @@ module HankoXml
       digest_method: Symbol,
       canonicalization_method: Symbol,
       references: Array[Reference],
-      key_info: Array[Symbol],
+      key_info: Array[KeyInfo::Clause],
       ?signature_id: String?
     ) -> Nokogiri::XML::Node
   end

@@ -13,6 +13,32 @@ module HankoXml
   class Signer # rubocop:disable Metrics/ClassLength
     TEMPLATE_MODES = %i[adopt build require].freeze
 
+    # The key class xmlsec needs for each built-in signature method, by the
+    # method name's prefix (:rsa_sha256 -> RSA). HMAC takes no asymmetric key
+    # and custom registered methods are left to xmlsec.
+    SIGNATURE_KEY_TYPES = {
+      "rsa" => ::OpenSSL::PKey::RSA,
+      "ecdsa" => ::OpenSSL::PKey::EC,
+      "dsa" => ::OpenSSL::PKey::DSA
+    }.freeze
+    private_constant :SIGNATURE_KEY_TYPES
+
+    # What to suggest for each key class when it does not fit the method.
+    SIGNATURE_METHOD_FOR_KEY = {
+      ::OpenSSL::PKey::RSA => :rsa_sha256,
+      ::OpenSSL::PKey::EC => :ecdsa_sha256,
+      ::OpenSSL::PKey::DSA => :dsa_sha1
+    }.freeze
+    private_constant :SIGNATURE_METHOD_FOR_KEY
+
+    # KeyInfo leaves xmlsec derives from the signing key. It fills only empty
+    # ones, so an adopted template's stale values must be emptied first (#72).
+    KEY_DERIVED_LEAVES = %w[
+      ds:X509Data/ds:X509Certificate ds:X509Data/ds:X509SubjectName
+      ds:X509Data/ds:X509IssuerSerial ds:X509Data/ds:X509SKI ds:KeyValue
+    ].map { |path| "./#{path}" }.join(" | ").freeze
+    private_constant :KEY_DERIVED_LEAVES
+
     attr_accessor :key, :certificate, :certificates, :signature_method, :canonicalization_method,
                   :digest_method, :references, :placement, :id_attributes, :namespaces,
                   :signature_id, :policy
@@ -33,8 +59,10 @@ module HankoXml
     # @param canonicalization_method [Symbol] The canonicalization method for SignedInfo (e.g., :exc_c14n).
     # @param placement [Placement, Symbol] Where to insert the `<Signature>` node (e.g., :append_to_root).
     # @param references [Array<Reference, String, Hash>] The references to sign.
-    # @param key_info [Array<Symbol>] The elements to include in `<KeyInfo>` (e.g., :x509_certificate, :key_name).
-    # @param id_attributes [Array<String>] The attribute names considered as IDs for `#foo` references.
+    # @param key_info [Array<Symbol, Hash>] The elements to include in `<KeyInfo>` (e.g., :x509_certificate).
+    #   `<KeyName>` needs its text: `{ key_name: "idp-1" }`.
+    # @param id_attributes [Array<String, Array(String, String)>] The attribute names considered as IDs for
+    #   `#foo` references, optionally as `[namespace_href, name]` pairs.
     # @param template [Symbol] Either :adopt (reuse existing signature template), :build, or :require.
     # @param signature_id [String, nil] The Id attribute to place on the `<Signature>` element itself.
     def initialize(key:, certificate: nil, certificates: nil, signature_method: :rsa_sha256,
@@ -83,11 +111,20 @@ module HankoXml
     end
 
     # With no args, the current KeyInfo clauses. With args, replaces them --
-    # block-form usage per API_CONTRACT.md §5.2 (`s.key_info :x509_certificate`).
-    def key_info(*clauses)
-      return @key_info if clauses.empty?
+    # block-form usage per API_CONTRACT.md §5.2 (`s.key_info :x509_certificate`,
+    # `s.key_info :key_name, name: "idp-1"`).
+    def key_info(*clauses, name: nil)
+      return @key_info if clauses.empty? && name.nil?
 
-      @key_info = HankoXml::KeyInfo.coerce(clauses.flatten)
+      clauses = clauses.flatten
+      if name
+        unless clauses.any? { |c| c.to_s == "key_name" }
+          raise HankoXml::ConfigurationError, "key_info name: only applies to the :key_name clause"
+        end
+
+        clauses = clauses.map { |c| c.to_s == "key_name" ? { key_name: name } : c }
+      end
+      @key_info = HankoXml::KeyInfo.coerce(clauses)
     end
 
     # The unsigned <Signature> Nokogiri::XML::Element this Signer would
@@ -168,11 +205,12 @@ module HankoXml
       # Native.sign (S-05). inspect_sig does not fetch; Native.sign would.
       # Two loops on purpose: a later template must not be signed after an
       # earlier one already passed, if a subsequent one is hostile.
-      # rubocop:disable Style/CombinableLoops
       signatures_to_sign.each do |sig_node|
         index = all_sigs_in_order.index(sig_node)
         enforce_before_native_sign!(doc, xml_bytes, index, sig_node: sig_node, adopted: adopted)
       end
+
+      xml_bytes = prepare_key_infos!(doc, xml_bytes, signatures_to_sign, adopted: adopted)
 
       signatures_to_sign.each do |sig_node|
         index = all_sigs_in_order.index(sig_node)
@@ -180,17 +218,10 @@ module HankoXml
         cert_pems = @certificates.map(&:to_pem)
         cert_pems.unshift(@certificate.to_pem) if @certificate
 
-        xml_bytes = Native.sign(
-          xml_bytes,
-          @key.to_pem,
-          cert_pems,
-          @id_attributes,
-          index
-        )
+        xml_bytes = Native.sign(xml_bytes, @key.to_pem, cert_pems, native_id_attributes, index)
 
         write_back_signature(doc, xml_bytes, index, sig_node)
       end
-      # rubocop:enable Style/CombinableLoops
 
       doc
     end
@@ -215,9 +246,41 @@ module HankoXml
       if key.is_a?(HankoXml::Key) && !key.private_key?
         raise HankoXml::ConfigurationError, "key: must be a private key (got a #{key_kind(key)})"
       end
+
+      check_key_type!
       return unless certificate.is_a?(HankoXml::Key) && !certificate.certificate?
 
       raise HankoXml::ConfigurationError, "certificate: must be an X.509 certificate (got a #{key_kind(certificate)})"
+    end
+
+    # No XML-DSig signature method here takes an Ed25519/Ed448 key, which
+    # otherwise failed as a NoMethodError from inside the library (#69).
+    def check_key_type!
+      pkey = key.is_a?(HankoXml::Key) ? key.to_openssl : key
+      return unless pkey.is_a?(::OpenSSL::PKey::PKey)
+      return if SIGNATURE_METHOD_FOR_KEY.key?(pkey.class)
+
+      raise HankoXml::ConfigurationError,
+            "key: is an unsupported #{pkey.oid} key; signing supports RSA, EC and DSA keys"
+    end
+
+    # xmlsec reports a key that does not fit the signature method only as
+    # "xmlSecDSigCtxSign failed" (#70). Checked against the method actually
+    # being signed, which for an adopted template is the template's.
+    def check_key_fits_signature_method!(sig_info)
+      name = HankoXml::Algorithms.name_for(:signature, sig_info.signature_method)
+      needed = SIGNATURE_KEY_TYPES[name.to_s[/\A(rsa|ecdsa|dsa)_sha\d+\z/, 1]]
+      pkey = @key.to_openssl
+      return if needed.nil? || pkey.is_a?(needed)
+
+      raise HankoXml::ConfigurationError,
+            "signature method #{name.inspect} needs #{key_type_name(needed)} key, but key: is " \
+            "#{key_type_name(pkey.class)} key; use signature_method: #{SIGNATURE_METHOD_FOR_KEY[pkey.class].inspect}"
+    end
+
+    def key_type_name(klass)
+      type = klass.name.split("::").last
+      "#{type == "DSA" ? "a" : "an"} #{type}"
     end
 
     def key_kind(key)
@@ -290,6 +353,53 @@ module HankoXml
       @policy.enforce!(sig_info, document: doc, sig_node: sig_node, id_attributes: @id_attributes,
                                  xml_bytes: xml_bytes, check_root_signed: false)
       ensure_adopted_references_match!(sig_info) if adopted
+      check_key_fits_signature_method!(sig_info)
+    end
+
+    # Same mapping as Verifier#native_id_attributes: xmlSecAddIDs matches by
+    # local name only, so a [href, name] pair crosses the FFI as its name (#68).
+    def native_id_attributes
+      @id_attributes.map { |attr| attr.is_a?(Array) ? attr[1].to_s : attr.to_s }
+    end
+
+    # Readies each template's KeyInfo for xmlsec, and returns the bytes to
+    # sign. Runs only once every check passed, so a refused template leaves
+    # the caller's document untouched.
+    def prepare_key_infos!(doc, xml_bytes, signatures_to_sign, adopted:)
+      changed = signatures_to_sign.map do |sig_node|
+        key_info = sig_node.at_xpath("./ds:KeyInfo", ds: NS["ds"])
+        next false unless key_info
+
+        # Both run: | does not short-circuit.
+        name_empty_key_names!(key_info) | (adopted && empty_key_derived_leaves!(key_info))
+      end
+      changed.any? ? HankoXml.serialize(doc) : xml_bytes
+    end
+
+    # xmlsec writes the key's own name into <KeyName>, and a key loaded from
+    # PEM has none (#67). Returns whether anything was named.
+    def name_empty_key_names!(key_info)
+      empty = key_info.xpath("./ds:KeyName", ds: NS["ds"]).select { |node| node.content.strip.empty? }
+      return false if empty.empty?
+
+      key_name = @key_info.find { |c| c.name == :key_name && c.value }&.value
+      unless key_name
+        raise HankoXml::ConfigurationError,
+              "<KeyName> would be signed empty: a key has no name of its own; pass " \
+              "key_info: [{ key_name: \"...\" }] or, in the block form, s.key_info :key_name, name: \"...\""
+      end
+
+      empty.each { |node| node.content = key_name }
+      true
+    end
+
+    # xmlsec fills only empty key-derived leaves, so an adopted template's
+    # stale certificate stayed in the signed document (#72). Returns whether
+    # anything was emptied.
+    def empty_key_derived_leaves!(key_info)
+      stale = key_info.xpath(KEY_DERIVED_LEAVES, ds: NS["ds"]).reject { |leaf| leaf.children.empty? }
+      stale.each { |leaf| leaf.children.each(&:unlink) }
+      stale.any?
     end
 
     def ensure_adopted_references_match!(sig_info)

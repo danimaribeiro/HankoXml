@@ -229,7 +229,8 @@ signer = HankoXml::Signer.new(
   canonicalization_method: :exc_c14n,          # default, applies to <SignedInfo>
   digest_method:           :sha256,            # default for every reference
   references:              [],                 # see below; default = [whole document]
-  key_info:                [:x509_certificate], # default
+  key_info:                [:x509_certificate], # default; <KeyName> needs its text:
+                                               #   [{ key_name: "idp-1" }, :x509_certificate]
   placement:               :append_to_root,    # default, §5.5
   id_attributes:           %w[Id ID id],       # §5.9
   namespaces:              {},                 # prefix => href, for XPath args
@@ -246,7 +247,7 @@ signer = HankoXml::Signer.new(key: key, certificate: cert) do |s|
   s.signature_method = :rsa_sha1
   s.canonicalization_method = :c14n
   s.reference "#NFe3520...", transforms: %i[enveloped_signature c14n], digest_method: :sha1
-  s.key_info :x509_certificate
+  s.key_info :x509_certificate   # or: s.key_info :key_name, :x509_certificate, name: "idp-1"
   s.placement = HankoXml::Placement.append_to("/nfe:NFe", namespaces: { "nfe" => NFE_NS })
 end
 ```

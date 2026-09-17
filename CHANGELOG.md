@@ -60,6 +60,39 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **#67:** `key_info: [:key_name]` signed an empty `<KeyName/>`: xmlsec writes
+  the key's own name, and a key loaded from PEM has none. The clause now takes
+  the name, as `key_info: [{ key_name: "idp-1" }]` or, in the block form,
+  `s.key_info :key_name, name: "idp-1"`, and it also fills an adopted
+  template's empty `<KeyName/>`. Signing an empty `<KeyName/>` raises
+  `ConfigurationError`.
+- **#68:** `Signer` passed namespace-qualified `id_attributes:` pairs
+  (`[[href, "Id"]]`) straight to the native layer, which raised `NativeError`.
+  It now sends their local names, as `Verifier` already did.
+- **#69:** An Ed25519 (or other unsupported) key raised `NoMethodError` from
+  inside the library. `Signer.new` now raises `ConfigurationError` naming the
+  key type.
+- **#70:** A key that does not fit the signature method (an EC key with the
+  default `:rsa_sha256`, an RSA key with an adopted ECDSA template) failed as
+  an opaque `SigningError: xmlSecDSigCtxSign failed`. It now raises
+  `ConfigurationError` before signing, suggesting the method that fits.
+- **#71:** A `URI="#id"` whose Id contains an apostrophe could not be signed
+  or verified: xmlsec built the XPointer `id('a'b')` by string formatting.
+  Bare-name references are now looked up directly in the document's ID table
+  (xmlsec's `XMLSEC_DSIG_FLAGS_USE_VISA3D_HACK`), which also no longer lets
+  `#a b` select two elements.
+- **#72:** Signing an adopted template whose `<X509Data>` already held a
+  certificate kept that stale certificate, because xmlsec fills only empty
+  leaves. The key-derived `<KeyInfo>` leaves (`X509Certificate`,
+  `X509SubjectName`, `X509IssuerSerial`, `X509SKI`, `KeyValue`) of an adopted
+  template are now emptied before signing.
+- The default `schema: :default` check rejected an `<X509SerialNumber>` over
+  24 digits when Nokogiri ran on libxml2 older than 2.12, which happens on
+  Linux when the extension is linked against a system libxml2 and loaded
+  first. A 20-octet certificate serial has up to 49 digits, so valid
+  signatures carrying `:x509_issuer_serial` failed with `SchemaError`. The
+  bundled schema now checks the integer with a pattern.
+
 - **#52:** `key_info: [:key_value]` wrote an empty `<KeyValue/>`, so the
   signature could not be verified with `key:` and failed the default schema
   check. xmlsec 1.3 disables KeyValue key data globally; the signing context

@@ -544,8 +544,26 @@ impl<'mngr> DsigCtx<'mngr> {
             (*ctx.ptr).signKey = key.into_raw();
         }
         ctx.restrict_reference_uris_to_same_document();
+        ctx.resolve_bare_fragments_by_id();
         ctx.restrict_transforms()?;
         Ok(ctx)
+    }
+
+    /// By default xmlsec turns `URI="#foo"` into the XPointer
+    /// `xpointer(id('foo'))` by string formatting, so an Id containing an
+    /// apostrophe produced an invalid expression and could not be signed or
+    /// verified (#71). The flag (named for the Visa3D protocol that needed
+    /// it first) makes xmlsec look the bare name up with `xmlGetID` instead:
+    /// the same ID table and the same node set without comments, minus the
+    /// quoting. It is also stricter -- `id('a b')` selects two elements,
+    /// the lookup finds none. `#xpointer(...)` URIs are unaffected.
+    fn resolve_bare_fragments_by_id(&mut self) {
+        // SAFETY: self.ptr is a live xmlSecDSigCtx we exclusively own; flags
+        // is application-settable and read when each Reference context is
+        // initialized. Same ABI caveat as the signKey write.
+        unsafe {
+            (*self.ptr).flags |= sys::XMLSEC_DSIG_FLAGS_USE_VISA3D_HACK;
+        }
     }
 
     /// xmlSecDSigCtxCreate leaves `enabledReferenceUris` /

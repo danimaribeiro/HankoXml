@@ -75,7 +75,6 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
     end
 
     it "E4 replaces a stale certificate in an adopted template (#72)" do
-      pending "#72: xmlsec keeps a non-empty <X509Certificate> it finds in the template"
       template = fixtures.join("template_exc_c14n.xml").read
       stale = "<X509Data><X509Certificate>#{pem_body(other_cert_pem)}</X509Certificate></X509Data>"
       template = template.sub("<X509Data/>", stale)
@@ -83,6 +82,16 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
       certificates = key_info(signed).xpath("ds:X509Data/ds:X509Certificate", ds)
 
       expect(certificates.map { |c| c.text.gsub(/\s/, "") }).to eq([pem_body(cert_pem)])
+    end
+
+    it "E4 leaves a refused template's certificate alone (#72)" do
+      template = fixtures.join("template_exc_c14n.xml").read
+      stale = "<X509Data><X509Certificate>#{pem_body(other_cert_pem)}</X509Certificate></X509Data>"
+      doc = Nokogiri::XML(template.sub("<X509Data/>", stale))
+
+      expect { HankoXml::Signer.new(key: key_pem, certificate: cert_pem, references: ["#nope"]).sign!(doc) }
+        .to raise_error(HankoXml::ConfigurationError)
+      expect(key_info(doc.to_xml).at_xpath("ds:X509Data/ds:X509Certificate", ds).text).to eq(pem_body(other_cert_pem))
     end
 
     it "E5 writes the whole certificates: chain" do
@@ -135,9 +144,36 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
     end
 
     it "E7 writes the key name into <KeyName> (#67)" do
-      pending "#67: keys loaded from PEM have no name, so <KeyName/> stays empty"
-      signed = sign_in_place(key_info: [:key_name])
-      expect(key_info(signed).at_xpath("ds:KeyName", ds).text).not_to be_empty
+      signed = sign_in_place(key_info: [{ key_name: "idp-1" }, :x509_certificate])
+      expect(key_info(signed).at_xpath("ds:KeyName", ds).text).to eq("idp-1")
+      expect(HankoXml.verify(signed, keys: { "idp-1" => cert_pem }).valid?).to be true
+    end
+
+    it "E7 takes the key name in the block form (#67)" do
+      signer = HankoXml::Signer.new(key: key_pem, certificate: cert_pem) { |s| s.key_info :key_name, name: "idp-1" }
+      expect(key_info(signer.sign(xml).to_s).at_xpath("ds:KeyName", ds).text).to eq("idp-1")
+    end
+
+    it "E7 names an empty <KeyName/> in an adopted template (#67)" do
+      template = HankoXml::Signer.new(key: key_pem, key_info: [:key_name]).template(xml)
+      doc = Nokogiri::XML(xml)
+      doc.root.add_child(template)
+      signed = sign_in_place(doc.to_xml, key_info: [{ key_name: "idp-1" }])
+
+      expect(key_info(signed).at_xpath("ds:KeyName", ds).text).to eq("idp-1")
+    end
+
+    it "E7 refuses to sign an empty <KeyName/> (#67)" do
+      expect(HankoXml::Native).not_to receive(:sign)
+      expect { sign_in_place(key_info: [:key_name]) }.to raise_error(HankoXml::ConfigurationError, /KeyName/)
+    end
+
+    it "E7 keeps a <KeyName> the adopted template already names" do
+      template = HankoXml::Signer.new(key: key_pem, key_info: [{ key_name: "from-template" }]).template(xml)
+      doc = Nokogiri::XML(xml)
+      doc.root.add_child(template)
+
+      expect(key_info(sign_in_place(doc.to_xml)).at_xpath("ds:KeyName", ds).text).to eq("from-template")
     end
 
     describe "E8 X509Data clauses" do
@@ -215,9 +251,10 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
     end
 
     it "F9 raises a clear error for an Ed25519 key (#69)" do
-      pending "#69: raises NoMethodError from inside the library"
       ed25519 = OpenSSL::PKey.generate_key("ED25519")
-      expect { HankoXml::Signer.new(key: ed25519).sign(xml) }.to raise_error(HankoXml::ConfigurationError)
+      [ed25519, ed25519.private_to_pem].each do |key|
+        expect { HankoXml::Signer.new(key: key) }.to raise_error(HankoXml::ConfigurationError, /unsupported ED25519/)
+      end
     end
 
     # Signing does not validate the chain; verification with store: does.

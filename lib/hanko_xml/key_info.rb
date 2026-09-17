@@ -16,25 +16,38 @@ module HankoXml
       key_value
     ].freeze
 
-    # A single clause a Signer will emit, e.g. :x509_certificate.
-    Clause = Struct.new(:name) do
-      def initialize(name)
+    # A single clause a Signer will emit, e.g. :x509_certificate. +value+ is
+    # the text a clause writes itself rather than leaving to xmlsec: only
+    # :key_name has one, the name for <KeyName> (#67).
+    Clause = Struct.new(:name, :value) do
+      def initialize(name, value = nil)
         name = name.to_sym
         unless KeyInfo::CLAUSES.include?(name)
           raise HankoXml::ConfigurationError,
                 "unknown key_info clause #{name.inspect}, expected one of #{KeyInfo::CLAUSES.inspect}"
         end
+        if !value.nil? && name != :key_name
+          raise HankoXml::ConfigurationError, "key_info clause #{name.inspect} takes no value"
+        end
 
-        super(name)
+        super(name, value&.to_s&.freeze)
         freeze
       end
     end
 
     class << self
       # Normalizes a Signer's key_info: value (an Array of Symbols/Clauses,
-      # or a single one) into a frozen Array<Clause>.
+      # or a single one) into a frozen Array<Clause>. A Hash names a clause
+      # with its value, e.g. `{ key_name: "idp-1" }`.
       def coerce(value)
-        Array(value).map { |v| v.is_a?(Clause) ? v : Clause.new(v) }.freeze
+        value = [value] if value.is_a?(Hash) # Array(hash) would split it into pairs
+        Array(value).flat_map do |v|
+          case v
+          when Clause then v
+          when Hash then v.map { |name, clause_value| Clause.new(name, clause_value) }
+          else Clause.new(v)
+          end
+        end.freeze
       end
     end
 

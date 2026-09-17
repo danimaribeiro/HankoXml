@@ -73,7 +73,6 @@ RSpec.describe "HankoXml::Signer references and transforms" do
     end
 
     it "accepts a [href, name] pair on the Signer (#68)" do
-      pending "#68: Signer passes the pair to Native.sign, which raises NativeError"
       signed = signer(references: ["#body-1"], id_attributes: [[wsu, "Id"]], policy: fragment).sign(soap)
       expect(verify(signed, id_attributes: [[wsu, "Id"]], policy: fragment).valid?).to be true
     end
@@ -168,15 +167,15 @@ RSpec.describe "HankoXml::Signer references and transforms" do
       expect(verify(signed, policy: fragment).valid?).to be true
     end
 
-    it "fails closed on an apostrophe" do
-      expect { signer(references: ["#a'b"], policy: fragment).sign(xml.sub('Id="a"', %(Id="a'b"))) }
-        .to raise_error(HankoXml::SigningError)
-    end
-
     it "signs an Id containing an apostrophe (#71)" do
-      pending "#71: xmlsec builds id('a'b') and the XPath fails"
       signed = signer(references: ["#a'b"], policy: fragment).sign(xml.sub('Id="a"', %(Id="a'b")))
       expect(verify(signed, policy: fragment).valid?).to be true
+    end
+
+    # A bare name is looked up as one Id, not as XPath id(), which would
+    # split "a b" and select both elements.
+    it "does not resolve a space-separated list of Ids" do
+      expect { signer(references: ["#a b"], policy: fragment).sign(xml) }.to raise_error(HankoXml::SigningError)
     end
   end
 end

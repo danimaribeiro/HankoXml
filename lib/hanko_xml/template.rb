@@ -130,7 +130,11 @@ module HankoXml
       clauses.each do |c|
         case c.name
         when :key_name
-          key_info.add_child(element("KeyName"))
+          # xmlsec writes the xmlSecKey's own name, and a key loaded from
+          # PEM has none, so the name comes from the clause (#67).
+          key_name = element("KeyName")
+          key_name.content = c.value if c.value
+          key_info.add_child(key_name)
         when :key_value
           key_info.add_child(element("KeyValue"))
         end

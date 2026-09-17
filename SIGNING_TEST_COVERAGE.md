@@ -11,10 +11,11 @@ Date: 2026-09-12 (originally against commit `3af4155`; `bundle exec rspec` =
 `signer_key_info_spec.rb` (E, F) and `key_spec.rb` (F2/F3). Writing them
 fixed four bugs: the pass-phrase prompt on an encrypted key without
 `password:`, the empty `<KeyValue/>` (E6), the no-op X509Data clauses (E8)
-and the `:detached` `TypeError` (G6). The rest are `pending` specs with their
-own issues: E7 `<KeyName/>` (#67), C6 `[href, name]` on the Signer (#68),
-F9 Ed25519 (#69), B6 EC key with the default method (#70), C14 an apostrophe
-in an Id (#71), and E4 a stale adopted certificate (#72). The tables below
+and the `:detached` `TypeError` (G6). The rest were `pending` specs with their
+own issues, all since fixed: E7 `<KeyName/>` (#67), C6 `[href, name]` on the
+Signer (#68), F9 Ed25519 (#69), B6 EC key with the default method (#70), C14
+an apostrophe in an Id (#71), and E4 a stale adopted certificate (#72). The
+tables below
 keep their original "Expected today" column as a record of what the review
 predicted.
 
