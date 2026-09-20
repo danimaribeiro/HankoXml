@@ -61,10 +61,14 @@ module HankoXml
     end
 
     def digest_methods
-      signature_info.references.map(&:digest_method_name)
+      # nil signature_info: a verification that failed before inspection (#94).
+      signature_info ? signature_info.references.map(&:digest_method_name) : []
     end
 
     def signed_nodes
+      # Same rule as #signed?: nothing is covered unless the signature held (#91).
+      return [] unless valid?
+
       # For each reference, get the nodes it covers
       nodes = []
       references.each do |ref|

@@ -87,6 +87,23 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **#91:** `Verification#signed_nodes` returns `[]` when the verification is
+  invalid, like `#signed?`. It used to return the resolved reference nodes even
+  though nothing had been proven about them.
+- **#95:** A String `signature:` (XPath) on `Verifier` must select exactly one
+  `<ds:Signature>`: several matches raise `MultipleSignatures` instead of the
+  first being verified silently. The XPath now sees `namespaces:` merged over
+  `HankoXml::NS`, so prefixed expressions such as `(//ds:Signature)[2]` work.
+- **#94:** `Verification#digest_methods` returns `[]` instead of raising
+  `NoMethodError` on a verification that failed before the signature was
+  inspected.
+- **#93:** RBS: `PolicyError` and `PlacementError` are `ConfigurationError`s, as
+  in the code, and the missing error classes are declared.
+- **#92:** `API_CONTRACT.md` §5.8 no longer claims that `allow_hmac: true` with
+  `certificate:` raises at `Verifier.new`. The HMAC key-confusion attack is
+  stopped by key pinning in xmlsec, now pinned by a spec over every public value
+  the HMAC could be keyed on.
+
 - `Verification#certificate` was always `nil`, although API_CONTRACT.md §5.4
   documents it. It now names the certificate whose key verified: the pinned or
   matching listed certificate, or the `store:` chain leaf. `Native.verify`

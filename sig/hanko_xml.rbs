@@ -2,25 +2,40 @@ module HankoXml
   VERSION: String
   NS: Hash[String, String]
 
-  class Error < StandardError end
+  class Error < StandardError
+    attr_accessor xmlsec_errors: Array[String]
+    attr_accessor signature_node: Nokogiri::XML::Node?
+
+    def initialize: (?String? message, ?xmlsec_errors: Array[String], ?signature_node: Nokogiri::XML::Node?) -> void
+  end
+
   class ConfigurationError < Error end
-  class KeyLoadError < Error end
+  class PolicyError < ConfigurationError end
+  class PlacementError < ConfigurationError end
+  class NokogiriRequired < ConfigurationError end
+  class SchemaError < ConfigurationError end
   class ParseError < Error end
-  class NativeError < Error
-    attr_reader xmlsec_errors: Array[String]
+  class KeyLoadError < Error end
+  class ReferenceError < Error
+    attr_accessor reference_uri: String?
   end
-  class NativeVersionMismatch < NativeError end
-  class PlacementError < Error end
-  class VerificationError < Error
-    attr_reader signature_node: Nokogiri::XML::Node?
-    attr_reader xmlsec_errors: Array[String]?
-  end
+  class SigningError < Error end
+
+  class VerificationError < Error end
+  class SignatureInvalid < VerificationError end
   class SignatureMissing < VerificationError end
+  class MultipleSignatures < VerificationError end
   class UntrustedCertificate < VerificationError end
   class CertificateExpired < VerificationError end
-  class SchemaError < ConfigurationError end
-  class PolicyError < VerificationError end
-  class MultipleSignatures < VerificationError end
+  class DigestMismatch < VerificationError
+    attr_accessor reference_uri: String?
+  end
+  class ResolutionMismatch < VerificationError end
+
+  class NotSignedError < Error end
+  class FrozenSignatureError < Error end
+  class NativeError < Error end
+  class NativeVersionMismatch < NativeError end
 
   def self.nokogiri?: () -> bool
   def self.capabilities: () -> Hash[Symbol, bool]

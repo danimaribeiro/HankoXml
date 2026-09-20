@@ -477,7 +477,7 @@ hidden behind an empty array.
 | `:first` | verify the first `<ds:Signature>` in document order, even if others exist — an explicit, unsafe opt-in |
 | `:only` | same as the default: raise `MultipleSignatures` if the document has more than one |
 | `Integer` | the nth signature, document order, 0-based — matches `Signer#sign!`'s `signature:` index |
-| `String` | an XPath selecting exactly one `<ds:Signature>` |
+| `String` | an XPath selecting exactly one `<ds:Signature>`, evaluated with `namespaces:` merged over `HankoXml::NS` (so `ds:` is always bound). More than one match raises `MultipleSignatures`; no match, or a match that is not a `<ds:Signature>`, is a `SignatureMissing` result (#95) |
 
 Methods:
 
@@ -865,10 +865,15 @@ Notes on the non-obvious ones:
 
 - **`allow_hmac: false`.** An HMAC `SignatureMethod` combined with certificate-
   based trust is a classic confusion attack: the attacker replaces an RSA
-  signature with an HMAC one keyed on public data. Enabling HMAC requires
-  `allow_hmac: true` *and* a `key:` (never `certificate:`/`store:`) on the
-  verifier; the combination `allow_hmac: true` + `certificate:` raises
-  `PolicyError` at `Verifier.new` time.
+  signature with an HMAC one keyed on public data. With `allow_hmac: false` an
+  HMAC `SignatureMethod` is a `PolicyError` before any crypto. With
+  `allow_hmac: true` (as in `Policy.permissive`) the attack still fails, and the
+  reason is key pinning, not a constructor check: every trust source is pinned
+  as xmlsec's `signKey` (§5.6, S-01), that key is an RSA/EC/DSA key, and xmlsec
+  will not use it for an HMAC method. `Verifier.new` therefore does **not**
+  raise for `allow_hmac: true` + `certificate:` (#92); `Policy.permissive` with
+  certificate trust is a legal configuration. There is no HMAC secret key API
+  yet: `key:` takes asymmetric keys only, so no HMAC signature verifies today.
 - **`require_signed_root: true`** is the structural half of the XSW defence —
   see §5.8.1, which is where the whole decision is argued.
 - **`reject_duplicate_ids: true`** is enforced by a Nokogiri scan before we

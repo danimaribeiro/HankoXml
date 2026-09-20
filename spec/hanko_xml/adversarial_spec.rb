@@ -172,6 +172,27 @@ RSpec.describe "Adversarial input" do
       it "still rejects it under Policy.permissive, because trust stays pinned" do
         expect(verify(hmac_forged_xml, policy: HankoXml::Policy.permissive).valid?).to be false
       end
+
+      # #92: allow_hmac: true with certificate trust is a legal configuration
+      # (Policy.permissive is exactly that), so nothing raises at Verifier.new.
+      # The defence is xmlsec's: the pinned signKey (S-01) is an RSA key, and
+      # xmlsec will not use it for an HMAC SignatureMethod, whatever public
+      # bytes the attacker keyed the HMAC on.
+      it "is rejected for every public value an attacker could key the HMAC on, under either trust source" do
+        cert = OpenSSL::X509::Certificate.new(signer_cert_pem)
+        secrets = [cert.to_der, signer_cert_pem, cert.public_key.to_der, cert.public_key.to_pem]
+        trusts = [{ certificate: signer_cert_pem }, { key: cert.public_key.to_pem }]
+
+        secrets.product(trusts).each do |secret, trust|
+          doc = Nokogiri::XML(hmac_forged_xml)
+          signed_info = doc.at_xpath("//ds:SignedInfo", ds).canonicalize(Nokogiri::XML::XML_C14N_EXCLUSIVE_1_0)
+          doc.at_xpath("//ds:SignatureValue", ds).content =
+            [OpenSSL::HMAC.digest("SHA256", secret, signed_info)].pack("m0")
+
+          verifier = HankoXml::Verifier.new(policy: HankoXml::Policy.permissive, **trust)
+          expect(verifier.verify(doc.to_xml).valid?).to be false
+        end
+      end
     end
   end
 

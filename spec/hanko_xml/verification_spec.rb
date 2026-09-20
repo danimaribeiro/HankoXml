@@ -131,6 +131,37 @@ RSpec.describe HankoXml::Verification do
     expect(verification).not_to be_signed(doc.at_xpath("//signed"))
   end
 
+  # #91: API_CONTRACT §5.4. #signed_nodes follows the same rule as #signed?.
+  it "returns [] from #signed_nodes when the verification is invalid" do
+    doc = Nokogiri::XML("<root><signed Id=\"payload-1\"/></root>")
+    info = HankoXml::SignatureInfo.new(
+      signature_method: signature_method,
+      canonicalization_method: canonicalization_method,
+      references: [{ uri: "#payload-1", digest_method: digest_method, transforms: [] }]
+    )
+    build = lambda do |valid|
+      described_class.new(valid: valid, errors: valid ? [] : [HankoXml::VerificationError.new("nope")],
+                          signature_info: info, signature_node: nil, document: doc)
+    end
+
+    expect(build.call(true).signed_nodes).to eq([doc.at_xpath("//signed")])
+    expect(build.call(false).signed_nodes).to eq([])
+  end
+
+  # #94: a Verification that failed before inspection has no signature_info.
+  it "answers every metadata accessor without raising when signature_info is nil" do
+    verification = described_class.new(
+      valid: false, errors: [HankoXml::SignatureMissing.new("none")],
+      signature_info: nil, signature_node: nil, document: Nokogiri::XML("<root/>")
+    )
+
+    expect(verification.digest_methods).to eq([])
+    expect(verification.signature_method).to be_nil
+    expect(verification.canonicalization_method).to be_nil
+    expect(verification.references).to eq([])
+    expect(verification.signed_nodes).to eq([])
+  end
+
   describe "#reference_valid (S-09)" do
     def build_multi_ref_verification(valid:, reference_valid:)
       doc = Nokogiri::XML("<root><a Id=\"a\"/><b Id=\"b\"/></root>")
