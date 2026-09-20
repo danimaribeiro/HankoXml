@@ -32,3 +32,6 @@ docs/public/api/
 
 # Untested EU DSS XAdES vectors, fetched by `rake interop:dss` (see spec/interop/xades/README.md).
 /spec/interop/xades/dss/corpus/
+
+# SignXML helper bytecode if someone runs generate.py / verify.py.
+**/__pycache__/

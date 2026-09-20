@@ -58,7 +58,8 @@ end
 
 RSpec.describe "XAdES interop vectors (#58)" do
   it "has an expectation for every vendored XAdES file" do
-    files = Dir.glob(XadesInteropVectors::ROOT.join("**", "*.xml").to_s).reject { |f| f.include?("/corpus/") }
+    files = Dir.glob(XadesInteropVectors::ROOT.join("**", "*.xml").to_s)
+               .reject { |f| f.include?("/corpus/") || f.include?("/signxml-produced/") }
     expect(XadesInteropVectors::EXPECTED.keys).to match_array(
       files.map { |f| f.delete_prefix("#{XadesInteropVectors::ROOT}/") }
     )

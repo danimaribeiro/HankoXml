@@ -62,7 +62,7 @@ HankoXml is a general Ruby XML-DSig library with a strict policy and an XSW API.
 
 ### Where SignXML is stronger
 
-1. **XAdES and XML-DSig 1.1 breadth.** RSA-PSS, SHA3, ECDSA-SHA3, XAdES signed properties. HankoXml would need `Algorithms.register` plus a looser policy.
+1. **XAdES and XML-DSig 1.1 breadth.** RSA-PSS, SHA3, ECDSA-SHA3. HankoXml would need `Algorithms.register` plus a looser policy. XAdES-B signing and verification are in place (#57–#59).
 2. **Certificate path policy.** SignXML supports `ee_policy` / `ca_policy`. HankoXml’s `store:` checks KeyUsage (`require_signing_key_usage`) and exact subject matching (`certificate_subject:`), but has no equivalent of arbitrary end-entity/CA policy objects beyond what `OpenSSL::X509::Store` configures.
 3. **Comment / c14n truncation.** SignXML documents comment-induced truncation and excises comments from `signed_xml` when they were not signed. HankoXml leaves “read the node you checked with `signed?`” to the caller.
 4. **Maturity.** Years of interop vectors and two published HMAC CVEs that were fixed. HankoXml is new and has no foreign interop corpus yet (below).
@@ -158,7 +158,7 @@ No vector showed HankoXml's Ruby layer rejecting a signature that xmlsec accepts
 
 SignXML implements a **baseline XAdES** wrapper (`XAdESSigner` / `XAdESVerifier`): extra `ds:Object` / `QualifyingProperties` references, `SignaturePolicyIdentifier`, `ClaimedRoles`, `DataObjectFormat`. It is not a full archival profile (XAdES-A / T / C / XL with RFC 3161 timestamps, OCSP, and certificate values).
 
-HankoXml signs XAdES-B with `HankoXml::Xades::Signer` (#57): `QualifyingProperties` with `SigningTime`, `SigningCertificateV2`, `SignaturePolicyIdentifier`, `SignerRoleV2` and `DataObjectFormat`, and a second reference over `SignedProperties`, conforming to the ETSI XAdES 1.3.2 schema. `HankoXml::Xades::Verifier` (#58) checks them on verification, reading only the SignedProperties xmlsec digested and binding `SigningCertificate(V2)` to the certificate that verified; it verifies SignXML's real-world XAdES samples and refuses the EU DSS signature-wrapping attacks. SignXML-produced interop (#59), RSA-PSS/SHA-3 (#60), and XAdES-T/LT/LTA (#81, #82) are still open.
+HankoXml signs XAdES-B with `HankoXml::Xades::Signer` (#57): `QualifyingProperties` with `SigningTime`, `SigningCertificateV2`, `SignaturePolicyIdentifier`, `SignerRoleV2` and `DataObjectFormat`, and a second reference over `SignedProperties`, conforming to the ETSI XAdES 1.3.2 schema. `HankoXml::Xades::Verifier` (#58) checks them on verification, reading only the SignedProperties xmlsec digested and binding `SigningCertificate(V2)` to the certificate that verified; it verifies SignXML's real-world XAdES samples and refuses the EU DSS signature-wrapping attacks. SignXML's own `XAdESSigner` output verifies under `Policy.strict` (#59). RSA-PSS/SHA-3 (#60) and XAdES-T/LT/LTA (#81, #82) are still open.
 
 ### XAdES is an overlay, not a different crypto
 
@@ -209,19 +209,19 @@ HankoXml is the same kind of library: general XML-DSig. The NFe-shaped spec fixt
 | **SAML 2.0** | Enveloped **fragment** (Assertion, not Response), exclusive c14n, often **InclusiveNamespaces PrefixList**, Assertion `ID` | `Policy.fragment` + `#at_signed` + `Transform.exc_c14n(inclusive_prefixes:)` | Documented; InclusiveNamespaces first-class; `location=` for the Assertion |
 | **WS-Security** | Sign SOAP Body / Timestamp; `wsu:Id`; sometimes STR-Transform / `BinarySecurityToken` | Custom `id_attributes` might cover `wsu:Id`; STR-Transform no | Some interop fixtures; not a WSS stack |
 | **EBICS** | XML-DSig over order data + X.509 | Generic XML-DSig | Generic XML-DSig |
-| **XAdES / eIDAS / ICP-Brasil AD-\*** | Extra signed properties, later timestamps/revocation | No | Baseline XAdES yes; archival incomplete |
+| **XAdES / eIDAS / ICP-Brasil AD-\*** | Extra signed properties, later timestamps/revocation | XAdES-B (#57–#59); archival no | Baseline XAdES yes; archival incomplete |
 
 ### Practical takeaway
 
 - **Ruby XML-DSig with pinned trust and `#signed?(node)`:** HankoXml. Use `signature: :only` (or `verify_all`) and `result.at_signed(...)` rather than trusting `valid?` alone.
-- **Python, XAdES, RSA-PSS, HMAC, or merlin/phaos interop:** SignXML. Always pass an explicit trust anchor, set `expect_config=SignatureConfiguration(location=...)`, and only consume `verify().signed_xml`.
-- **Do not treat either as a drop-in for the other.** HankoXml has no XAdES, no RSA-PSS/SHA3, and no HMAC key. SignXML has no Ruby/Nokogiri integration and a much looser default trust story.
+- **Python, RSA-PSS, HMAC, or archival XAdES:** SignXML. Always pass an explicit trust anchor, set `expect_config=SignatureConfiguration(location=...)`, and only consume `verify().signed_xml`.
+- **Do not treat either as a drop-in for the other.** HankoXml has XAdES-B and no RSA-PSS/SHA3 or HMAC key. SignXML has no Ruby/Nokogiri integration and a much looser default trust story. SignXML's `XAdESVerifier` defaults to `expect_references=3` because `XAdESSigner` also signs `<KeyInfo>`; HankoXml signs two references (payload + SignedProperties), so the reverse check passes `expect_references=2`.
 
 ---
 
 ## Plan to close the gap with SignXML
 
-The main **feature** gap is XAdES. SignXML can emit and verify baseline qualifying properties; HankoXml cannot. Closing that is the work that makes the two libraries comparable for EU eIDAS / ICP-Brasil AD-RB documents. Smaller XML-DSig 1.1 gaps (RSA-PSS, interop vectors) support XAdES but are not the headline.
+The main **feature** gap was XAdES-B. SignXML can emit and verify baseline qualifying properties; HankoXml now does too (#57–#59). Remaining XML-DSig 1.1 gaps (RSA-PSS, SHA-3) support some EU profiles but are not the headline.
 
 Stay at **XAdES-B** (BES / baseline B) to match what SignXML actually ships. Do not start with XAdES-T/C/XL/A (RFC 3161 timestamps, OCSP, archive timestamps) — that is a PKI-lifetime product, not SignXML parity.
 
@@ -231,7 +231,7 @@ Stay at **XAdES-B** (BES / baseline B) to match what SignXML actually ships. Do 
 2. Signed properties to implement, matching SignXML: `SigningTime`, `SigningCertificate` / `SigningCertificateV2` (cert digest), optional `SignaturePolicyIdentifier`, `SignerRole/ClaimedRoles`, `DataObjectFormat`.
 3. Policy: `max_references` already allows 8; XAdES-B needs at least two (payload + SignedProperties). Default `Policy.strict` must accept that extra same-document reference without `Policy.permissive`. `require_signed_root` stays a separate concern (payload may still be the root).
 4. Verification: check the SignedProperties digest, parse the signed properties into a result object (SignXML’s `XAdESVerifyResult.signed_properties`), and fail if the signing-certificate digest does not match the cert used to verify.
-5. Tests: round-trip HankoXml → HankoXml; **verify a document produced by SignXML’s `XAdESSigner`**; sign in HankoXml and verify in SignXML if a small Python helper is acceptable in CI. No NF-e fixtures in this suite.
+5. Tests: round-trip HankoXml → HankoXml; **verify a document produced by SignXML’s `XAdESSigner`** (#59); sign in HankoXml and verify in SignXML (`expect_references=2`) when `python3` can import `signxml`. No NF-e fixtures in this suite.
 
 ### Phase 2 — Algorithms XAdES documents actually use
 
@@ -260,7 +260,7 @@ Vendor merlin-twenty-three / phaos-three under `spec/interop/`. Verify with `Pol
 
 ### Suggested order of PRs
 
-1. XAdES-B types + template (`QualifyingProperties` + second Reference) + sign/verify round-trip
-2. Cross-check against SignXML-produced XAdES-B XML
+1. XAdES-B types + template (`QualifyingProperties` + second Reference) + sign/verify round-trip — done (#57, #58)
+2. Cross-check against SignXML-produced XAdES-B XML — done (#59)
 3. RSA-PSS (and SHA-3 if xmlsec supports it) behind `Policy.xades`
-4. merlin/phaos interop corpus under `Policy.interop`
+4. merlin/phaos interop corpus under `Policy.interop` — done (#62)
