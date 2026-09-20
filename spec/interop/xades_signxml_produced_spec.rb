@@ -20,7 +20,7 @@ module SignxmlProducedXades
   OTHER = FIXTURES.join("other.crt").read.freeze
   POLICY_DIGEST = "Ohixl6upD6av8N7pEvDABhEL6hM="
   POLICY_ID = "urn:oid:2.16.76.1.7.1.6.2.3"
-  INVOICE = %(<Invoice xmlns="urn:x"><Total>150.00</Total></Invoice>).freeze
+  INVOICE = %(<Invoice xmlns="urn:x"><Total>150.00</Total></Invoice>)
 
   module_function
 
