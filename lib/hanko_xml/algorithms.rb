@@ -11,7 +11,7 @@ module HankoXml
   # Registration is process-global and additive. It does NOT grant use --
   # a Policy allowlist must separately permit the algorithm. Built-in names
   # and URIs cannot be re-pointed, even with replace: true (S-16).
-  module Algorithms
+  module Algorithms # rubocop:disable Metrics/ModuleLength
     Entry = Struct.new(:slot, :name, :uri, :secure, keyword_init: true) do
       def secure?
         !!secure

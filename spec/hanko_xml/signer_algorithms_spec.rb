@@ -97,9 +97,7 @@ RSpec.describe "HankoXml::Signer algorithms" do
   end
 
   it "B12 fails closed when xmlsec cannot sign rsa_pss_sha256 (#60)" do
-    if xmlsec_at_least_1_3?
-      skip "xmlsec #{HankoXml::NativeVersion.build_versions[:xmlsec]} implements RSA-PSS"
-    end
+    skip "xmlsec #{HankoXml::NativeVersion.build_versions[:xmlsec]} implements RSA-PSS" if xmlsec_at_least_1_3?
 
     expect do
       HankoXml::Signer.new(key: key_pem, certificate: cert_pem, signature_method: :rsa_pss_sha256,
@@ -129,9 +127,7 @@ RSpec.describe "HankoXml::Signer algorithms" do
   end
 
   it "B13 fails closed when xmlsec cannot digest sha3_256 (#60)" do
-    if xmlsec_at_least_1_3?
-      skip "xmlsec #{HankoXml::NativeVersion.build_versions[:xmlsec]} implements SHA-3"
-    end
+    skip "xmlsec #{HankoXml::NativeVersion.build_versions[:xmlsec]} implements SHA-3" if xmlsec_at_least_1_3?
 
     expect do
       HankoXml::Signer.new(key: key_pem, certificate: cert_pem, digest_method: :sha3_256,
@@ -154,9 +150,7 @@ RSpec.describe "HankoXml::Signer algorithms" do
   end
 
   it "B14 fails closed when xmlsec cannot sign ecdsa_sha3_256 (#60)" do
-    if xmlsec_at_least_1_3?
-      skip "xmlsec #{HankoXml::NativeVersion.build_versions[:xmlsec]} implements ECDSA-SHA3"
-    end
+    skip "xmlsec #{HankoXml::NativeVersion.build_versions[:xmlsec]} implements ECDSA-SHA3" if xmlsec_at_least_1_3?
 
     key = OpenSSL::PKey::EC.generate("prime256v1")
     expect do
