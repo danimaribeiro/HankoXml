@@ -1041,6 +1041,13 @@ After the XML-DSig signature verifies (#58):
 A failure is a `HankoXml::XadesError < VerificationError` in `#errors`. Unsigned
 properties are never read. Only the XAdES 1.3.2 namespace is recognised.
 
+SignXML 5.1.0's `XAdESSigner` output verifies under `Policy.strict` (#59): it
+carries a third Reference over `<KeyInfo>`, `SigningCertificateV2` without
+`IssuerSerialV2`, v1 `SignerRole`, and a default `DataObjectFormat`. Those are
+all legal under this contract. The reverse (HankoXml sign → SignXML verify)
+needs SignXML's `expect_references: 2`, because this Signer does not sign
+`<KeyInfo>`.
+
 ### 5.10 Errors
 
 ```
@@ -1873,7 +1880,8 @@ Listed so that "not implemented" is a decision rather than an omission:
   Reasoning and future shape in §11.3.
 - **XAdES beyond baseline signing** (`-T`, `-LT`, `-LTA`: timestamps and
   archival, #81 / #82). XAdES-B signing is §5.9.1, built on this contract as a
-  profile plus custom `<Object>` content; verifying its signed properties is #58.
+  profile plus custom `<Object>` content; verifying its signed properties is #58;
+  SignXML `XAdESSigner` interop is #59.
 - **WS-Security / SOAP** binding, including `wsu:Id` resolution as a default.
   The `resolver:` hook (§5.9) is the extension point that makes it possible
   out-of-tree.

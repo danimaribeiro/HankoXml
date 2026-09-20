@@ -10,6 +10,13 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Added
 
+- **#59:** SignXML-produced XAdES-B interop. `XAdESSigner` 5.1.0 signatures
+  (payload + SignedProperties + KeyInfo references, `SigningCertificateV2`,
+  optional policy/role/`DataObjectFormat`) verify with `Xades::Verifier` under
+  `Policy.strict`. The reverse — a HankoXml XAdES-B signature accepted by
+  SignXML's `XAdESVerifier` with `expect_references: 2` — runs when `python3`
+  can import `signxml`. See `spec/interop/xades/signxml-produced/`.
+
 - **#58:** `HankoXml::Xades::Verifier`, XAdES-B verification. After XML-DSig
   verification, it checks that the SignedProperties xmlsec digested is the one in
   the signature's single `QualifyingProperties` (so a decoy is never read), and
