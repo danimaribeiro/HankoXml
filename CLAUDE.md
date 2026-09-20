@@ -54,8 +54,9 @@ Nokogiri is the optional DOM layer.
   something xmlsec would reject or make a trust decision xmlsec should make.
   When a fix seems to need new security logic, look for the xmlsec mechanism
   first.
-- Fail closed. `Policy.strict` is the default and denies SHA-1, HMAC, XSLT and
-  XPath transforms, and external references unless a policy allows them.
+- Fail closed. `Policy.strict` is the default and denies SHA-1, HMAC, RSA-PSS,
+  SHA-3, XSLT and XPath transforms, and external references unless a policy
+  allows them (`Policy.legacy_sha1`, `Policy.xades`).
 - Verification pins the trusted key as xmlsec's `signKey`, and the document's
   `<KeyInfo>` never selects the key (S-01).
 - On `:adopt`, check a template against policy and the Signer's references

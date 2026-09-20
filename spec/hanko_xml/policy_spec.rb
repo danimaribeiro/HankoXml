@@ -42,6 +42,24 @@ RSpec.describe HankoXml::Policy do
     end
   end
 
+  describe ".xades" do
+    it "adds RSA-PSS and SHA-3 to strict, and leaves SHA-1 out" do
+      xades = described_class.xades
+
+      expect(xades.digest_methods).to include(:sha256, :sha3_256, :sha3_384, :sha3_512)
+      expect(xades.digest_methods).not_to include(:sha1, :sha3_224)
+      expect(xades.signature_methods).to include(:rsa_sha256, :rsa_pss_sha256, :rsa_pss_sha384,
+                                                 :rsa_pss_sha512, :ecdsa_sha3_256)
+      expect(xades.signature_methods).not_to include(:rsa_sha1)
+      expect(xades.require_signed_root).to be true
+    end
+
+    it "is frozen and memoized" do
+      expect(described_class.xades).to equal(described_class.xades)
+      expect(described_class.xades).to be_frozen
+    end
+  end
+
   describe ".interop" do
     it "differs from fragment only by SHA-1 with RSA or DSA and 1024-bit RSA and DSA keys" do
       interop = described_class.interop.to_h
@@ -102,6 +120,18 @@ RSpec.describe HankoXml::Policy do
       )
 
       expect(described_class.legacy_sha1.violations(info)).to be_empty
+    end
+
+    it "rejects RSA-PSS under .strict and accepts it under .xades (#60)" do
+      info = HankoXml::SignatureInfo.new(
+        signature_method: "http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1",
+        canonicalization_method: "http://www.w3.org/2001/10/xml-exc-c14n#",
+        references: [{ uri: "", digest_method: "http://www.w3.org/2007/05/xmldsig-more#sha3-256",
+                       transforms: [] }]
+      )
+
+      expect(described_class.strict.violations(info).map(&:message).join).to match(/signature method|digest method/)
+      expect(described_class.xades.violations(info)).to be_empty
     end
 
     it "flags an external reference when allow_external_references is false" do

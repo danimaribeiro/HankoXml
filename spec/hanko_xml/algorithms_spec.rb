@@ -2,9 +2,17 @@
 
 RSpec.describe HankoXml::Algorithms do
   describe ".uri_for / .name_for" do
-    it "resolves a known Symbol to its URI" do
-      expect(described_class.uri_for(:signature, :rsa_sha256))
-        .to eq("http://www.w3.org/2001/04/xmldsig-more#rsa-sha256")
+    it "resolves RFC 6931 RSA-PSS and SHA-3 names (#60)" do
+      expect(described_class.uri_for(:signature, :rsa_pss_sha256))
+        .to eq("http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1")
+      expect(described_class.uri_for(:signature, :rsa_pss_sha384))
+        .to eq("http://www.w3.org/2007/05/xmldsig-more#sha384-rsa-MGF1")
+      expect(described_class.uri_for(:signature, :rsa_pss_sha512))
+        .to eq("http://www.w3.org/2007/05/xmldsig-more#sha512-rsa-MGF1")
+      expect(described_class.uri_for(:digest, :sha3_256))
+        .to eq("http://www.w3.org/2007/05/xmldsig-more#sha3-256")
+      expect(described_class.name_for(:signature, "http://www.w3.org/2007/05/xmldsig-more#ecdsa-sha3-256"))
+        .to eq(:ecdsa_sha3_256)
     end
 
     it "resolves a URI back to its Symbol" do
@@ -27,6 +35,12 @@ RSpec.describe HankoXml::Algorithms do
 
     it "flags SHA-256 as secure" do
       expect(described_class.secure?(:digest, :sha256)).to be true
+    end
+
+    it "flags RSA-PSS and SHA-3 as secure (#60)" do
+      expect(described_class.secure?(:signature, :rsa_pss_sha256)).to be true
+      expect(described_class.secure?(:digest, :sha3_256)).to be true
+      expect(described_class.secure?(:signature, :ecdsa_sha3_256)).to be true
     end
 
     it "flags an unknown algorithm as insecure" do

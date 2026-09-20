@@ -16,6 +16,10 @@ RSpec.describe "HankoXml::Signer algorithms" do
   let(:ds) { { "ds" => HankoXml::NS["ds"] } }
   let(:id_attrs) { %w[Id ID id] }
 
+  def xmlsec_at_least_1_3?
+    Gem::Version.new(HankoXml::NativeVersion.build_versions[:xmlsec]) >= Gem::Version.new("1.3")
+  end
+
   def algorithms(signed)
     doc = Nokogiri::XML(signed)
     {
@@ -75,6 +79,105 @@ RSpec.describe "HankoXml::Signer algorithms" do
 
     expect(HankoXml.valid?(signed, certificate: cert_pem, policy: policy)).to be true
     expect(HankoXml.valid?(signed, certificate: cert_pem)).to be false
+  end
+
+  it "B12 refuses rsa_pss_sha256 under Policy.strict (#60)" do
+    expect do
+      HankoXml::Signer.new(key: key_pem, certificate: cert_pem, signature_method: :rsa_pss_sha256).sign(xml)
+    end.to raise_error(HankoXml::PolicyError, /rsa-MGF1|rsa_pss/)
+  end
+
+  it "B12 explains an EC key used with rsa_pss_sha256 (#70, #60)" do
+    key = OpenSSL::PKey::EC.generate("prime256v1")
+    expect(HankoXml::Native).not_to receive(:sign)
+    expect do
+      HankoXml::Signer.new(key: key.to_pem, certificate: self_signed(key).to_pem,
+                           signature_method: :rsa_pss_sha256, policy: HankoXml::Policy.xades).sign(xml)
+    end.to raise_error(HankoXml::ConfigurationError, /:rsa_pss_sha256 needs an RSA key/)
+  end
+
+  it "B12 fails closed when xmlsec cannot sign rsa_pss_sha256 (#60)" do
+    if xmlsec_at_least_1_3?
+      skip "xmlsec #{HankoXml::NativeVersion.build_versions[:xmlsec]} implements RSA-PSS"
+    end
+
+    expect do
+      HankoXml::Signer.new(key: key_pem, certificate: cert_pem, signature_method: :rsa_pss_sha256,
+                           policy: HankoXml::Policy.xades).sign(xml)
+    end.to raise_error(HankoXml::SigningError)
+  end
+
+  it "B12 signs and verifies rsa_pss_sha256 under Policy.xades (#60)" do
+    unless xmlsec_at_least_1_3?
+      skip "xmlsec #{HankoXml::NativeVersion.build_versions[:xmlsec]} does not implement RSA-PSS"
+    end
+
+    policy = HankoXml::Policy.xades
+    signed = HankoXml::Signer.new(key: key_pem, certificate: cert_pem, policy: policy,
+                                  signature_method: :rsa_pss_sha256).sign(xml).to_s
+
+    expect(algorithms(signed)[:signature]).to eq(HankoXml::Algorithms.uri_for(:signature, :rsa_pss_sha256))
+    expect(HankoXml::Native.verify(signed, [cert_pem], [], id_attrs, 0, [])[:status]).to eq(:succeeded)
+    expect(HankoXml.valid?(signed, certificate: cert_pem, policy: policy)).to be true
+    expect(HankoXml.valid?(signed, certificate: cert_pem)).to be false
+  end
+
+  it "B13 refuses sha3_256 under Policy.strict (#60)" do
+    expect do
+      HankoXml::Signer.new(key: key_pem, certificate: cert_pem, digest_method: :sha3_256).sign(xml)
+    end.to raise_error(HankoXml::PolicyError, /sha3-256/)
+  end
+
+  it "B13 fails closed when xmlsec cannot digest sha3_256 (#60)" do
+    if xmlsec_at_least_1_3?
+      skip "xmlsec #{HankoXml::NativeVersion.build_versions[:xmlsec]} implements SHA-3"
+    end
+
+    expect do
+      HankoXml::Signer.new(key: key_pem, certificate: cert_pem, digest_method: :sha3_256,
+                           policy: HankoXml::Policy.xades).sign(xml)
+    end.to raise_error(HankoXml::SigningError)
+  end
+
+  it "B13 signs and verifies sha3_256 under Policy.xades (#60)" do
+    unless xmlsec_at_least_1_3?
+      skip "xmlsec #{HankoXml::NativeVersion.build_versions[:xmlsec]} does not implement SHA-3"
+    end
+
+    policy = HankoXml::Policy.xades
+    signed = HankoXml::Signer.new(key: key_pem, certificate: cert_pem, policy: policy,
+                                  digest_method: :sha3_256).sign(xml).to_s
+
+    expect(algorithms(signed)[:digest]).to eq(HankoXml::Algorithms.uri_for(:digest, :sha3_256))
+    expect(HankoXml.valid?(signed, certificate: cert_pem, policy: policy)).to be true
+    expect(HankoXml.valid?(signed, certificate: cert_pem)).to be false
+  end
+
+  it "B14 fails closed when xmlsec cannot sign ecdsa_sha3_256 (#60)" do
+    if xmlsec_at_least_1_3?
+      skip "xmlsec #{HankoXml::NativeVersion.build_versions[:xmlsec]} implements ECDSA-SHA3"
+    end
+
+    key = OpenSSL::PKey::EC.generate("prime256v1")
+    expect do
+      HankoXml::Signer.new(key: key.to_pem, certificate: self_signed(key).to_pem,
+                           signature_method: :ecdsa_sha3_256, policy: HankoXml::Policy.xades).sign(xml)
+    end.to raise_error(HankoXml::SigningError)
+  end
+
+  it "B14 signs and verifies ecdsa_sha3_256 under Policy.xades (#60)" do
+    unless xmlsec_at_least_1_3?
+      skip "xmlsec #{HankoXml::NativeVersion.build_versions[:xmlsec]} does not implement ECDSA-SHA3"
+    end
+
+    key = OpenSSL::PKey::EC.generate("prime256v1")
+    cert = self_signed(key)
+    policy = HankoXml::Policy.xades
+    signed = HankoXml::Signer.new(key: key.to_pem, certificate: cert.to_pem, policy: policy,
+                                  signature_method: :ecdsa_sha3_256).sign(xml).to_s
+
+    expect(algorithms(signed)[:signature]).to eq(HankoXml::Algorithms.uri_for(:signature, :ecdsa_sha3_256))
+    expect(HankoXml.valid?(signed, certificate: cert.to_pem, policy: policy)).to be true
   end
 
   {

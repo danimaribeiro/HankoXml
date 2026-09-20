@@ -168,6 +168,12 @@ module HankoXml
         table.register(:sha384, "http://www.w3.org/2001/04/xmldsig-more#sha384", secure: true)
         table.register(:sha512, "http://www.w3.org/2001/04/xmlenc#sha512", secure: true)
         table.register(:ripemd160, "http://www.w3.org/2001/04/xmlenc#ripemd160", secure: false)
+        # RFC 6931 SHA-3. xmlsec 1.3 implements these; xmlsec 1.2 (Ubuntu CI)
+        # does not — Native.sign/verify then fails closed (#60).
+        table.register(:sha3_224, "http://www.w3.org/2007/05/xmldsig-more#sha3-224", secure: true)
+        table.register(:sha3_256, "http://www.w3.org/2007/05/xmldsig-more#sha3-256", secure: true)
+        table.register(:sha3_384, "http://www.w3.org/2007/05/xmldsig-more#sha3-384", secure: true)
+        table.register(:sha3_512, "http://www.w3.org/2007/05/xmldsig-more#sha3-512", secure: true)
         table.seal_builtins!
       end
 
@@ -178,9 +184,23 @@ module HankoXml
         table.register(:rsa_sha256, "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256", secure: true)
         table.register(:rsa_sha384, "http://www.w3.org/2001/04/xmldsig-more#rsa-sha384", secure: true)
         table.register(:rsa_sha512, "http://www.w3.org/2001/04/xmldsig-more#rsa-sha512", secure: true)
+        # RFC 6931 RSA-PSS (MGF1, default salt = hash length). xmlsec 1.3
+        # implements these without <RSAPSSParams>; xmlsec 1.2 does not (#60).
+        table.register(:rsa_pss_sha256, "http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1",
+                       secure: true)
+        table.register(:rsa_pss_sha384, "http://www.w3.org/2007/05/xmldsig-more#sha384-rsa-MGF1",
+                       secure: true)
+        table.register(:rsa_pss_sha512, "http://www.w3.org/2007/05/xmldsig-more#sha512-rsa-MGF1",
+                       secure: true)
         table.register(:ecdsa_sha256, "http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256", secure: true)
         table.register(:ecdsa_sha384, "http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha384", secure: true)
         table.register(:ecdsa_sha512, "http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha512", secure: true)
+        table.register(:ecdsa_sha3_256, "http://www.w3.org/2007/05/xmldsig-more#ecdsa-sha3-256",
+                       secure: true)
+        table.register(:ecdsa_sha3_384, "http://www.w3.org/2007/05/xmldsig-more#ecdsa-sha3-384",
+                       secure: true)
+        table.register(:ecdsa_sha3_512, "http://www.w3.org/2007/05/xmldsig-more#ecdsa-sha3-512",
+                       secure: true)
         table.register(:dsa_sha1, "http://www.w3.org/2000/09/xmldsig#dsa-sha1", secure: false)
         table.register(:hmac_sha256, "http://www.w3.org/2001/04/xmldsig-more#hmac-sha256", secure: true)
         table.seal_builtins!

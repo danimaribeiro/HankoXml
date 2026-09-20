@@ -85,6 +85,21 @@ module HankoXml
         )
       end
 
+      # strict + RSA-PSS (RFC 6931 MGF1) and SHA-3 digest / ECDSA-SHA3
+      # signature methods, the algorithms EU XAdES profiles often want (#60).
+      # Kept out of Policy.strict the same way SHA-1 is. xmlsec 1.3 (vendored
+      # / platform gems) implements them; xmlsec 1.2 (Ubuntu CI) does not —
+      # Native.sign/verify then fails closed.
+      def xades
+        @xades ||= strict.with(
+          digest_methods: strict.digest_methods + %i[sha3_256 sha3_384 sha3_512],
+          signature_methods: strict.signature_methods + %i[
+            rsa_pss_sha256 rsa_pss_sha384 rsa_pss_sha512
+            ecdsa_sha3_256 ecdsa_sha3_384 ecdsa_sha3_512
+          ]
+        )
+      end
+
       # fragment + what the W3C interop signatures (merlin-xmldsig-twenty-three,
       # phaos-xmldsig-three) need: SHA-1 with RSA or DSA, and 1024-bit RSA and
       # DSA keys.
@@ -415,8 +430,8 @@ module HankoXml
 
       HankoXml::PolicyError.new(
         "#{slot} method #{uri_or_name}#{name ? " (#{name.inspect})" : ""}#{location} is not in " \
-        "this policy's #{field_name}. Use a preset such as HankoXml::Policy.legacy_sha1 or " \
-        "Policy#with(#{field_name}: …) if this document genuinely requires it."
+        "this policy's #{field_name}. Use a preset such as HankoXml::Policy.legacy_sha1, " \
+        "HankoXml::Policy.xades or Policy#with(#{field_name}: …) if this document genuinely requires it."
       )
     end
   end

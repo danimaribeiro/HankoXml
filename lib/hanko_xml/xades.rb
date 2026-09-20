@@ -242,7 +242,9 @@ module HankoXml
       def digest(parent, digest_method, bytes)
         parent.add_child(digest_method_element(digest_method))
         algorithm = HankoXml::Algorithms.name_for(:digest, HankoXml::Algorithms.uri_for(:digest, digest_method))
-        parent.add_child(element("DigestValue")).content = OpenSSL::Digest.new(algorithm.to_s).base64digest(bytes)
+        # OpenSSL wants SHA-3 as "sha3-256"; the registry name is :sha3_256.
+        openssl_name = algorithm.to_s.tr("_", "-")
+        parent.add_child(element("DigestValue")).content = OpenSSL::Digest.new(openssl_name).base64digest(bytes)
       end
 
       def digest_method_element(digest_method)

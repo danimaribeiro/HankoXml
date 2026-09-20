@@ -628,6 +628,8 @@ impl<'mngr> DsigCtx<'mngr> {
     /// all registered transforms are allowed, including XSLT when the host
     /// xmlsec was built with libxslt (S-10). Initialize the list and add
     /// only safe core DSig transforms — excluding XSLT, XPath, and XPointer.
+    /// SHA-3 digest klasses exist only in xmlsec 1.3+; they are looked up
+    /// by href so a 1.2 host still compiles (#60).
     fn restrict_transforms(&mut self) -> Result<(), &'static str> {
         // List of safe transform IDs to allow. These cover the standard
         // DSig operations: canonicalization, base64, enveloped signature.
@@ -661,6 +663,53 @@ impl<'mngr> DsigCtx<'mngr> {
             };
             if rc < 0 {
                 return Err("failed to enable safe transform");
+            }
+        }
+        self.enable_sha3_digest_transforms()
+    }
+
+    /// Enables SHA-3 `DigestMethod` klasses when the linked xmlsec registered
+    /// them. Looked up by href rather than `xmlSecOpenSSLTransformSha3_*GetKlass`
+    /// so Ubuntu's xmlsec 1.2 (no SHA-3 symbols) still compiles (S-10, #60).
+    fn enable_sha3_digest_transforms(&mut self) -> Result<(), &'static str> {
+        const SHA3_DIGEST_HREFS: &[&[u8]] = &[
+            b"http://www.w3.org/2007/05/xmldsig-more#sha3-224",
+            b"http://www.w3.org/2007/05/xmldsig-more#sha3-256",
+            b"http://www.w3.org/2007/05/xmldsig-more#sha3-384",
+            b"http://www.w3.org/2007/05/xmldsig-more#sha3-512",
+        ];
+
+        // SAFETY: xmlSecTransformIdsGet returns the process-global registry
+        // list, populated once by init_xmlsec and never mutated afterwards.
+        let registry = unsafe { sys::xmlSecTransformIdsGet() };
+        if registry.is_null() {
+            return Err("xmlsec transform registry is unavailable");
+        }
+        // SAFETY: registry is a valid list (checked above).
+        let size = unsafe { sys::xmlSecPtrListGetSize(registry) };
+        for pos in 0..size {
+            // SAFETY: pos < size; every item is a static xmlSecTransformKlass.
+            let id = unsafe { sys::xmlSecPtrListGetItem(registry, pos) } as sys::xmlSecTransformId;
+            if id.is_null() {
+                continue;
+            }
+            // SAFETY: id is a non-null static klass; href is a static
+            // NUL-terminated string or null.
+            let href = unsafe { (*id).href };
+            if href.is_null() {
+                continue;
+            }
+            // SAFETY: href is non-null and NUL-terminated (see above).
+            let href = unsafe { CStr::from_ptr(href.cast()) }.to_bytes();
+            if !SHA3_DIGEST_HREFS.contains(&href) {
+                continue;
+            }
+            // SAFETY: self.ptr is a live xmlSecDSigCtx we exclusively own;
+            // enabledReferenceTransforms was initialized by the SHA-2 loop
+            // above, and id is static for the life of the process.
+            let rc = unsafe { sys::xmlSecDSigCtxEnableReferenceTransform(self.ptr, id) };
+            if rc < 0 {
+                return Err("failed to enable SHA-3 digest transform");
             }
         }
         Ok(())

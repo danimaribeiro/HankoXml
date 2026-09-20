@@ -269,13 +269,25 @@ module HankoXml
     # being signed, which for an adopted template is the template's.
     def check_key_fits_signature_method!(sig_info)
       name = HankoXml::Algorithms.name_for(:signature, sig_info.signature_method)
-      needed = SIGNATURE_KEY_TYPES[name.to_s[/\A(rsa|ecdsa|dsa)_sha\d+\z/, 1]]
+      needed = SIGNATURE_KEY_TYPES[signature_key_kind(name)]
       pkey = @key.to_openssl
       return if needed.nil? || pkey.is_a?(needed)
 
       raise HankoXml::ConfigurationError,
             "signature method #{name.inspect} needs #{key_type_name(needed)} key, but key: is " \
             "#{key_type_name(pkey.class)} key; use signature_method: #{SIGNATURE_METHOD_FOR_KEY[pkey.class].inspect}"
+    end
+
+    # Built-in method names encode the key class in the prefix: rsa_sha256
+    # and rsa_pss_sha256 are RSA, ecdsa_sha256 and ecdsa_sha3_256 are EC.
+    # HMAC and custom registrations are left to xmlsec (needed is nil).
+    def signature_key_kind(name)
+      method = name.to_s
+      return "ecdsa" if method.start_with?("ecdsa")
+      return "rsa" if method.start_with?("rsa")
+      return "dsa" if method.start_with?("dsa")
+
+      nil
     end
 
     def key_type_name(klass)
