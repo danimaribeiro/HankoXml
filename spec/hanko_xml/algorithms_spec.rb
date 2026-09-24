@@ -11,7 +11,7 @@ RSpec.describe HankoXml::Algorithms do
         .to eq("http://www.w3.org/2007/05/xmldsig-more#sha512-rsa-MGF1")
       expect(described_class.uri_for(:digest, :sha3_256))
         .to eq("http://www.w3.org/2007/05/xmldsig-more#sha3-256")
-      expect(described_class.name_for(:signature, "http://www.w3.org/2007/05/xmldsig-more#ecdsa-sha3-256"))
+      expect(described_class.name_for(:signature, "http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-256"))
         .to eq(:ecdsa_sha3_256)
     end
 

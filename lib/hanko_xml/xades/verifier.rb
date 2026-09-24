@@ -156,7 +156,7 @@ module HankoXml
 
         @policy.enforce_algorithm!(:digest, digest_method)
         name = HankoXml::Algorithms.name_for(:digest, digest_method)
-        actual = OpenSSL::Digest.new(name.to_s).digest(certificate.to_der)
+        actual = Xades.openssl_digest(name, certificate.to_der)
         decoded = digest_value.gsub(/\s/, "").unpack1("m")
         OpenSSL.fixed_length_secure_compare(actual, decoded) if actual.bytesize == decoded.bytesize
       end

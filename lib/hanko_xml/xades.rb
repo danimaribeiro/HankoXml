@@ -18,6 +18,14 @@ module HankoXml
       general_names = OpenSSL::ASN1::Sequence([OpenSSL::ASN1::ASN1Data.new([name], 4, :CONTEXT_SPECIFIC)])
       OpenSSL::ASN1::Sequence([general_names, OpenSSL::ASN1::Integer(certificate.serial)]).to_der
     end
+
+    # Digests a certificate for <xades:CertDigest> with the registry digest
+    # +name+. OpenSSL spells SHA-3 "sha3-256" where the registry has
+    # :sha3_256 (#60).
+    def self.openssl_digest(name, bytes)
+      OpenSSL::Digest.new(name.to_s.tr("_", "-")).digest(bytes)
+    end
+
     # The Reference Type that marks the Reference over <xades:SignedProperties>.
     SIGNED_PROPERTIES_TYPE = "http://uri.etsi.org/01903#SignedProperties"
 
@@ -242,9 +250,7 @@ module HankoXml
       def digest(parent, digest_method, bytes)
         parent.add_child(digest_method_element(digest_method))
         algorithm = HankoXml::Algorithms.name_for(:digest, HankoXml::Algorithms.uri_for(:digest, digest_method))
-        # OpenSSL wants SHA-3 as "sha3-256"; the registry name is :sha3_256.
-        openssl_name = algorithm.to_s.tr("_", "-")
-        parent.add_child(element("DigestValue")).content = OpenSSL::Digest.new(openssl_name).base64digest(bytes)
+        parent.add_child(element("DigestValue")).content = [Xades.openssl_digest(algorithm, bytes)].pack("m0")
       end
 
       def digest_method_element(digest_method)

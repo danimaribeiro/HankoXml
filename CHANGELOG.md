@@ -17,6 +17,9 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   SHA-3 `DigestMethod` klasses are enabled on the native reference-transform
   allow-list when the linked xmlsec registered them (S-10). `Signer` treats
   `rsa_pss_*` as RSA and `ecdsa_sha3_*` as EC for the key-type check.
+  ECDSA-SHA3 uses RFC 9231's `http://www.w3.org/2021/04/xmldsig-more#`
+  URIs. `Xades::Signer` and `Xades::Verifier` both digest a SHA-3
+  `CertDigest` (the verifier used to raise on one).
 
 - **#59:** SignXML-produced XAdES-B interop. `XAdESSigner` 5.1.0 signatures
   (payload + SignedProperties + KeyInfo references, `SigningCertificateV2`,

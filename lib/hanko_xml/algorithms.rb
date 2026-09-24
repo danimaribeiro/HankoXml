@@ -195,11 +195,13 @@ module HankoXml
         table.register(:ecdsa_sha256, "http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256", secure: true)
         table.register(:ecdsa_sha384, "http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha384", secure: true)
         table.register(:ecdsa_sha512, "http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha512", secure: true)
-        table.register(:ecdsa_sha3_256, "http://www.w3.org/2007/05/xmldsig-more#ecdsa-sha3-256",
+        # RFC 9231 put ECDSA-SHA3 under the 2021/04 namespace, not RFC 6931's
+        # 2007/05 one; xmlsec 1.3 uses the same URIs (#60).
+        table.register(:ecdsa_sha3_256, "http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-256",
                        secure: true)
-        table.register(:ecdsa_sha3_384, "http://www.w3.org/2007/05/xmldsig-more#ecdsa-sha3-384",
+        table.register(:ecdsa_sha3_384, "http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-384",
                        secure: true)
-        table.register(:ecdsa_sha3_512, "http://www.w3.org/2007/05/xmldsig-more#ecdsa-sha3-512",
+        table.register(:ecdsa_sha3_512, "http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-512",
                        secure: true)
         table.register(:dsa_sha1, "http://www.w3.org/2000/09/xmldsig#dsa-sha1", secure: false)
         table.register(:hmac_sha256, "http://www.w3.org/2001/04/xmldsig-more#hmac-sha256", secure: true)
