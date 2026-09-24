@@ -1,6 +1,15 @@
 # frozen_string_literal: true
 
+require "nokogiri"
+
 RSpec.describe HankoXml::Policy do
+  # The DOM context Signer/Verifier pass; without it the structural checks
+  # fail closed (#96).
+  let(:dom_doc) { Nokogiri::XML(%(<doc><ds:Signature xmlns:ds="#{HankoXml::NS["ds"]}"/></doc>)) }
+  let(:dom) do
+    { document: dom_doc, sig_node: dom_doc.at_xpath("//ds:Signature", HankoXml::NS), id_attributes: %w[Id] }
+  end
+
   let(:compliant_info) do
     HankoXml::SignatureInfo.new(
       signature_method: "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
@@ -86,7 +95,7 @@ RSpec.describe HankoXml::Policy do
 
   describe "#violations" do
     it "is empty for a compliant SignatureInfo under .strict" do
-      expect(described_class.strict.violations(compliant_info)).to be_empty
+      expect(described_class.strict.violations(compliant_info, **dom)).to be_empty
     end
 
     it "flags a disallowed digest method" do
@@ -119,7 +128,7 @@ RSpec.describe HankoXml::Policy do
         references: [{ uri: "", digest_method: "http://www.w3.org/2000/09/xmldsig#sha1", transforms: [] }]
       )
 
-      expect(described_class.legacy_sha1.violations(info)).to be_empty
+      expect(described_class.legacy_sha1.violations(info, **dom)).to be_empty
     end
 
     it "rejects RSA-PSS under .strict and accepts it under .xades (#60)" do
@@ -131,7 +140,7 @@ RSpec.describe HankoXml::Policy do
       )
 
       expect(described_class.strict.violations(info).map(&:message).join).to match(/signature method|digest method/)
-      expect(described_class.xades.violations(info)).to be_empty
+      expect(described_class.xades.violations(info, **dom)).to be_empty
     end
 
     it "flags an external reference when allow_external_references is false" do
@@ -182,7 +191,7 @@ RSpec.describe HankoXml::Policy do
         allow_hmac: true
       )
 
-      expect(policy.violations(info)).to be_empty
+      expect(policy.violations(info, **dom)).to be_empty
     end
 
     it "flags a RetrievalMethod in KeyInfo when allow_retrieval_method is false" do
@@ -234,7 +243,7 @@ RSpec.describe HankoXml::Policy do
 
       HankoXml::Algorithms.register(:digest, :snapshot_test, new_uri, secure: true, replace: true)
 
-      expect(policy.violations(info_with_digest(old_uri))).to be_empty
+      expect(policy.violations(info_with_digest(old_uri), **dom)).to be_empty
       expect(policy.violations(info_with_digest(new_uri)).map(&:message).join).to match(/digest_methods/)
     end
 
@@ -244,9 +253,21 @@ RSpec.describe HankoXml::Policy do
     end
   end
 
+  describe "#enforce! without the document (#96)" do
+    it "fails closed on require_signed_root and reject_duplicate_ids instead of skipping them" do
+      expect { described_class.strict.enforce!(compliant_info) }
+        .to raise_error(HankoXml::PolicyError, /require_signed_root needs the document.*reject_duplicate_ids needs/m)
+    end
+
+    it "passes when the policy turns both off" do
+      policy = described_class.strict.with(require_signed_root: false, reject_duplicate_ids: false)
+      expect { policy.enforce!(compliant_info) }.not_to raise_error
+    end
+  end
+
   describe "#enforce!" do
     it "does not raise for a compliant SignatureInfo" do
-      expect { described_class.strict.enforce!(compliant_info) }.not_to raise_error
+      expect { described_class.strict.enforce!(compliant_info, **dom) }.not_to raise_error
     end
 
     it "raises HankoXml::PolicyError for a violating SignatureInfo" do

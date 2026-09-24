@@ -155,8 +155,10 @@ module HankoXml
     # always have a DOM and trust material -- can supply, for the handful
     # of fields that genuinely need it (S-06):
     #
-    # @param document [Nokogiri::XML::Document, nil] enables
-    #   +require_signed_root+ / +reject_duplicate_ids+.
+    # @param document [Nokogiri::XML::Document, nil] needed by
+    #   +require_signed_root+ / +reject_duplicate_ids+. Without it (or
+    #   +sig_node+ / +id_attributes+) an enabled check reports a violation
+    #   rather than being skipped (#96).
     # @param sig_node [Nokogiri::XML::Node, nil] the `<Signature>` being
     #   checked, alongside +document+.
     # @param id_attributes [Array<String>, nil] the caller's `id_attributes:`,
@@ -316,9 +318,19 @@ module HankoXml
     # matching one of the root element's own id_attributes. This runs
     # before any cryptography -- it does not need (and does not wait for)
     # a real Verification#covers_root? (S-06).
+    def missing_context_violation(field)
+      HankoXml::PolicyError.new(
+        "#{field} needs the document to check; pass document:, sig_node: and id_attributes:, " \
+        "or use a policy with #{field}: false"
+      )
+    end
+
     def root_signed_violation(document, sig_node, signature_info, id_attributes)
       return nil unless require_signed_root
-      return nil if document.nil? || sig_node.nil? # no DOM context: cannot check, so don't fail closed here
+      # Without the DOM this cannot be checked, and an unchecked structural
+      # rule must fail closed, not pass (#96).
+      return missing_context_violation(:require_signed_root) if document.nil? || sig_node.nil?
+
       return nil if signature_info.references.any? { |ref| ref.uri.to_s.empty? }
 
       root_ids = root_id_values(document, id_attributes)
@@ -342,7 +354,8 @@ module HankoXml
     # only, ignoring namespace.
     def duplicate_id_violation(document, id_attributes)
       return nil unless reject_duplicate_ids
-      return nil if document.nil? || id_attributes.nil? || id_attributes.empty?
+      return missing_context_violation(:reject_duplicate_ids) if document.nil? || id_attributes.nil?
+      return nil if id_attributes.empty?
 
       names = id_attributes.map { |attr| attr.is_a?(Array) ? attr[1].to_s : attr.to_s }
       seen = Hash.new(0)

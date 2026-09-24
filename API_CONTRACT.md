@@ -897,6 +897,10 @@ Notes on the non-obvious ones:
 - **`reject_duplicate_ids: true`** is enforced by a Nokogiri scan before we
   serialize. Duplicate IDs make `URI="#x"` resolution ambiguous, and "which `x`
   did xmlsec pick" is the mechanism behind several XSW variants.
+- Both structural checks need the document. `Signer` and `Verifier` always pass
+  it; a direct `Policy#enforce!` / `#violations` call without `document:`,
+  `sig_node:` and `id_attributes:` reports each enabled check as a violation
+  instead of skipping it (#96).
 - **`allow_external_references: false`** blocks the SSRF/file-read surface of
   XML-DSig outright. Any reference whose URI is not `""` or `#fragment` is
   rejected in Ruby before xmlsec sees it, so libxmlsec1's own I/O callbacks are

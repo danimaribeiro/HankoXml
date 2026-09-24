@@ -114,6 +114,10 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 - **#96:** `HankoXml::Error` filters key material: a `Key` or `OpenSSL::PKey`
   passed as the message becomes `[FILTERED]`, and private-key PEM text is
   redacted from `#message` and `#xmlsec_errors`, as the contract promised.
+- **#96:** `Policy#enforce!` / `#violations` called without `document:`
+  (or `sig_node:` / `id_attributes:`) report `require_signed_root` and
+  `reject_duplicate_ids` as violations instead of silently skipping them.
+  `Signer` and `Verifier` always passed the document, so they are unaffected.
 - **#96:** `namespaces:` now reaches every caller-supplied XPath. The
   `Signer`'s map is merged under a `Placement`'s own, and `Verification#at_signed`
   / `#signed` see their `ns` argument merged over the `Verifier`'s map and
