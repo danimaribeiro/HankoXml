@@ -1,0 +1,6 @@
+# Commits that only reformat code. `git blame` skips them with
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+# (GitHub's blame view reads this file automatically.)
+
+# Format the codebase with Tuxedo 0.0.1
+141bb97dc86d7afbc6be4673f2df1495bc36ed2e
