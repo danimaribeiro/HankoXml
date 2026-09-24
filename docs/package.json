@@ -13,6 +13,7 @@
     "docs:api": "cd .. && bundle exec yard doc --output-dir docs/public/api && mkdir -p docs/public/api/assets && cp assets/hanko-mark.png docs/public/api/assets/"
   },
   "dependencies": {
+    "@astrojs/markdown-satteri": "0.4.0",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4.3.3",
     "astro": "^7.2.10",

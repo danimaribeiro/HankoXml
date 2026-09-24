@@ -32,7 +32,7 @@ All commands are run from the root of the project, from a terminal:
 | Command                   | Action                                           |
 | :------------------------ | :----------------------------------------------- |
 | `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
+| `npm run dev`             | Starts local dev server at `localhost:4321/HankoXml/` |
 | `npm run build`           | Build your production site to `./dist/`          |
 | `npm run preview`         | Preview your build locally, before deploying     |
 | `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
@@ -41,3 +41,14 @@ All commands are run from the root of the project, from a terminal:
 ## 👀 Want to learn more?
 
 Feel free to check [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+
+## Deployment
+
+`.github/workflows/pages.yml` publishes the site to GitHub Pages at
+https://danimar.dev/HankoXml/ on every push to `main` that touches `docs/`,
+`lib/` or `.yardopts` (or by hand, with "Run workflow").
+
+The site lives under the `/HankoXml` base path (`base` in `astro.config.mjs`),
+so internal links must not start at `/`: in `.astro` files wrap them in
+`withBase()` from `src/url.ts`; in Markdown, write `/guide/errors` as usual and
+the `baseLinks` plugin (`src/base-links.mjs`) adds the base path.

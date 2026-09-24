@@ -6,6 +6,7 @@ import ThemeSwitcher from '../components/ThemeSwitcher.astro';
 // so both top bars always list the same links. Hrefs are site-root-relative;
 // absolute URLs are external.
 import topNav from '../topnav.json';
+import { sectionOf, withBase } from '../url';
 
 interface Props {
   title?: string;
@@ -22,15 +23,15 @@ const {
 // Social scrapers require an absolute URL. Astro.site comes from `site` in
 // astro.config.mjs; until that is set this falls back to the build host, so
 // the card resolves correctly in dev but needs `site` for production.
-const ogImage = new URL('/og.png', Astro.site ?? Astro.url).href;
+const ogImage = new URL(withBase('og.png'), Astro.site ?? Astro.url).href;
 
-const currentSection = Astro.url.pathname.split('/')[1];
+const currentSection = sectionOf(Astro.url.pathname);
 const navLinks = topNav.map((item) => {
   const external = /^https?:/.test(item.href);
   return {
     ...item,
     external,
-    href: external ? item.href : `/${item.href}`,
+    href: external ? item.href : withBase(item.href),
     current: !external && item.href.split('/')[0] === currentSection,
   };
 });
@@ -41,8 +42,8 @@ const navLinks = topNav.map((item) => {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
-    <link rel="icon" href="/favicon.ico" sizes="32x32" />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="icon" href={withBase('favicon.ico')} sizes="32x32" />
+    <link rel="icon" href={withBase('favicon.svg')} type="image/svg+xml" />
     <title>{title}</title>
     <meta name="description" content={description} />
     <meta property="og:type" content="website" />
@@ -79,8 +80,8 @@ const navLinks = topNav.map((item) => {
     <header class="relative flex flex-wrap sm:justify-start sm:flex-nowrap z-50 w-full bg-white border-b border-gray-200 text-sm py-3 sm:py-0 dark:bg-slate-900 dark:border-gray-700 glass:bg-white/[0.14] glass:backdrop-blur-2xl glass:border-white/[0.12] glass:shadow-[inset_0_1px_1px_rgba(255,255,255,0.1)]">
       <nav class="relative max-w-7xl w-full mx-auto px-4 sm:flex sm:items-center sm:justify-between sm:px-6 lg:px-8" aria-label="Global">
         <div class="flex items-center justify-between">
-          <a class="flex-none inline-flex items-center gap-x-2.5 text-xl font-semibold dark:text-white glass:text-white" href="/" aria-label="Brand">
-            <img src="/hanko-mark-gem.svg" alt="" width="128" height="128" class="size-7 shrink-0" />
+          <a class="flex-none inline-flex items-center gap-x-2.5 text-xl font-semibold dark:text-white glass:text-white" href={withBase('')} aria-label="Brand">
+            <img src={withBase('hanko-mark-gem.svg')} alt="" width="128" height="128" class="size-7 shrink-0" />
             HankoXml
           </a>
           <button type="button" class="sm:hidden hs-collapse-toggle relative size-9 flex justify-center items-center text-sm font-semibold rounded-lg border border-gray-200 text-gray-800 hover:bg-gray-100 dark:border-gray-700 dark:text-white dark:hover:bg-white/10 glass:border-white/[0.15] glass:text-white glass:hover:bg-white/[0.10]" data-hs-collapse="#navbar-collapse-with-animation" aria-controls="navbar-collapse-with-animation" aria-label="Toggle navigation">

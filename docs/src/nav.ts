@@ -1,3 +1,5 @@
+import { withBase } from './url';
+
 export const guideNav = [
   { slug: 'getting-started', title: 'Getting Started' },
   { slug: 'nokogiri-api', title: 'Nokogiri API' },
@@ -12,17 +14,17 @@ export const guideNav = [
 // `yard` is the path to the generated YARD HTML for this class, served
 // statically from `public/api` (regenerate with `npm run docs:api`).
 export const referenceNav = [
-  { slug: 'signer', title: 'Signer', yard: '/api/HankoXml/Signer.html' },
-  { slug: 'verifier', title: 'Verifier', yard: '/api/HankoXml/Verifier.html' },
-  { slug: 'verification', title: 'Verification', yard: '/api/HankoXml/Verification.html' },
-  { slug: 'key', title: 'Key', yard: '/api/HankoXml/Key.html' },
-  { slug: 'policy', title: 'Policy', yard: '/api/HankoXml/Policy.html' },
-  { slug: 'algorithms', title: 'Algorithms', yard: '/api/HankoXml/Algorithms.html' },
-  { slug: 'placement', title: 'Placement', yard: '/api/HankoXml/Placement.html' },
-  { slug: 'signed-document', title: 'SignedDocument', yard: '/api/HankoXml/SignedDocument.html' },
+  { slug: 'signer', title: 'Signer', yard: withBase('api/HankoXml/Signer.html') },
+  { slug: 'verifier', title: 'Verifier', yard: withBase('api/HankoXml/Verifier.html') },
+  { slug: 'verification', title: 'Verification', yard: withBase('api/HankoXml/Verification.html') },
+  { slug: 'key', title: 'Key', yard: withBase('api/HankoXml/Key.html') },
+  { slug: 'policy', title: 'Policy', yard: withBase('api/HankoXml/Policy.html') },
+  { slug: 'algorithms', title: 'Algorithms', yard: withBase('api/HankoXml/Algorithms.html') },
+  { slug: 'placement', title: 'Placement', yard: withBase('api/HankoXml/Placement.html') },
+  { slug: 'signed-document', title: 'SignedDocument', yard: withBase('api/HankoXml/SignedDocument.html') },
 ];
 
-export const yardIndexUrl = '/api/HankoXml.html';
+export const yardIndexUrl = withBase('api/HankoXml.html');
 
 export const examplesNav = [
   { slug: 'simplest', title: 'The Simplest Thing' },
