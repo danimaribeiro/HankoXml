@@ -143,7 +143,7 @@ module HankoXml
           digest_method: ref.digest_method_name,
           transforms: ref.transform_names,
           valid?: reference_valid_for(index),
-          errors: []
+          errors: reference_errors_for(ref, index)
         ).freeze
       end
     end
@@ -161,6 +161,16 @@ module HankoXml
 
       status = @reference_valid[index]
       status.nil? ? valid? : status
+    end
+
+    # A DigestMismatch only when xmlsec itself reported this Reference's
+    # digest as wrong; the fallback in #reference_valid_for proves nothing
+    # about one Reference (#96). The URI is document text, so it goes in
+    # #reference_uri, not the message.
+    def reference_errors_for(ref, index)
+      return [] unless @reference_valid && @reference_valid[index] == false
+
+      [HankoXml::DigestMismatch.new("a <Reference>'s digest does not match", reference_uri: ref.uri).freeze]
     end
 
     # When Native.verify supplied element indexes, those are the authority.

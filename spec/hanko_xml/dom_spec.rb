@@ -35,5 +35,13 @@ RSpec.describe HankoXml::Dom do
       expect(caps[:coverage_checks]).to be true
       expect(caps[:schema]).to be true
     end
+
+    it "reports every capability false without Nokogiri, including verify (#96)" do
+      allow(described_class).to receive(:available?).and_return(false)
+
+      expect(described_class.capabilities.values).to all(be false)
+      expect { described_class.require!("HankoXml.parse") }
+        .to raise_error(HankoXml::NokogiriRequired, /require "nokogiri"/)
+    end
   end
 end

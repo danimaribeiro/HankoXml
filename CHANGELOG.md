@@ -122,6 +122,15 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   is the default reference target (`"#<its Id>"`) when the `Signer` has no
   `references:`. It used to sign the whole document. A node without an Id
   raises `ConfigurationError`.
+- **#96:** `Verification::Reference#errors` holds a `DigestMismatch` (with
+  `#reference_uri`) when xmlsec reported that reference's digest as wrong. It
+  was always `[]`.
+- **#96:** `HankoXml.capabilities` reports every capability as unavailable
+  without Nokogiri, including `verify`; it used to claim verification worked.
+  `NokogiriRequired` no longer suggests a DOM-free alternative that doesn't
+  exist.
+- **#96:** `Verifier` `signature: :all` raises a `ConfigurationError` that
+  points at `#verify_all` (#105).
 - **#96:** `namespaces:` now reaches every caller-supplied XPath. The
   `Signer`'s map is merged under a `Placement`'s own, and `Verification#at_signed`
   / `#signed` see their `ns` argument merged over the `Verifier`'s map and
@@ -327,6 +336,14 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   `signKey` so KeyInfo is ignored, matching `API_CONTRACT.md` §5.6.
 
 ### Changed
+
+- **#96:** API_CONTRACT no longer describes features that don't exist. It now
+  says 0.1.0 needs Nokogiri for every call (DOM-free verification is #102), and
+  drops `Verifier.without_trust_verification` / `#trusted?` (#103),
+  `Verification#signed_info` / `#certificate_chain` / `#key_info` (#104),
+  `signature: :all` (#105), the `HankoXml.parse` NOBLANKS guard and
+  `zero_copy:`. It also records that `valid?` raises `MultipleSignatures`
+  (S-11).
 
 - **#89:** **Breaking:** `HankoXml.verify` is removed and `HankoXml.valid?` is
   added, as `API_CONTRACT.md` §5.1 always specified. A `Verification` is always

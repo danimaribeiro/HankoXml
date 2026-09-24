@@ -22,7 +22,7 @@ verifier = HankoXml::Verifier.new(
   policy:        HankoXml::Policy.strict,  # default
   id_attributes: %w[Id ID id],
   namespaces:    {},
-  signature:     nil,      # nil (default) | :first | :only | :all | Integer index | XPath String
+  signature:     nil,      # nil (default) | :first | :only | Integer index | XPath String
 
   verification_time:    nil,   # Time — evaluate certificate validity as of then
   schema:               nil,   # validate <Signature> against an XSD first
@@ -57,8 +57,10 @@ requires the certificate's KeyUsage, when present, to allow `digitalSignature` o
 ```ruby
 verifier.verify(xml)      # => HankoXml::Verification. ALWAYS TRUTHY — check #valid?
 verifier.verify!(xml)     # => Verification, or raises
-verifier.valid?(xml)      # => true / false. Never raises for signature-level
-                          #    failures; still raises ParseError / KeyLoadError.
+verifier.valid?(xml)      # => true / false. Never raises for a signature that
+                          #    fails to verify; still raises ParseError /
+                          #    KeyLoadError, and MultipleSignatures when the
+                          #    document has several and signature: is nil/:only.
 verifier.verify_all(xml)  # => Array<Verification>, one per <ds:Signature>
 ```
 
@@ -67,12 +69,8 @@ YARD `@return` both carry the "always truthy" warning. Prefer `#valid?` in condi
 `#verify!` in flows that should abort. See [`Verification`](/reference/verification) for the object
 `#verify`/`#verify!` return.
 
-## The unsafe escape hatch
+## No trust-free verification
 
-```ruby
-HankoXml::Verifier.without_trust_verification(policy: ...)
-```
-
-Its `Verification#certificate` is populated, `#trusted?` is `false`, and `#valid?` is `true` only
-for integrity. `verify!` on such a verifier still raises unless you also passed
-`allow_untrusted: true` — two explicit steps to get to the dangerous outcome.
+There is no way to verify against the certificate the document itself carries: every `Verifier`
+needs `certificate:`, `certificates:`, `store:`, `key:` or `keys:`. An explicit integrity-only mode
+is planned ([#103](https://github.com/danimaribeiro/HankoXml/issues/103)).

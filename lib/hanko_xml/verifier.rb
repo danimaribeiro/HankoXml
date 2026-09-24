@@ -29,7 +29,7 @@ module HankoXml
     # @param namespaces [Hash<String, String>] Namespaces for XPath signature selection.
     # @param signature [Symbol, Integer, String, nil] Which signature to verify:
     #   `:first` (explicitly take the first signature even if more exist), `:only`
-    #   (require exactly one, raising {MultipleSignatures} otherwise), `:all`, an
+    #   (require exactly one, raising {MultipleSignatures} otherwise), an
     #   integer index (document order, matching {Signer#sign!}'s `signature:`), or
     #   an XPath. Defaults to `nil`, which behaves like `:only`: with a single
     #   `<Signature>` it is verified, but with more than one {MultipleSignatures}
@@ -215,6 +215,9 @@ module HankoXml
 
         node = matches.first
         [node, node && sigs.index(node)]
+      when :all
+        raise HankoXml::ConfigurationError,
+              "signature: :all is not supported; use Verifier#verify_all for one Verification per <Signature> (#105)"
       else
         raise HankoXml::ConfigurationError, "Invalid signature: option"
       end

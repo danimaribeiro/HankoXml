@@ -102,8 +102,8 @@ Under `:adopt` (the default), `sign`/`sign!` look for `ds:Signature` elements fi
   is rejected under `Policy.strict`. Only `key`, `certificates`, `key_info` and `id_attributes`
   still apply to the adopted skeleton.
 
-`:require` is also the one signing mode that runs without Nokogiri: nothing has to be constructed,
-so no DOM is needed.
+`:require` is the signing mode that could run without Nokogiri, since nothing has to be constructed.
+In 0.1.0 it still needs Nokogiri, like every other call.
 
 A template whose Reference URIs do not match `references` raises `HankoXml::ConfigurationError`.
 A template that violates `policy` raises `HankoXml::PolicyError` before any native signing call.
