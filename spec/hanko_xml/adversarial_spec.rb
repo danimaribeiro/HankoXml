@@ -277,7 +277,7 @@ RSpec.describe "Adversarial input" do
 
     it "rejects it when parsing, without expanding it" do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      expect { HankoXml.parse(bomb_xml) }.to raise_error(HankoXml::ParseError, /amplification/)
+      expect { HankoXml.parse(bomb_xml) }.to raise_error(HankoXml::ParseError) { |e| expect(e.xmlsec_errors.join).to match(/amplification/) }
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
     end
 

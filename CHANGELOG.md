@@ -105,6 +105,15 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **#96:** `ParseError`, `SchemaError` and `NativeError` messages are fixed
+  strings. libxml2's diagnostics, which quote the document, moved to
+  `#xmlsec_errors`. A native error during verification keeps its class and
+  xmlsec log instead of being re-wrapped as `NativeError`/`ParseError` with its
+  message copied. Anything that matched libxml2 text in `#message` (for
+  example `/depth/`) must match `#xmlsec_errors` now.
+- **#96:** `HankoXml::Error` filters key material: a `Key` or `OpenSSL::PKey`
+  passed as the message becomes `[FILTERED]`, and private-key PEM text is
+  redacted from `#message` and `#xmlsec_errors`, as the contract promised.
 - **#96:** `namespaces:` now reaches every caller-supplied XPath. The
   `Signer`'s map is merged under a `Placement`'s own, and `Verification#at_signed`
   / `#signed` see their `ns` argument merged over the `Verifier`'s map and

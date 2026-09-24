@@ -24,13 +24,20 @@ module HankoXml
       begin
         doc = ::Nokogiri::XML(source) { |config| config.strict.nonet }
       rescue ::Nokogiri::XML::SyntaxError => e
-        raise HankoXml::ParseError, e.message
+        raise parse_error([e])
       end
 
-      raise HankoXml::ParseError, doc.errors.map(&:message).join("; ") if doc.errors.any?
+      raise parse_error(doc.errors) if doc.errors.any?
 
       doc
     end
+
+    # libxml2's diagnostics can quote the document (tag names, text), so they
+    # go in #xmlsec_errors, never in #message (#96, API_CONTRACT.md §5.10).
+    def parse_error(errors)
+      HankoXml::ParseError.new("the document is not well-formed XML", xmlsec_errors: errors.map(&:message))
+    end
+    private :parse_error
 
     # Byte-faithful serialization: AS_XML only, never FORMAT (which
     # reindents the tree and invalidates any signature over it). See

@@ -1120,10 +1120,19 @@ crypto itself.
 class is chosen by where the failure happened, not by the log's content. The
 xmlsec log can quote document text (algorithm hrefs, Reference URIs, node
 names), so it only ever appears in `#xmlsec_errors`: treat that array as
-untrusted input before logging or displaying it.
+untrusted input before logging or displaying it. The same goes for libxml2's
+diagnostics: a `ParseError` says "the document is not well-formed XML" and a
+`SchemaError` says the `<Signature>` does not validate, with libxml2's lines
+(which quote tag names and text) in `#xmlsec_errors` (#96). A native failure
+during verification keeps the class and log the native layer gave it; any other
+exception from that call becomes a `NativeError` with a fixed message.
+`PolicyError` is the deliberate exception: it names the algorithm URI or
+reference that broke the policy, because that is what the caller must change.
 
 **`HankoXml::Error` and subclasses never carry key material.** The error
-constructor filters any value that came from a `Key`.
+constructor replaces a `HankoXml::Key` or `OpenSSL::PKey` passed as the message
+with `[FILTERED]`, and redacts private-key PEM blocks (even truncated ones)
+from `#message` and `#xmlsec_errors` (#96).
 
 
 

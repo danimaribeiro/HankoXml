@@ -178,7 +178,7 @@ RSpec.describe "Interop vectors (#62)" do
           when :schema then expect(error).to be_a(HankoXml::SchemaError)
           when :native then expect(error).to be_a(HankoXml::VerificationError)
           end
-          text = kind == :native ? Array(error.xmlsec_errors).join("\n") : error.message
+          text = kind == :policy ? error.message : Array(error.xmlsec_errors).join("\n")
           expect(text).to match(pattern)
         end
       end

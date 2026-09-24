@@ -176,7 +176,7 @@ RSpec.describe "HankoXml::Signer signing" do
 
       it "rejects nesting past libxml2's default depth limit as a ParseError" do
         deep = %(<Envelope xmlns="urn:x">#{"<n>" * 5000}x#{"</n>" * 5000}</Envelope>)
-        expect { signer.sign(deep) }.to raise_error(HankoXml::ParseError, /depth/i)
+        expect { signer.sign(deep) }.to raise_error(HankoXml::ParseError) { |e| expect(e.xmlsec_errors.join).to match(/depth/i) }
       end
 
       it "signs a 15 MiB document spread over many elements" do
