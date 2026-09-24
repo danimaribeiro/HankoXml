@@ -1,0 +1,7 @@
+[
+  { "label": "Guide", "href": "guide/getting-started" },
+  { "label": "API Reference", "href": "reference/signer" },
+  { "label": "Examples", "href": "examples/simplest" },
+  { "label": "API (YARD)", "href": "api/index.html" },
+  { "label": "GitHub", "href": "https://github.com/danimaribeiro/HankoXml" }
+]

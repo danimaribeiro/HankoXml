@@ -2,6 +2,10 @@
 import '../styles/global.css';
 import GlassBackdrop from '../components/GlassBackdrop.astro';
 import ThemeSwitcher from '../components/ThemeSwitcher.astro';
+// Shared with the YARD API docs header (yard-template/default/layout/html),
+// so both top bars always list the same links. Hrefs are site-root-relative;
+// absolute URLs are external.
+import topNav from '../topnav.json';
 
 interface Props {
   title?: string;
@@ -19,10 +23,21 @@ const {
 // astro.config.mjs; until that is set this falls back to the build host, so
 // the card resolves correctly in dev but needs `site` for production.
 const ogImage = new URL('/og.png', Astro.site ?? Astro.url).href;
+
+const currentSection = Astro.url.pathname.split('/')[1];
+const navLinks = topNav.map((item) => {
+  const external = /^https?:/.test(item.href);
+  return {
+    ...item,
+    external,
+    href: external ? item.href : `/${item.href}`,
+    current: !external && item.href.split('/')[0] === currentSection,
+  };
+});
 ---
 
 <!DOCTYPE html>
-<html lang="en" class="dark glass">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width" />
@@ -42,18 +57,15 @@ const ogImage = new URL('/og.png', Astro.site ?? Astro.url).href;
     <meta name="twitter:image" content={ogImage} />
     <script is:inline>
       // Anti-FOUC: apply the persisted theme before first paint. <html> ships
-      // with `dark glass` (the default theme) so first paint is correct for
-      // new visitors; this script corrects it for anyone who picked another
-      // theme. Kept in sync with ThemeSwitcher.astro, which owns the dropdown
+      // with no theme classes (light, the default) so first paint is correct
+      // for new visitors; this script corrects it for anyone who picked
+      // another theme. Kept in sync with ThemeSwitcher.astro, which owns the dropdown
       // UI and the persistence logic after the page has loaded.
       (function () {
         try {
-          var theme = localStorage.getItem('hankoxml_theme') || 'glass';
+          var theme = localStorage.getItem('hankoxml_theme');
           var isGlass = theme === 'glass';
-          var isDark =
-            isGlass ||
-            theme === 'dark' ||
-            (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          var isDark = isGlass || theme === 'dark';
           var root = document.documentElement;
           root.classList.toggle('dark', isDark);
           root.classList.toggle('glass', isGlass);
@@ -78,11 +90,21 @@ const ogImage = new URL('/og.png', Astro.site ?? Astro.url).href;
         </div>
         <div id="navbar-collapse-with-animation" class="hs-collapse hidden overflow-hidden transition-all duration-300 basis-full grow sm:block">
           <div class="flex flex-col gap-y-4 gap-x-0 mt-5 sm:flex-row sm:items-center sm:justify-end sm:gap-y-0 sm:gap-x-7 sm:mt-0 sm:pl-7">
-            <a class="font-medium text-gray-500 hover:text-gray-400 sm:py-6 dark:text-gray-400 dark:hover:text-gray-500 glass:text-gray-300 glass:hover:text-white" href="/guide/getting-started">Guide</a>
-            <a class="font-medium text-gray-500 hover:text-gray-400 sm:py-6 dark:text-gray-400 dark:hover:text-gray-500 glass:text-gray-300 glass:hover:text-white" href="/reference/signer">API Reference</a>
-            <a class="font-medium text-gray-500 hover:text-gray-400 sm:py-6 dark:text-gray-400 dark:hover:text-gray-500 glass:text-gray-300 glass:hover:text-white" href="/examples/simplest">Examples</a>
-            <a class="font-medium text-gray-500 hover:text-gray-400 sm:py-6 dark:text-gray-400 dark:hover:text-gray-500 glass:text-gray-300 glass:hover:text-white" href="/api/index.html">API (YARD)</a>
-            <a class="font-medium text-gray-500 hover:text-gray-400 sm:py-6 dark:text-gray-400 dark:hover:text-gray-500 glass:text-gray-300 glass:hover:text-white" href="https://github.com/danimaribeiro/HankoXml" target="_blank" rel="noopener noreferrer">GitHub</a>
+            {navLinks.map((link) => (
+              <a
+                class:list={[
+                  'font-medium sm:py-6',
+                  link.current
+                    ? 'text-gray-800 dark:text-white glass:text-white'
+                    : 'text-gray-500 hover:text-gray-400 dark:text-gray-400 dark:hover:text-gray-500 glass:text-gray-300 glass:hover:text-white',
+                ]}
+                href={link.href}
+                aria-current={link.current ? 'page' : undefined}
+                {...(link.external ? { target: '_blank', rel: 'noopener noreferrer' } : {})}
+              >
+                {link.label}
+              </a>
+            ))}
             <ThemeSwitcher />
           </div>
         </div>

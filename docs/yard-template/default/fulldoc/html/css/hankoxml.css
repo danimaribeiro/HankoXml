@@ -9,7 +9,7 @@
  */
 
 :root {
-  --hx-topbar-h: 52px;
+  --hx-topbar-h: 69px; /* 68px bar + 1px border, same as the site header */
 
   --hx-bg: #f8fafc;
   --hx-panel: #ffffff;
@@ -19,14 +19,14 @@
   --hx-text: #1e293b;
   --hx-heading: #0f172a;
   --hx-muted: #64748b;
-  --hx-link: #7c3aed;
-  --hx-link-hover: #6d28d9;
-  --hx-accent: #7c3aed;
+  --hx-link: #c8322a; /* the logo red (assets/hanko-mark.svg) */
+  --hx-link-hover: #a1281f;
+  --hx-accent: #c8322a;
   --hx-code-bg: #f1f5f9;
   --hx-code-text: #0f172a;
   --hx-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
   --hx-topbar-bg: #ffffff;
-  --hx-selection: rgba(124, 58, 237, 0.18);
+  --hx-selection: rgba(200, 50, 42, 0.18);
   --hx-radius: 10px;
 
   --hx-font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
@@ -44,8 +44,8 @@ html.hx-dark {
   --hx-text: #e2e8f0;
   --hx-heading: #f8fafc;
   --hx-muted: #94a3b8;
-  --hx-link: #a78bfa;
-  --hx-link-hover: #c4b5fd;
+  --hx-link: #f1f5f9; /* slate-100: near-white links in dark mode */
+  --hx-link-hover: #ffffff;
   --hx-accent: #a78bfa;
   --hx-code-bg: #0b1220;
   --hx-code-text: #e2e8f0;
@@ -153,100 +153,311 @@ html.hx-glass .hx-backdrop {
 
 /* ------------------------------------------------------------------ top bar */
 
+/*
+ * Mirrors the Astro site header (src/layouts/Layout.astro) value for value:
+ * same max-width container, gutters, type, link colors and theme dropdown,
+ * so moving between the site and the API docs does not shift anything.
+ * Values in comments are the Tailwind classes they stand in for.
+ */
+
 .hx-topbar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
-  height: var(--hx-topbar-h);
   z-index: 10000;
-  display: flex;
-  align-items: center;
-  gap: 1.75rem;
-  padding: 0 1.25rem;
   box-sizing: border-box;
-  font-family: var(--hx-font);
-  font-size: 14px;
-  color: var(--hx-text);
+  /* The site's --font-sans, not --hx-font: `system-ui` resolves to a wider
+     face on Linux, which would make the two headers visibly different. */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  font-size: 14px; /* text-sm */
+  line-height: 20px;
   background: var(--hx-topbar-bg);
-  border-bottom: 1px solid var(--hx-border);
+  border-bottom: 1px solid #e5e7eb; /* border-gray-200 */
+}
+
+html.hx-dark .hx-topbar {
+  border-bottom-color: #374151; /* dark:border-gray-700 */
 }
 
 html.hx-glass .hx-topbar {
+  border-bottom-color: rgba(255, 255, 255, 0.12);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
   box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
 }
 
+.hx-topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 80rem; /* max-w-7xl */
+  height: 68px;
+  margin: 0 auto;
+  padding: 0 1rem; /* px-4 */
+  box-sizing: border-box;
+}
+
+@media (min-width: 640px) {
+  .hx-topbar-inner { padding: 0 1.5rem; } /* sm:px-6 */
+}
+
+@media (min-width: 1024px) {
+  .hx-topbar-inner { padding: 0 2rem; } /* lg:px-8 */
+}
+
 .hx-topbar .hx-brand {
+  flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  font-size: 18px;
+  gap: 0.625rem; /* gap-x-2.5 */
+  font-size: 20px; /* text-xl */
+  line-height: 28px;
   font-weight: 600;
-  color: var(--hx-heading);
+  color: #111827;
   text-decoration: none;
 }
 
+html.hx-dark .hx-topbar .hx-brand {
+  color: #ffffff;
+}
+
+.hx-topbar .hx-brand:hover {
+  background: transparent;
+}
+
 .hx-topbar .hx-brand-mark {
-  width: 24px;
-  height: 24px;
+  width: 28px; /* size-7 */
+  height: 28px;
   flex: none;
 }
 
 .hx-topbar-nav {
   display: flex;
   align-items: center;
-  gap: 1.25rem;
-  margin-left: auto;
+  justify-content: flex-end;
+  gap: 1.75rem; /* gap-x-7 */
+  flex-grow: 1;
+  padding-left: 1.75rem; /* pl-7 */
 }
 
 .hx-topbar-nav a {
-  color: var(--hx-muted);
-  text-decoration: none;
+  padding: 24px 0; /* py-6 */
   font-weight: 500;
+  color: #6b7280; /* text-gray-500 */
+  text-decoration: none;
 }
 
 .hx-topbar-nav a:hover {
-  color: var(--hx-link);
+  color: #9ca3af; /* hover:text-gray-400 */
   background: transparent;
 }
 
-.hx-topbar-nav .hx-current {
-  color: var(--hx-heading);
-  font-weight: 600;
+.hx-topbar-nav a.hx-current {
+  color: #1f2937; /* text-gray-800 */
 }
 
-.hx-theme-picker {
+html.hx-dark .hx-topbar-nav a {
+  color: #9ca3af; /* dark:text-gray-400 */
+}
+
+html.hx-dark .hx-topbar-nav a:hover {
+  color: #6b7280; /* dark:hover:text-gray-500 */
+}
+
+html.hx-glass .hx-topbar-nav a {
+  color: #d1d5db; /* glass:text-gray-300 */
+}
+
+html.hx-glass .hx-topbar-nav a:hover,
+html.hx-dark .hx-topbar-nav a.hx-current {
+  color: #ffffff;
+}
+
+/* Theme dropdown: same look as the site's ThemeSwitcher.astro. */
+
+.hx-theme-dropdown {
+  position: relative;
+  display: inline-flex;
+}
+
+.hx-theme-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.55rem;
-  border: 1px solid var(--hx-border);
-  border-radius: 8px;
-  background: var(--hx-panel);
-}
-
-.hx-theme-picker select {
-  border: 0;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem; /* py-2 px-3 */
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
   background: transparent;
-  color: var(--hx-text);
+  color: #374151; /* text-gray-700 */
   font: inherit;
-  outline: none;
+  font-weight: 500;
   cursor: pointer;
 }
 
-.hx-theme-picker select option {
-  color: #1e293b;
+.hx-theme-toggle:hover {
+  background: #f3f4f6;
 }
 
-@media (max-width: 720px) {
+html.hx-dark .hx-theme-toggle {
+  border-color: #374151;
+  color: #d1d5db;
+}
+
+html.hx-dark .hx-theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+html.hx-glass .hx-theme-toggle {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+html.hx-glass .hx-theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.hx-theme-chevron {
+  flex: none;
+  transition: transform 150ms;
+}
+
+.hx-theme-dropdown.hx-open .hx-theme-chevron {
+  transform: rotate(180deg);
+}
+
+.hx-theme-menu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 20;
+  min-width: 8rem; /* min-w-32 */
+  margin-top: 0.5rem;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
+  background: #ffffff;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+}
+
+.hx-theme-menu[hidden] {
+  display: none;
+}
+
+html.hx-dark .hx-theme-menu {
+  background: #1e293b; /* slate-800 */
+  border: 1px solid #374151;
+}
+
+html.hx-glass .hx-theme-menu {
+  background: rgba(17, 24, 39, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(40px);
+  -webkit-backdrop-filter: blur(40px);
+}
+
+.hx-theme-menu button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #374151;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hx-theme-menu button:hover {
+  background: #f3f4f6;
+}
+
+html.hx-dark .hx-theme-menu button {
+  color: #d1d5db;
+}
+
+html.hx-dark .hx-theme-menu button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+html.hx-glass .hx-theme-menu button {
+  color: #e5e7eb;
+}
+
+/* Mobile: hamburger + stacked links, like the site's Preline collapse. */
+
+.hx-nav-toggle {
+  display: none;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #1f2937;
+  cursor: pointer;
+}
+
+html.hx-dark .hx-nav-toggle {
+  border-color: #374151;
+  color: #ffffff;
+}
+
+html.hx-glass .hx-nav-toggle {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.hx-nav-toggle .hx-icon-close,
+.hx-topbar.hx-nav-open .hx-nav-toggle .hx-icon-open {
+  display: none;
+}
+
+.hx-topbar.hx-nav-open .hx-nav-toggle .hx-icon-close {
+  display: block;
+}
+
+@media (max-width: 639px) {
+  :root {
+    --hx-topbar-h: 61px; /* py-3 + 36px toggle + 1px border */
+  }
+
+  .hx-topbar-inner {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 12px 1rem; /* py-3 px-4 */
+  }
+
+  .hx-nav-toggle {
+    display: inline-flex;
+  }
+
   .hx-topbar-nav {
     display: none;
   }
 
-  .hx-topbar-nav + .hx-theme-picker {
-    margin-left: auto;
+  .hx-topbar.hx-nav-open .hx-topbar-nav {
+    display: flex;
+    flex-basis: 100%;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem; /* gap-y-4 */
+    margin-top: 1.25rem; /* mt-5 */
+    padding: 0;
+  }
+
+  .hx-topbar.hx-nav-open .hx-topbar-nav a {
+    padding: 0;
+  }
+
+  .hx-topbar.hx-nav-open .hx-theme-menu {
+    left: 0;
+    right: auto;
   }
 }
 
@@ -423,12 +634,15 @@ p.inherited,
   border-color: var(--hx-border);
 }
 
-.box_info dt {
+/* YARD stripes these rows with `.box_info dl:nth-child(odd|even) > *`
+   (#eee / #fff), which outranks a plain `.box_info dt`, so match its
+   specificity or the rows stay white in the dark themes. */
+.box_info dl:nth-child(n) > dt {
   background: var(--hx-panel-2);
   color: var(--hx-muted);
 }
 
-.box_info dd {
+.box_info dl:nth-child(n) > dd {
   background: var(--hx-panel);
   color: var(--hx-text);
 }
@@ -436,6 +650,34 @@ p.inherited,
 .inheritanceTree,
 .fullTree {
   color: var(--hx-muted);
+}
+
+/* The "show all" / "more..." cells at the right edge of the box. */
+.box_info .inheritanceTree,
+.box_info .toggleDefines {
+  background: var(--hx-panel-2);
+  border-left-color: var(--hx-border);
+}
+
+/* The "collapse" toggles next to the summary headings. */
+h2 small a {
+  background: var(--hx-panel-2);
+  border-color: var(--hx-border);
+}
+
+/* YARD tints cross-reference links in summaries and docstrings light blue. */
+.summary_desc .object_link a,
+.docstring .object_link a {
+  background: var(--hx-code-bg);
+}
+
+/* Alternating rows in the alphabetical index (_index.html). */
+#content li.r1 {
+  background: var(--hx-panel-2);
+}
+
+#content li.r2 {
+  background: transparent;
 }
 
 /* ------------------------------------------------------------------- code */

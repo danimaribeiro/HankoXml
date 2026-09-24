@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "json"
+
 # Appends the HankoXml skin to YARD's default HTML layout. The extra assets
 # live in ../../fulldoc/html/{css,js} so YARD's `generate_assets` copies them
 # into the output directory automatically.
@@ -19,4 +21,19 @@ end
 # base path.
 def site_root_url
   "#{File.join(File.dirname(url_for_main), "..")}/"
+end
+
+# Top bar links, shared with the Astro site header (src/layouts/Layout.astro)
+# so both always match. Hrefs are site-root-relative; absolute URLs are
+# external.
+def top_nav
+  @top_nav ||= JSON.parse(File.read(File.expand_path("../../../../src/topnav.json", __dir__)))
+end
+
+def top_nav_href(item)
+  external_nav_link?(item) ? item["href"] : "#{site_root_url}#{item["href"]}"
+end
+
+def external_nav_link?(item)
+  item["href"].match?(%r{\Ahttps?://})
 end

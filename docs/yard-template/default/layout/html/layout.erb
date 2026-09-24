@@ -17,25 +17,39 @@
     </div>
 
     <header class="hx-topbar">
-      <a class="hx-brand" href="<%= site_root_url %>">
-        <img class="hx-brand-mark" src="<%= site_root_url %>hanko-mark-gem.svg" alt="" width="128" height="128">
-        HankoXml
-      </a>
-      <nav class="hx-topbar-nav">
-        <a href="<%= site_root_url %>guide/getting-started">Guide</a>
-        <a href="<%= site_root_url %>reference/signer">Reference</a>
-        <a href="<%= site_root_url %>examples/simplest">Examples</a>
-        <span class="hx-current">API (YARD)</span>
-      </nav>
-      <label class="hx-theme-picker">
-        <span class="hx-theme-emoji" aria-hidden="true">&#10022;</span>
-        <select id="hx-theme-select" aria-label="Theme">
-          <option value="light">Light</option>
-          <option value="dark">Dark</option>
-          <option value="system">System</option>
-          <option value="glass">Glass</option>
-        </select>
-      </label>
+      <div class="hx-topbar-inner">
+        <a class="hx-brand" href="<%= site_root_url %>" aria-label="Brand">
+          <img class="hx-brand-mark" src="<%= site_root_url %>hanko-mark-gem.svg" alt="" width="128" height="128">
+          HankoXml
+        </a>
+        <button type="button" class="hx-nav-toggle" aria-controls="hx-topbar-nav" aria-expanded="false" aria-label="Toggle navigation">
+          <svg class="hx-icon-open" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" x2="21" y1="6" y2="6"/><line x1="3" x2="21" y1="12" y2="12"/><line x1="3" x2="21" y1="18" y2="18"/></svg>
+          <svg class="hx-icon-close" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+        <nav id="hx-topbar-nav" class="hx-topbar-nav" aria-label="Global">
+          <% top_nav.each do |item| %>
+            <% if external_nav_link?(item) %>
+              <a href="<%= h top_nav_href(item) %>" target="_blank" rel="noopener noreferrer"><%= h item["label"] %></a>
+            <% elsif item["href"].start_with?("api/") %>
+              <a class="hx-current" href="<%= h top_nav_href(item) %>" aria-current="page"><%= h item["label"] %></a>
+            <% else %>
+              <a href="<%= h top_nav_href(item) %>"><%= h item["label"] %></a>
+            <% end %>
+          <% end %>
+          <div class="hx-theme-dropdown">
+            <button type="button" id="hx-theme-toggle" class="hx-theme-toggle" aria-haspopup="menu" aria-expanded="false">
+              <span id="hx-theme-emoji" aria-hidden="true">&#9728;&#65039;</span>
+              <span id="hx-theme-label">Light</span>
+              <svg class="hx-theme-chevron" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+            </button>
+            <div class="hx-theme-menu" role="menu" aria-labelledby="hx-theme-toggle" hidden>
+              <button type="button" role="menuitem" data-theme-option="light"><span aria-hidden="true">&#9728;&#65039;</span>Light</button>
+              <button type="button" role="menuitem" data-theme-option="dark"><span aria-hidden="true">&#127769;</span>Dark</button>
+              <button type="button" role="menuitem" data-theme-option="glass"><span aria-hidden="true">&#10022;</span>Glass</button>
+            </div>
+          </div>
+        </nav>
+      </div>
     </header>
 
     <div class="nav_wrap">

@@ -1,10 +1,11 @@
 ---
 /**
  * Theme picker, adapted from droid's glass theme system (STYLE_GUIDE.md).
- * Four themes — light / dark / system / glass — persisted to localStorage
- * under `hankoxml_theme` and applied as `.dark` / `.glass` classes on
- * <html>. `glass` always implies `dark` (glass is a dark-first theme).
- * `glass` is the default when nothing is persisted yet.
+ * Three themes — light / dark / glass — persisted to localStorage under
+ * `hankoxml_theme` and applied as `.dark` / `.glass` classes on <html>.
+ * `glass` always implies `dark` (glass is a dark-first theme). `light` is the
+ * default when nothing (or an unknown value, e.g. the retired `system`) is
+ * persisted.
  *
  * The anti-flash-of-unstyled-content script lives inline in Layout.astro's
  * <head> so the theme is applied before first paint; this component only
@@ -13,7 +14,6 @@
 const themes = [
   { value: 'light', label: 'Light', emoji: '☀️' },
   { value: 'dark', label: 'Dark', emoji: '🌙' },
-  { value: 'system', label: 'System', emoji: '💻' },
   { value: 'glass', label: 'Glass', emoji: '✦' },
 ];
 ---
@@ -24,7 +24,7 @@ const themes = [
     type="button"
     class="hs-dropdown-toggle py-2 px-3 inline-flex items-center gap-x-2 text-sm font-medium rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/10 glass:border-white/[0.15] glass:bg-white/[0.08] glass:text-white glass:hover:bg-white/[0.12]"
   >
-    <span id="theme-switcher-emoji" aria-hidden="true">✦</span>
+    <span id="theme-switcher-emoji" aria-hidden="true">☀️</span>
     <span id="theme-switcher-label">Theme</span>
     <svg class="hs-dropdown-open:rotate-180 shrink-0 size-3.5 transition-transform" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
   </button>
@@ -51,27 +51,24 @@ const themes = [
   const LABELS = {
     light: { label: 'Light', emoji: '☀️' },
     dark: { label: 'Dark', emoji: '🌙' },
-    system: { label: 'System', emoji: '💻' },
     glass: { label: 'Glass', emoji: '✦' },
   };
 
   function currentTheme() {
-    return localStorage.getItem(STORAGE_KEY) || 'glass';
+    const theme = localStorage.getItem(STORAGE_KEY);
+    return theme === 'dark' || theme === 'glass' ? theme : 'light';
   }
 
   function applyTheme(theme) {
     const isGlass = theme === 'glass';
-    const isDark =
-      isGlass ||
-      theme === 'dark' ||
-      (theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const isDark = isGlass || theme === 'dark';
 
     document.documentElement.classList.toggle('dark', isDark);
     document.documentElement.classList.toggle('glass', isGlass);
 
     const emojiEl = document.getElementById('theme-switcher-emoji');
     const labelEl = document.getElementById('theme-switcher-label');
-    const info = LABELS[theme] || LABELS.glass;
+    const info = LABELS[theme] || LABELS.light;
     if (emojiEl) emojiEl.textContent = info.emoji;
     if (labelEl) labelEl.textContent = info.label;
   }
@@ -90,11 +87,4 @@ const themes = [
       if (theme) setTheme(theme);
     });
   });
-
-  // Keep the "system" theme live if the OS preference changes mid-session.
-  window
-    .matchMedia('(prefers-color-scheme: dark)')
-    .addEventListener('change', () => {
-      if (currentTheme() === 'system') applyTheme('system');
-    });
 </script>
