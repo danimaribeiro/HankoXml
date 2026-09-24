@@ -1,0 +1,12 @@
+# Tuxedo (https://danimar.dev/tuxedo/) formats the Ruby code; RuboCop lints
+# it afterwards. Defaults otherwise: 120 columns, 2 spaces, double quotes,
+# which is what .rubocop.yml already asks for.
+
+# Tuxedo 0.0.1 refuses this file ("output is not valid Ruby", a formatter
+# bug: danimaribeiro/tuxedo#157), triggered by a call chained on a leading `.` after a long receiver:
+#
+#   Nokogiri::XML(described_class.new(key: key_pem, certificate: cert_pem).sign(xml).to_s)
+#     .at_xpath("//xades:SigningTime", ns)
+#
+# Drop the entry once a fixed tuxedo-r is released.
+exclude = ["/spec/hanko_xml/xades_signer_spec.rb"]

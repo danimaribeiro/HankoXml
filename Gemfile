@@ -14,6 +14,10 @@ gem "rspec", "~> 3.0"
 
 gem "nokogiri", "~> 1.18"
 
+# The formatter; RuboCop runs after it (see .tuxedo.toml and .rubocop.yml).
+# Pinned to 0.0.x: Tuxedo's layout can still change between minor releases.
+gem "tuxedo-r", "~> 0.0.1", require: false
+
 gem "rubocop", "~> 1.21"
 
 gem "bundler-audit", "~> 0.9"

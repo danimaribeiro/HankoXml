@@ -12,12 +12,18 @@ Nokogiri is the optional DOM layer.
   be committed and pushed straight to `main`. Anything touching `lib/`, `ext/`,
   `spec/`, `sig/`, build files or workflows goes through a PR.
 - Locally, run only the specs for the code you touched
-  (`bundle exec rspec spec/path/to_spec.rb`, plus `bundle exec rubocop` on changed
-  files). Leave the full suite and the OS/Ruby matrix to CI.
+  (`bundle exec rspec spec/path/to_spec.rb`, plus `bundle exec tuxedo format` and
+  then `bundle exec rubocop` on changed files). Leave the full suite and the
+  OS/Ruby matrix to CI.
+- Tuxedo formats, RuboCop lints, in that order. Don't hand-fix a RuboCop
+  `Layout/` offense Tuxedo would undo: its fixed-indent styles are set in
+  `.rubocop.yml`. `.tuxedo.toml` lists files Tuxedo can't format yet, each with
+  its tuxedo issue.
 - If CI fails, fix it on the same branch and wait for green again before merging.
 - CI is paused for now (Actions budget): the automatic triggers in
   `.github/workflows/` are commented out with `CI-PAUSED`. Until they are back,
-  run the full suite, rubocop and clippy locally, on the system libraries and
+  run the full suite, `tuxedo format --check . .github/scripts`, rubocop and
+  clippy locally, on the system libraries and
   on a `HANKO_XML_VENDOR=1` build, before merging.
 - Every fix or feature gets a spec. A bug found but not fixed yet becomes a
   `pending "#NN: ..."` spec with its own issue.

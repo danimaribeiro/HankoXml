@@ -64,6 +64,13 @@ Metrics/ParameterLists:
 
 Metrics/ClassLength:
   Max: 160
+  # Tuxedo gives each element of a collection or argument list that does not
+  # fit on one line its own line, so a length limit would otherwise punish
+  # the formatter's output rather than the amount of code.
+  CountAsOne: ["array", "hash", "heredoc", "method_call"]
+
+Metrics/ModuleLength:
+  CountAsOne: ["array", "hash", "heredoc", "method_call"]
 
 # `ns` is what Nokogiri itself calls the namespaces hash in #xpath/#at_xpath,
 # so the public helpers that forward to it use the same name.
@@ -93,3 +100,49 @@ Naming/VariableNumber:
   AllowedPatterns:
     - '\Asha3_\d+\z'
     - '_sha3_\d+\z'
+
+# --- Layout: Tuxedo decides it -------------------------------------------
+# `bundle exec tuxedo format` owns layout and runs before RuboCop. Tuxedo
+# uses block indentation (a fixed indent from the start of the statement,
+# never alignment under an opening bracket or receiver), so the cops whose
+# default is an aligned style are set to their fixed-indentation style.
+# These match Tuxedo's own spec of its output,
+# scripts/format-verify.rubocop.yml in danimaribeiro/tuxedo.
+Layout/FirstArrayElementIndentation:
+  EnforcedStyle: consistent
+
+Layout/FirstHashElementIndentation:
+  EnforcedStyle: consistent
+
+Layout/FirstArgumentIndentation:
+  EnforcedStyle: consistent
+
+Layout/ArrayAlignment:
+  EnforcedStyle: with_fixed_indentation
+
+Layout/ArgumentAlignment:
+  EnforcedStyle: with_fixed_indentation
+
+Layout/MultilineArrayBraceLayout:
+  EnforcedStyle: new_line
+
+Layout/MultilineHashBraceLayout:
+  EnforcedStyle: new_line
+
+Layout/MultilineMethodCallBraceLayout:
+  EnforcedStyle: new_line
+
+Layout/MultilineOperationIndentation:
+  EnforcedStyle: indented
+
+Layout/MultilineMethodCallIndentation:
+  EnforcedStyle: indented
+
+Layout/EndAlignment:
+  EnforcedStyleAlignWith: variable
+
+Layout/CaseIndentation:
+  EnforcedStyle: end
+
+Layout/BeginEndAlignment:
+  EnforcedStyleAlignWith: start_of_line
