@@ -160,6 +160,15 @@ RSpec.describe HankoXml::Xades::Signer do
     expect(doc.at_xpath("//ds:Reference[@Type]/ds:DigestMethod", ns)["Algorithm"]).to eq(sha512)
   end
 
+  it "digests SigningCertificateV2 with SHA-3 when digest_method is :sha3_256 (#60)" do
+    template = signer(digest_method: :sha3_256, policy: HankoXml::Policy.xades).template(xml)
+    sha3 = HankoXml::Algorithms.uri_for(:digest, :sha3_256)
+
+    expect(template.at_xpath(".//xades:CertDigest/ds:DigestMethod", ns)["Algorithm"]).to eq(sha3)
+    expect(template.at_xpath(".//xades:CertDigest/ds:DigestValue", ns).text)
+      .to eq(OpenSSL::Digest.new("SHA3-256").base64digest(certificate.to_der))
+  end
+
   it "defaults SigningTime to when #sign runs" do
     before = Time.now.utc - 1
     time = Time.iso8601(Nokogiri::XML(described_class.new(key: key_pem, certificate: cert_pem).sign(xml).to_s)

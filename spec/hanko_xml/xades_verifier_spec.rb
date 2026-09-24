@@ -171,6 +171,20 @@ RSpec.describe HankoXml::Xades::Verifier do
     end
   end
 
+  it "matches a SHA-3 CertDigest under Policy.xades (#60)" do
+    if Gem::Version.new(HankoXml::NativeVersion.build_versions[:xmlsec]) < Gem::Version.new("1.3")
+      skip "xmlsec #{HankoXml::NativeVersion.build_versions[:xmlsec]} does not implement SHA-3"
+    end
+
+    policy = HankoXml::Policy.xades
+    document = HankoXml::Xades::Signer.new(key: key_pem, certificate: cert_pem, digest_method: :sha3_256,
+                                           policy: policy).sign(xml).to_s
+    sha3 = HankoXml::Algorithms.uri_for(:digest, :sha3_256)
+
+    expect(Nokogiri::XML(document).at_xpath("//xades:CertDigest/ds:DigestMethod", ns)["Algorithm"]).to eq(sha3)
+    expect(verify(document, policy: policy).valid?).to be true
+  end
+
   it "needs certificate-based trust" do
     expect { described_class.new(key: certificate.public_key) }
       .to raise_error(HankoXml::ConfigurationError, /certificate:, certificates: or store:/)

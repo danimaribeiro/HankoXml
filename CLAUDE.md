@@ -15,6 +15,10 @@ Nokogiri is the optional DOM layer.
   (`bundle exec rspec spec/path/to_spec.rb`, plus `bundle exec rubocop` on changed
   files). Leave the full suite and the OS/Ruby matrix to CI.
 - If CI fails, fix it on the same branch and wait for green again before merging.
+- CI is paused for now (Actions budget): the automatic triggers in
+  `.github/workflows/` are commented out with `CI-PAUSED`. Until they are back,
+  run the full suite, rubocop and clippy locally, on the system libraries and
+  on a `HANKO_XML_VENDOR=1` build, before merging.
 - Every fix or feature gets a spec. A bug found but not fixed yet becomes a
   `pending "#NN: ..."` spec with its own issue.
 
@@ -54,8 +58,9 @@ Nokogiri is the optional DOM layer.
   something xmlsec would reject or make a trust decision xmlsec should make.
   When a fix seems to need new security logic, look for the xmlsec mechanism
   first.
-- Fail closed. `Policy.strict` is the default and denies SHA-1, HMAC, XSLT and
-  XPath transforms, and external references unless a policy allows them.
+- Fail closed. `Policy.strict` is the default and denies SHA-1, HMAC, RSA-PSS,
+  SHA-3, XSLT and XPath transforms, and external references unless a policy
+  allows them (`Policy.legacy_sha1`, `Policy.xades`).
 - Verification pins the trusted key as xmlsec's `signKey`, and the document's
   `<KeyInfo>` never selects the key (S-01).
 - On `:adopt`, check a template against policy and the Signer's references

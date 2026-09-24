@@ -722,8 +722,8 @@ HankoXml::Algorithms.name_for(:signature, "http://...") # => :rsa_sha256, or nil
 HankoXml::Algorithms.secure?(:digest, :sha1)            # => false
 
 HankoXml::Algorithms.register(
-  :signature, :rsa_pss_sha256,
-  "http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1",
+  :signature, :hmac_sha512,
+  "http://www.w3.org/2001/04/xmldsig-more#hmac-sha512",
   secure: true
 )
 ```
@@ -759,9 +759,14 @@ Digest (`Algorithms.digest`):
 | `:sha384` | `http://www.w3.org/2001/04/xmldsig-more#sha384` | ✅ |
 | `:sha512` | `http://www.w3.org/2001/04/xmlenc#sha512` | ✅ |
 | `:ripemd160` | `http://www.w3.org/2001/04/xmlenc#ripemd160` | ❌ |
+| `:sha3_224` | `http://www.w3.org/2007/05/xmldsig-more#sha3-224` | ✅ |
+| `:sha3_256` | `http://www.w3.org/2007/05/xmldsig-more#sha3-256` | ✅ |
+| `:sha3_384` | `http://www.w3.org/2007/05/xmldsig-more#sha3-384` | ✅ |
+| `:sha3_512` | `http://www.w3.org/2007/05/xmldsig-more#sha3-512` | ✅ |
 
 (The `xmlenc` / `xmldsig-more` split for sha256/384/512 is not a typo — it is
-what the specs say.)
+what the specs say. SHA-3 and RSA-PSS need libxmlsec1 1.3+ to sign or verify;
+they are still first-class names on xmlsec 1.2, which then fails closed.)
 
 Signature (`Algorithms.signature`):
 
@@ -772,9 +777,15 @@ Signature (`Algorithms.signature`):
 | `:rsa_sha256` | `http://www.w3.org/2001/04/xmldsig-more#rsa-sha256` | ✅ |
 | `:rsa_sha384` | `http://www.w3.org/2001/04/xmldsig-more#rsa-sha384` | ✅ |
 | `:rsa_sha512` | `http://www.w3.org/2001/04/xmldsig-more#rsa-sha512` | ✅ |
+| `:rsa_pss_sha256` | `http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1` | ✅ |
+| `:rsa_pss_sha384` | `http://www.w3.org/2007/05/xmldsig-more#sha384-rsa-MGF1` | ✅ |
+| `:rsa_pss_sha512` | `http://www.w3.org/2007/05/xmldsig-more#sha512-rsa-MGF1` | ✅ |
 | `:ecdsa_sha256` | `http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256` | ✅ |
 | `:ecdsa_sha384` | `http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha384` | ✅ |
 | `:ecdsa_sha512` | `http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha512` | ✅ |
+| `:ecdsa_sha3_256` | `http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-256` | ✅ |
+| `:ecdsa_sha3_384` | `http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-384` | ✅ |
+| `:ecdsa_sha3_512` | `http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-512` | ✅ |
 | `:dsa_sha1` | `http://www.w3.org/2000/09/xmldsig#dsa-sha1` | ❌ |
 | `:hmac_sha256` | `http://www.w3.org/2001/04/xmldsig-more#hmac-sha256` | ✅ but see §5.8 |
 
@@ -789,7 +800,8 @@ Transform (`Algorithms.transform`) — the canonicalization table above, plus:
 | `:xslt` | `http://www.w3.org/TR/1999/REC-xslt-19991116` | ❌ |
 
 `secure?` is a *default recommendation*, not a hard gate — `Policy.strict`
-allows exactly the `secure?` set, and any other policy may allow more.
+is a SHA-2 RSA/ECDSA subset, not every `secure?` name. RSA-PSS and SHA-3 are
+`secure?` but only `Policy.xades` (or `Policy#with`) allows them.
 
 ### 5.8 `HankoXml::Policy`
 
@@ -801,6 +813,7 @@ HankoXml::Policy.strict        # default everywhere
 HankoXml::Policy.fragment      # strict, minus require_signed_root — for protocols
                                # that sign a fragment (SAML assertions). §5.8.1
 HankoXml::Policy.legacy_sha1   # strict + SHA-1 digest and RSA-SHA1 signature
+HankoXml::Policy.xades         # strict + RSA-PSS (MGF1) and SHA-3 / ECDSA-SHA3
 HankoXml::Policy.interop       # fragment + SHA-1 with RSA or DSA, 1024-bit RSA — for
                                # legacy foreign signatures (W3C interop vectors), never a default
 HankoXml::Policy.permissive    # allows everything Ruby checks. Documented as unsafe. The native
@@ -874,6 +887,11 @@ Notes on the non-obvious ones:
   raise for `allow_hmac: true` + `certificate:` (#92); `Policy.permissive` with
   certificate trust is a legal configuration. There is no HMAC secret key API
   yet: `key:` takes asymmetric keys only, so no HMAC signature verifies today.
+- **`Policy.xades`** is `Policy.strict` plus RSA-PSS (RFC 6931 `sha*-rsa-MGF1`)
+  and SHA-3 digest / ECDSA-SHA3 methods (#60). `Xades::Signer` still defaults
+  to `Policy.strict`. libxmlsec1 1.3 implements these URIs without
+  `<RSAPSSParams>` (salt length = hash length); xmlsec 1.2 does not, and
+  `Native.sign` / `Native.verify` then fail closed.
 - **`require_signed_root: true`** is the structural half of the XSW defence —
   see §5.8.1, which is where the whole decision is argued.
 - **`reject_duplicate_ids: true`** is enforced by a Nokogiri scan before we

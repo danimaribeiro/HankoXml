@@ -14,6 +14,7 @@ HankoXml::Policy.strict        # default everywhere
 HankoXml::Policy.fragment      # strict, minus require_signed_root — for protocols
                                # that sign a fragment (SAML assertions)
 HankoXml::Policy.legacy_sha1   # strict + SHA-1 digest and RSA-SHA1 signature
+HankoXml::Policy.xades         # strict + RSA-PSS (MGF1) and SHA-3 / ECDSA-SHA3
 HankoXml::Policy.interop       # fragment + SHA-1 with RSA or DSA, 1024-bit RSA — for
                                # legacy foreign signatures (W3C interop vectors), never a default
 HankoXml::Policy.permissive    # allows everything Ruby checks. Documented as unsafe. The native
@@ -82,6 +83,10 @@ HankoXml::Policy.new(
   `signature_methods` list names it. HankoXml has no HMAC secret-key API, so `allow_hmac: true`
   (as in `Policy.permissive`) does not make HMAC signatures verifiable; it only stops the policy
   from rejecting them. Trust stays pinned to the caller's certificate or key either way.
+- **`Policy.xades`** is `Policy.strict` plus RSA-PSS (RFC 6931 `sha*-rsa-MGF1`) and SHA-3 digest
+  / ECDSA-SHA3 methods. It does not change XAdES structure or make `Xades::Signer` default to it.
+  libxmlsec1 1.3 (vendored / platform gems) implements these URIs; xmlsec 1.2 (Ubuntu) does not,
+  and `Native.sign` / `Native.verify` then fail closed.
 - **`require_signed_root: true`** is the structural half of the XSW defence — see
   [XSW Defense](/guide/xsw-defense).
 - **`reject_duplicate_ids: true`** is enforced by a Nokogiri scan before serialization. Duplicate IDs
@@ -93,7 +98,7 @@ HankoXml::Policy.new(
 Violations raise `HankoXml::PolicyError` from `verify!`/`sign`, and appear in
 `Verification#errors` with `#valid?` false from `#verify` / `#valid?`. Error messages always name the
 offending value and field, and the escape hatch to use if the document genuinely requires it (for
-example `HankoXml::Policy.legacy_sha1`).
+example `HankoXml::Policy.legacy_sha1` or `HankoXml::Policy.xades`).
 
 ## Why `require_signed_root` defaults to `true`
 

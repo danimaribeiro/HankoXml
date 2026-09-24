@@ -86,3 +86,10 @@ Naming/MethodParameterName:
     - pp
     - to
     - ns
+
+# RFC 6931 SHA-3 names are sha3-256; the registry symbols are :sha3_256 and
+# :ecdsa_sha3_256. normalcase would demand :sha3256.
+Naming/VariableNumber:
+  AllowedPatterns:
+    - '\Asha3_\d+\z'
+    - '_sha3_\d+\z'

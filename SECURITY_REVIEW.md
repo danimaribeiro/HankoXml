@@ -398,14 +398,17 @@ separately if picked up.
 both `native_sign` and `native_verify`, now calls `restrict_transforms`, which
 fills `enabledReferenceTransforms` with an allow-list: enveloped signature,
 base64, the inclusive/exclusive C14N variants, and the SHA-1/SHA-2 digests.
-XSLT, XPath, XPath Filter 2 and XPointer are not on it, so a direct
+SHA-3 digest hrefs (`xmldsig-more#sha3-*`) are enabled from xmlsec's
+transform registry when present (xmlsec 1.3+; #60). XSLT, XPath, XPath Filter 2
+and XPointer are not on it, so a direct
 `Native.verify` / `Native.sign` call can no longer reach them, whatever the
 host xmlsec was built with. Caveat: the regression spec ("Native transform
 restriction (S-10)" in `spec/hanko_xml/policy_ordering_spec.rb`) only asserts
 the status is not `:succeeded`, which adding any transform to a signed
 Reference already causes, and vendored builds have no XSLT to register. It
 does not tell the allow-list apart from a digest mismatch. Adding a new
-transform or digest (for example SHA-3, #60) means adding it to the list.
+transform or digest means adding it to the list (SHA-3 is looked up by href
+so xmlsec 1.2 still compiles).
 
 Original report:
 

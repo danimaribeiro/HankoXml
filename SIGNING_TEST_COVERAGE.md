@@ -110,6 +110,9 @@ with `Native.verify` **and** `Verifier#verify` (strict or `legacy_sha1`).
 | B9 | `:dsa_sha1` | -- | -- | ? (xmlsec may reject; pin the error) |
 | B10 | Unknown Symbol / arbitrary URI string as `signature_method` | `Template` emits the URI verbatim; `Native.sign` raises `SigningError` | ? |
 | B11 | `Algorithms.register` a custom transform then sign with it | `SigningError` from xmlsec (unknown transform) rather than a crash | ? |
+| B12 | `:rsa_pss_sha256` under `Policy.xades` | pass on xmlsec ≥ 1.3; `SigningError` on 1.2; `PolicyError` under strict | pass (gated) |
+| B13 | `:sha3_256` digest under `Policy.xades` | same as B12 | pass (gated) |
+| B14 | `:ecdsa_sha3_256` with a P-256 key under `Policy.xades` | same as B12 | pass (gated) |
 
 ### C. References and transforms
 
