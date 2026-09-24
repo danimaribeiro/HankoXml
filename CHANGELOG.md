@@ -118,6 +118,10 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   (or `sig_node:` / `id_attributes:`) report `require_signed_root` and
   `reject_duplicate_ids` as violations instead of silently skipping them.
   `Signer` and `Verifier` always passed the document, so they are unaffected.
+- **#96:** A non-root `Nokogiri::XML::Node` passed to `Signer#sign` / `#sign!`
+  is the default reference target (`"#<its Id>"`) when the `Signer` has no
+  `references:`. It used to sign the whole document. A node without an Id
+  raises `ConfigurationError`.
 - **#96:** `namespaces:` now reaches every caller-supplied XPath. The
   `Signer`'s map is merged under a `Placement`'s own, and `Verification#at_signed`
   / `#signed` see their `ns` argument merged over the `Verifier`'s map and

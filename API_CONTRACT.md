@@ -1228,7 +1228,11 @@ Everywhere a document is taken (`sign`, `sign!`, `verify`, `valid?`, `signature_
 
 - `Nokogiri::XML::Document` — used as-is
 - `Nokogiri::XML::Node` / `::Element` — its `#document` is used; for signing,
-  the node becomes the default reference target
+  the node becomes the default reference target: with no `references:` of its
+  own, the `Signer` signs `"#<the node's Id>"` (the first of `id_attributes`
+  it carries), exactly as if the caller had passed `references: ["#<Id>"]`.
+  The root element means the whole document, as before. A non-root node with
+  no Id raises `ConfigurationError` rather than signing something else (#96)
 - `String` of XML markup — parsed with `HankoXml.parse` (§6.3)
 - `Pathname` / `File` / anything responding to `#to_path` — read binary, parsed
 - anything responding to `#read` (`IO`, `StringIO`) — read fully, parsed
