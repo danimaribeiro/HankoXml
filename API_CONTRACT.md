@@ -662,9 +662,9 @@ HankoXml::Key.from_file(path, password: nil)
 # PKCS#12 / PFX — Windows-exported keys and A1-style software certificates.
 # Returns key + leaf certificate + CA chain in one go.
 bundle = HankoXml::Key.from_pkcs12("cert.pfx", password: ENV["PFX_PASSWORD"])
-bundle.key           # => OpenSSL::PKey::RSA
-bundle.certificate   # => OpenSSL::X509::Certificate
-bundle.certificates  # => [leaf, *ca_chain]
+bundle.key           # => HankoXml::Key (the private key)
+bundle.certificate   # => HankoXml::Key (the leaf certificate)
+bundle.certificates  # => [leaf, *ca_chain], each a HankoXml::Key
 signer = HankoXml::Signer.new(**bundle.to_h)   # key:, certificate:, certificates:
 ```
 
@@ -856,6 +856,10 @@ HankoXml::Policy.new(
   check_certificate_validity: true,  # notBefore / notAfter against Time.now
   clock_skew:                60,     # seconds of tolerance for the above
   require_signing_key_usage: true,   # store: only -- see below
+
+  # --- structure -----------------------------------------------------------
+  schema:                    :default, # Verifier XSD check of <Signature> (§5.3);
+                                       # nil skips it
 )
 ```
 
@@ -1292,7 +1296,7 @@ without being asked.
 ```ruby
 require "hanko_xml/nokogiri_ext"
 
-doc.sign(key: key, certificate: cert)     # => new Nokogiri::XML::Document
+doc.sign(key: key, certificate: cert)     # => HankoXml::SignedDocument (§6.7); doc is untouched
 doc.sign!(key: key, certificate: cert)    # => doc
 doc.signature_valid?(certificate: cert)   # => true / false
 doc.signatures                            # => NodeSet of <ds:Signature>
@@ -1314,7 +1318,7 @@ obvious method breaks the thing we just built is not acceptable ergonomics.
 
 ```ruby
 signed = HankoXml.sign(doc, key: key, certificate: cert)
-# => #<HankoXml::SignedDocument signatures=1 valid=true>
+# => #<HankoXml::SignedDocument signatures=1>
 
 signed.to_xml                       # => String, always AS_XML. Safe.
 signed.to_s                         # => same
@@ -1387,7 +1391,12 @@ HankoXml::Native.check_version
 
 HankoXml::Native.versions
 # => { xmlsec: "1.3.4", libxml2: "2.15.3", crypto: "openssl-3.5.0" }
-#    Used by HankoXml.zero_copy_available? (§7.4) and by bug reports.
+#    Used by HankoXml::NativeVersion and by bug reports.
+
+HankoXml::Native.abi_compatible?
+# => true when the loaded libxmlsec1 is ABI compatible with the headers this
+#    extension was compiled against. HankoXml::NativeVersion calls it at
+#    require time and raises NativeVersionMismatch when it is false.
 
 HankoXml::Native.sign(xml, key_pem, cert_pems, id_attributes, signature_index)
 #   xml             : String (binary) — the complete document, template included
@@ -1398,7 +1407,7 @@ HankoXml::Native.sign(xml, key_pem, cert_pems, id_attributes, signature_index)
 # => String (binary) — the signed document
 # raises HankoXml::SigningError / NativeError, with #xmlsec_errors populated
 
-HankoXml::Native.inspect(xml, signature_index)
+HankoXml::Native.inspect_sig(xml, signature_index)
 #   Parses, locates the nth <ds:Signature>, and returns its <SignedInfo> as
 #   plain Ruby data. NO cryptography, no transform execution, no key material:
 #   this is a libxml2 parse and some attribute reads, safe to run on untrusted
@@ -1413,7 +1422,8 @@ HankoXml::Native.inspect(xml, signature_index)
 #                      transforms: ["http://…#enveloped-signature", "http://…#exc-c14n"],
 #                      id: nil, type: nil } ] }
 
-HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signature_index)
+HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signature_index,
+                        referenced_documents)
 #   trusted_pems    : Array<String> — certs/keys that establish trust.
 #                     Each PEM is pinned as signKey (certs via
 #                     xmlSecKeyDataFormatCertPem) so KeyInfo cannot supply
@@ -1423,20 +1433,25 @@ HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signat
 #   untrusted_pems  : Array<String> — unused once signKey is pinned;
 #                     retained for FFI compatibility. Chain building is a
 #                     Ruby `store:` concern.
-#   Reference URIs are limited to empty / same-document (`URI=""` / `#id`).
-#   file:// and http:// are not fetched (S-04).
+#   referenced_documents : Array<[uri, bytes]> — the only content an
+#                     external Reference may resolve to (#74). With it empty,
+#                     Reference URIs are limited to empty / same-document
+#                     (`URI=""` / `#id`). Nothing is ever fetched (S-04).
 # => { status: :succeeded | :invalid | :unknown,
 #      errors: Array<String>,
-#      reference_element_indexes: Array<Integer|nil> }  # §5.9
+#      reference_element_indexes: Array<Integer|nil>,  # §5.9
+#      reference_valid: Array<true|false|nil>,         # per-Reference digest, S-09
+#      trusted_index: Integer | nil }                  # which trusted_pems entry verified
 # raises only for conditions that are not a verification verdict
 #   (unparseable input, index out of range, unreadable key material)
 ```
 
-That is five functions. Everything else in this document is Ruby.
+That is six functions (`check_version`, `abi_compatible?`, `versions`,
+`sign`, `inspect_sig`, `verify`). Everything else in this document is Ruby.
 
 ### 7.1 Design notes for the native layer
 
-- **`inspect` is the single source of signature metadata**, used on both the
+- **`inspect_sig` is the single source of signature metadata**, used on both the
   Nokogiri and the DOM-free path. Ruby could read `<SignedInfo>` with Nokogiri
   when it is available and skip this call, but then two implementations would
   extract the same metadata and could disagree — and "two resolvers disagree"
@@ -1966,7 +1981,7 @@ Rejected alternative: build templates in Rust to drop Nokogiri entirely, as the
 POC and `nokogiri-xmlsec` do. It moves the most variable logic in the library
 back into `unsafe`, against §1's first requirement.
 
-The cost accepted: one new native function (`Native.inspect`, §7), one extra
+The cost accepted: one new native function (`Native.inspect_sig`, §7), one extra
 parse on the Nokogiri path, and a capability matrix that has to stay true.
 
 ### 13.6 No pure-Ruby backend — **reversed from the earlier draft**
@@ -2038,7 +2053,7 @@ XML assertions and no keys. This is most of the library.
 
 **Phase 2 — native rewrite to the §7 contract.**
 Replace `validate_bytes` / `validate_doc_pointer` with `Native.sign` /
-`Native.verify` / `Native.inspect` / `Native.versions`, add the error-callback
+`Native.verify` / `Native.inspect_sig` / `Native.versions`, add the error-callback
 capture, delete `XmlDoc<'a>` and its `PhantomData`. Verify the `unsafe`-block
 count drops despite the extra function — `inspect` is attribute reads over a
 document the crate already knows how to parse.

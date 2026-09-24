@@ -1,12 +1,13 @@
 module HankoXml
   class Verifier
     attr_reader policy: Policy
-    attr_reader id_attributes: Array[String]
+    attr_reader id_attributes: Array[String | [String, String]]
     attr_reader namespaces: Hash[String, String]
-    attr_reader signature: Symbol | Integer | String
+    attr_reader signature: Symbol | Integer | String | nil
     attr_reader verification_time: Time?
     attr_reader schema: Symbol | String | Nokogiri::XML::Schema | nil
     attr_reader referenced_documents: Hash[String, String]
+    attr_reader resolver: untyped
 
     def initialize: (
       ?certificate: (Key | OpenSSL::X509::Certificate | String | _ToPath)?,
@@ -15,9 +16,10 @@ module HankoXml
       ?key: (Key | OpenSSL::PKey::PKey | String | _ToPath)?,
       ?keys: Hash[String, Key | OpenSSL::X509::Certificate | String | _ToPath]?,
       ?policy: Policy,
-      ?id_attributes: Array[String],
+      ?id_attributes: Array[String | [String, String]],
+      ?resolver: untyped,
       ?namespaces: Hash[String, String],
-      ?signature: Symbol | Integer | String,
+      ?signature: Symbol | Integer | String | nil,
       ?verification_time: Time?,
       ?schema: Symbol | String | Nokogiri::XML::Schema | nil,
       ?referenced_documents: Hash[String, String | Nokogiri::XML::Document],

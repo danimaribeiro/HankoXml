@@ -162,6 +162,22 @@ RSpec.describe HankoXml::Verification do
     expect(verification.signed_nodes).to eq([])
   end
 
+  # #96: registry names, as API_CONTRACT.md §5.4 shows, and the URI for an
+  # algorithm the registry does not know.
+  it "reports algorithm names, falling back to the URI for unregistered ones" do
+    info = HankoXml::SignatureInfo.new(
+      signature_method: signature_method, canonicalization_method: "urn:example:c14n",
+      references: [{ uri: "", digest_method: digest_method, transforms: [] },
+                   { uri: "", digest_method: "urn:example:digest", transforms: [] }]
+    )
+    verification = described_class.new(valid: false, errors: [], signature_info: info, signature_node: nil,
+                                        document: Nokogiri::XML("<root/>"))
+
+    expect(verification.signature_method).to eq(:rsa_sha256)
+    expect(verification.canonicalization_method).to eq("urn:example:c14n")
+    expect(verification.digest_methods).to eq([:sha256, "urn:example:digest"])
+  end
+
   describe "#reference_valid (S-09)" do
     def build_multi_ref_verification(valid:, reference_valid:)
       doc = Nokogiri::XML("<root><a Id=\"a\"/><b Id=\"b\"/></root>")

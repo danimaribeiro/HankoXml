@@ -1,40 +1,46 @@
 module HankoXml
   class Signer
-    attr_reader key: Key
-    attr_reader certificate: Key?
-    attr_reader certificates: Array[Key]
-    attr_reader signature_method: Symbol
-    attr_reader digest_method: Symbol
-    attr_reader canonicalization_method: Symbol
-    attr_reader placement: Placement
-    attr_reader references: Array[Reference]
-    attr_reader key_info: Array[KeyInfo::Clause]
-    attr_reader id_attributes: Array[String | [String, String]]
+    attr_accessor key: Key
+    attr_accessor certificate: Key?
+    attr_accessor certificates: Array[Key]
+    attr_accessor signature_method: Symbol | String
+    attr_accessor digest_method: Symbol | String
+    attr_accessor canonicalization_method: Symbol | String
+    attr_accessor placement: Placement
+    attr_accessor references: Array[Reference]
+    def key_info=: (Array[KeyInfo::Clause] clauses) -> Array[KeyInfo::Clause]
+    attr_accessor id_attributes: Array[String | [String, String]]
+    attr_accessor namespaces: Hash[String | Symbol, String]
+    attr_accessor signature_id: String?
+    attr_accessor policy: Policy
     attr_reader template_mode: Symbol
-    attr_reader signature_id: String?
 
     def initialize: (
-      ?key: (Key | OpenSSL::PKey::PKey | String | _ToPath)?,
+      key: Key | OpenSSL::PKey::PKey | String | _ToPath,
       ?certificate: (Key | OpenSSL::X509::Certificate | String | _ToPath)?,
       ?certificates: Array[Key | OpenSSL::X509::Certificate | String | _ToPath],
-      ?signature_method: Symbol,
-      ?digest_method: Symbol,
-      ?canonicalization_method: Symbol,
-      ?placement: Placement | Symbol,
+      ?signature_method: Symbol | String,
+      ?canonicalization_method: Symbol | String,
+      ?digest_method: Symbol | String,
       ?references: Array[Reference | String | Hash[Symbol, untyped]],
       ?key_info: Array[Symbol | Hash[Symbol, String]],
+      ?placement: Placement | Symbol,
       ?id_attributes: Array[String | [String, String]],
-      ?template: Symbol,
-      ?signature_id: String?
+      ?namespaces: Hash[String | Symbol, String],
+      ?signature_id: String?,
+      ?policy: Policy,
+      ?template: Symbol
     ) ?{ (self) -> void } -> void
 
-    def sign: (String | Nokogiri::XML::Node | Nokogiri::XML::Document doc_or_xml, ?force: bool, ?signature: untyped) -> HankoXml::SignedDocument
-    def sign!: (Nokogiri::XML::Node | Nokogiri::XML::Document doc_or_xml, ?force: bool, ?signature: untyped) -> (Nokogiri::XML::Node | Nokogiri::XML::Document)
-    
+    def sign: (String | Nokogiri::XML::Node | Nokogiri::XML::Document | _ToPath | IO doc_or_xml, ?force: bool, ?signature: Integer?) -> HankoXml::SignedDocument
+    def sign!: (Nokogiri::XML::Node | Nokogiri::XML::Document doc_or_xml, ?force: bool, ?signature: Integer?) -> (Nokogiri::XML::Node | Nokogiri::XML::Document)
+    def template: (String | Nokogiri::XML::Node | Nokogiri::XML::Document doc_or_xml) -> Nokogiri::XML::Node
+    def reference: (?String? uri, **untyped kwargs) -> Array[Reference]
+    def key_info: (*Symbol | Hash[Symbol, String] clauses, ?name: String?) -> Array[KeyInfo::Clause]
+             | () -> Array[KeyInfo::Clause]
     def to_h: () -> Hash[Symbol, untyped]
 
     private
-    def template: (Nokogiri::XML::Document doc) -> Nokogiri::XML::Node
     def node_signed?: (Nokogiri::XML::Node sig_node) -> bool
     def write_back_signature: (Nokogiri::XML::Document doc, String signed_bytes, Integer index, Nokogiri::XML::Node caller_sig_node) -> void
   end

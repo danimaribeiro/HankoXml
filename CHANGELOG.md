@@ -131,6 +131,14 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   exist.
 - **#96:** `Verifier` `signature: :all` raises a `ConfigurationError` that
   points at `#verify_all` (#105).
+- **#96:** `Verification#signature_method` and `#canonicalization_method`
+  return registry names (`:rsa_sha256`, `:exc_c14n`), as the contract always
+  showed, instead of URI Strings. An algorithm the registry doesn't know comes
+  back as its URI, here and in `#digest_methods` (which used to give `nil`).
+- **#96:** RBS: `Verification` (`Reference`, `certificate`, `references`,
+  `signed`, `covers_root?`, the metadata readers), `Signer` (`key:` required,
+  `namespaces:`, `policy:`, public `template`, `reference`), `Policy`
+  (`referenced_uris:`), `Verifier` (`resolver:`) and `Error` match the code.
 - **#96:** `namespaces:` now reaches every caller-supplied XPath. The
   `Signer`'s map is merged under a `Placement`'s own, and `Verification#at_signed`
   / `#signed` see their `ns` argument merged over the `Verifier`'s map and
@@ -344,6 +352,11 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   `signature: :all` (#105), the `HankoXml.parse` NOBLANKS guard and
   `zero_copy:`. It also records that `valid?` raises `MultipleSignatures`
   (S-11).
+- **#96:** API_CONTRACT's stale sections now match the code: PKCS#12 bundles
+  hold `HankoXml::Key`s, `Policy`'s field list includes `schema:`,
+  `nokogiri_ext`'s `doc.sign` returns a `SignedDocument`,
+  `SignedDocument#inspect` has no `valid=`, and §7 lists the six native
+  functions with `Native.verify`'s real arguments and result keys.
 
 - **#89:** **Breaking:** `HankoXml.verify` is removed and `HankoXml.valid?` is
   added, as `API_CONTRACT.md` §5.1 always specified. A `Verification` is always

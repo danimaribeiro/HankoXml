@@ -67,7 +67,8 @@ module HankoXml
       ?sig_node: Nokogiri::XML::Node?,
       ?id_attributes: Array[String | [String, String]]?,
       ?xml_bytes: String?,
-      ?check_root_signed: bool
+      ?check_root_signed: bool,
+      ?referenced_uris: Array[String]
     ) -> Array[HankoXml::PolicyError]
 
     def enforce!: (
@@ -76,7 +77,8 @@ module HankoXml
       ?sig_node: Nokogiri::XML::Node?,
       ?id_attributes: Array[String | [String, String]]?,
       ?xml_bytes: String?,
-      ?check_root_signed: bool
+      ?check_root_signed: bool,
+      ?referenced_uris: Array[String]
     ) -> void
 
     def enforce_document_size!: (Integer bytesize) -> void

@@ -53,17 +53,21 @@ module HankoXml
     end
 
     # --- Authenticated metadata ---
+    # Registry names (:rsa_sha256), as API_CONTRACT.md §5.4 shows, or the URI
+    # String for an algorithm the registry does not know (#96).
     def signature_method
-      signature_info&.signature_method
+      signature_info && (signature_info.signature_method_name || signature_info.signature_method)
     end
 
     def canonicalization_method
-      signature_info&.canonicalization_method
+      signature_info && (signature_info.canonicalization_method_name || signature_info.canonicalization_method)
     end
 
     def digest_methods
       # nil signature_info: a verification that failed before inspection (#94).
-      signature_info ? signature_info.references.map(&:digest_method_name) : []
+      return [] unless signature_info
+
+      signature_info.references.map { |ref| ref.digest_method_name || ref.digest_method }
     end
 
     def signed_nodes
