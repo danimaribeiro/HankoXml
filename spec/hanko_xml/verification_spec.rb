@@ -171,7 +171,7 @@ RSpec.describe HankoXml::Verification do
                    { uri: "", digest_method: "urn:example:digest", transforms: [] }]
     )
     verification = described_class.new(valid: false, errors: [], signature_info: info, signature_node: nil,
-                                        document: Nokogiri::XML("<root/>"))
+                                       document: Nokogiri::XML("<root/>"))
 
     expect(verification.signature_method).to eq(:rsa_sha256)
     expect(verification.canonicalization_method).to eq("urn:example:c14n")
