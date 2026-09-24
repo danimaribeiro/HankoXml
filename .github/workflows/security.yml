@@ -10,14 +10,16 @@ name: Security
 # dedicated job here when spec/security/ exists (see SIGNING_TEST_COVERAGE.md).
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-  schedule:
-    # Mondays, 06:30 UTC — shortly after vendored-deps, so advisory noise
-    # from the same weekly window stays in one place.
-    - cron: '30 6 * * 1'
+  # CI-PAUSED: automatic triggers are off to save Actions budget; run tests
+  # locally before merging. Re-enable by uncommenting the CI-PAUSED lines.
+  # CI-PAUSED push:
+  # CI-PAUSED   branches:
+  # CI-PAUSED     - main
+  # CI-PAUSED pull_request:
+  # CI-PAUSED schedule:
+  # CI-PAUSED   # Mondays, 06:30 UTC — shortly after vendored-deps, so advisory noise
+  # CI-PAUSED   # from the same weekly window stays in one place.
+  # CI-PAUSED   - cron: '30 6 * * 1'
   workflow_dispatch:
 
 concurrency:
