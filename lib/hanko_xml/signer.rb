@@ -332,7 +332,7 @@ module HankoXml
         end
 
         template_node = template(doc)
-        @placement.insert(doc, template_node)
+        @placement.insert(doc, template_node, namespaces: @namespaces)
         [[template_node], false]
       else
         if @template_mode == :build

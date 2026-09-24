@@ -5,7 +5,7 @@ module HankoXml
   # Provides methods to inspect which nodes were actually signed, defending against
   # XML Signature Wrapping (XSW) attacks.
   # See API_CONTRACT.md §5.4.
-  class Verification
+  class Verification # rubocop:disable Metrics/ClassLength
     # Details about a specific `<Reference>` inside the verified signature.
     Reference = Struct.new(:uri, :node, :digest_method, :transforms, :valid?, :errors, keyword_init: true) do
       # @return [Boolean] True if the reference uses the enveloped-signature transform.
@@ -15,11 +15,11 @@ module HankoXml
     end
 
     attr_reader :valid, :errors, :signature_info, :signature_node, :document, :certificate, :id_attributes, :resolver,
-                :references, :reference_element_indexes, :reference_valid
+                :references, :reference_element_indexes, :reference_valid, :namespaces
 
     def initialize(valid:, errors:, signature_info:, signature_node:, document:, certificate: nil,
                    id_attributes: %w[Id ID id], resolver: nil, reference_element_indexes: nil,
-                   reference_valid: nil)
+                   reference_valid: nil, namespaces: {})
       @valid = valid
       @errors = errors.dup
       @signature_info = signature_info
@@ -28,6 +28,7 @@ module HankoXml
       @certificate = certificate
       @id_attributes = (id_attributes || []).dup.freeze
       @resolver = resolver
+      @namespaces = (namespaces || {}).transform_keys(&:to_s).freeze
       # Native.verify returns document-order element indexes from libxml2's ID
       # table (the same table xmlsec used for `#id`). When present, those are
       # authoritative for #references[].node / #signed? — Ruby does not
@@ -107,8 +108,10 @@ module HankoXml
       !covers_root?
     end
 
+    # +ns+ is merged over the Verifier's +namespaces:+, which is merged over
+    # HankoXml::NS, so +ds:+ is always bound (#96).
     def at_signed(xpath, ns = {})
-      node = document.at_xpath(xpath, ns)
+      node = document.at_xpath(xpath, xpath_namespaces(ns))
       raise HankoXml::NotSignedError, "No node found" unless node
       raise HankoXml::NotSignedError, "Node is not signed" unless signed?(node)
 
@@ -116,13 +119,17 @@ module HankoXml
     end
 
     def signed(xpath, ns = {})
-      nodes = document.xpath(xpath, ns).to_a
+      nodes = document.xpath(xpath, xpath_namespaces(ns)).to_a
       raise HankoXml::NotSignedError, "Some nodes are not signed" unless nodes.all? { |n| signed?(n) }
 
       nodes
     end
 
     private
+
+    def xpath_namespaces(ns)
+      HankoXml::NS.merge(namespaces).merge((ns || {}).transform_keys(&:to_s))
+    end
 
     def build_references
       return [] unless signature_info

@@ -1400,8 +1400,15 @@ Every XPath the library runs internally is `ds:`-qualified against this map —
 never `//Signature`, never `local-name()=`. A document that puts a decoy
 `<Signature>` in another namespace must not confuse us.
 
-Caller-supplied XPaths (`placement:`, `signature:`, `reference(xpath:)`) get the
-caller's `namespaces:` map merged over `HankoXml::NS`.
+Caller-supplied XPaths get the caller's `namespaces:` map merged over
+`HankoXml::NS`, so `ds:` is always bound (#96):
+
+- a `Placement` XPath sees `HankoXml::NS`, then the `Signer`'s `namespaces:`,
+  then the `Placement`'s own `namespaces:`, each winning over the last. An
+  XPath that uses an unbound prefix raises `PlacementError`;
+- the `Verifier`'s `signature:` XPath sees the `Verifier`'s `namespaces:`;
+- `Verification#at_signed(xpath, ns)` and `#signed(xpath, ns)` see `ns` merged
+  over the `Verifier`'s `namespaces:`.
 
 ---
 

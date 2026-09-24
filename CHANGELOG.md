@@ -105,6 +105,13 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **#96:** `namespaces:` now reaches every caller-supplied XPath. The
+  `Signer`'s map is merged under a `Placement`'s own, and `Verification#at_signed`
+  / `#signed` see their `ns` argument merged over the `Verifier`'s map and
+  `HankoXml::NS` (so `ds:` is always bound). Before, both options were stored
+  and ignored. A `Placement` XPath with an unbound prefix raises
+  `PlacementError` instead of Nokogiri's `XPath::SyntaxError`.
+
 - **#91:** `Verification#signed_nodes` returns `[]` when the verification is
   invalid, like `#signed?`. It used to return the resolved reference nodes even
   though nothing had been proven about them.

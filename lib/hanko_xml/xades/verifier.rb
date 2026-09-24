@@ -74,6 +74,7 @@ module HankoXml
           signature_info: verification.signature_info,
           signature_node: verification.signature_node,
           document: verification.document,
+          namespaces: verification.namespaces,
           certificate: verification.certificate,
           id_attributes: verification.id_attributes,
           resolver: verification.resolver,

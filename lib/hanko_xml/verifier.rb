@@ -95,6 +95,7 @@ module HankoXml
           signature_info: nil,
           signature_node: nil,
           document: doc,
+          namespaces: @namespaces,
           id_attributes: @id_attributes,
           resolver: @resolver
         )
@@ -110,6 +111,7 @@ module HankoXml
           signature_info: nil,
           signature_node: nil,
           document: doc,
+          namespaces: @namespaces,
           id_attributes: @id_attributes,
           resolver: @resolver
         )
@@ -234,6 +236,7 @@ module HankoXml
             signature_info: nil,
             signature_node: sig_node,
             document: doc,
+            namespaces: @namespaces,
             id_attributes: @id_attributes,
             resolver: @resolver
           )
@@ -259,6 +262,7 @@ module HankoXml
           signature_info: nil,
           signature_node: sig_node,
           document: doc,
+          namespaces: @namespaces,
           id_attributes: @id_attributes,
           resolver: @resolver
         )
@@ -342,6 +346,7 @@ module HankoXml
           signature_info: sig_info,
           signature_node: sig_node,
           document: doc,
+          namespaces: @namespaces,
           id_attributes: @id_attributes,
           resolver: @resolver
         )
@@ -363,6 +368,7 @@ module HankoXml
         signature_info: sig_info,
         signature_node: sig_node,
         document: doc,
+        namespaces: @namespaces,
         id_attributes: @id_attributes,
         resolver: @resolver,
         reference_element_indexes: verify_result[:reference_element_indexes],
@@ -403,6 +409,7 @@ module HankoXml
         signature_info: signature_info,
         signature_node: sig_node,
         document: doc,
+        namespaces: @namespaces,
         id_attributes: @id_attributes,
         resolver: @resolver
       )
