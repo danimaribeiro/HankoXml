@@ -34,17 +34,19 @@ RSpec.describe HankoXml::NativeVersion do
     it "raises NativeVersionMismatch when the versions are not ABI compatible" do
       stub_native(exact: false, abi: false)
 
-      expect { described_class.check! }
-        .to raise_error(HankoXml::NativeVersionMismatch, /not ABI compatible/)
+      expect { described_class.check! }.to raise_error(HankoXml::NativeVersionMismatch, /not ABI compatible/)
     end
 
     it "names the compiled-against versions in the failure" do
       stub_native(exact: false, abi: false)
-      allow(HankoXml::Native).to receive(:versions)
-        .and_return({ xmlsec: "1.2.37", libxml2: "2.9.14", crypto: "openssl" })
+      allow(HankoXml::Native).to receive(:versions).and_return(
+        { xmlsec: "1.2.37", libxml2: "2.9.14", crypto: "openssl" }
+      )
 
-      expect { described_class.check! }
-        .to raise_error(HankoXml::NativeVersionMismatch, /xmlsec1 1\.2\.37, libxml2 2\.9\.14/)
+      expect { described_class.check! }.to raise_error(
+        HankoXml::NativeVersionMismatch,
+        /xmlsec1 1\.2\.37, libxml2 2\.9\.14/
+      )
     end
 
     it "warns instead of raising when the skip variable is set" do
@@ -82,8 +84,7 @@ RSpec.describe HankoXml::NativeVersion do
 
   describe "HankoXml::NativeVersionMismatch" do
     it "is a NativeError, so an existing rescue of HankoXml::Error still catches it" do
-      expect(HankoXml::NativeVersionMismatch.ancestors)
-        .to include(HankoXml::NativeError, HankoXml::Error)
+      expect(HankoXml::NativeVersionMismatch.ancestors).to include(HankoXml::NativeError, HankoXml::Error)
     end
   end
 end

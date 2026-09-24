@@ -124,12 +124,7 @@ RSpec.describe "S-05 Signer policy before Native.sign" do
 
   it "signs an adopted fragment template when references: opts in (R5)" do
     xml = fixtures.join("template_detached.xml").read
-    signed = HankoXml.sign(
-      xml,
-      key: signer_key_pem,
-      certificate: signer_cert_pem,
-      references: ["#payload-1"]
-    )
+    signed = HankoXml.sign(xml, key: signer_key_pem, certificate: signer_cert_pem, references: ["#payload-1"])
 
     # A fragment signature does not cover the document root; require_signed_root
     # (a verification-time XSW defence, not a signing constraint -- S-06) does
@@ -158,12 +153,7 @@ RSpec.describe "S-05 Signer policy before Native.sign" do
     allow(HankoXml::Native).to receive(:sign).and_call_original
 
     expect do
-      HankoXml.sign(
-        unsigned_xml,
-        key: signer_key_pem,
-        certificate: signer_cert_pem,
-        signature_method: :rsa_sha1
-      )
+      HankoXml.sign(unsigned_xml, key: signer_key_pem, certificate: signer_cert_pem, signature_method: :rsa_sha1)
     end.to raise_error(HankoXml::PolicyError, /signature/)
 
     expect(HankoXml::Native).not_to have_received(:sign)

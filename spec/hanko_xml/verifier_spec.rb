@@ -30,8 +30,17 @@ module HankoXmlVerifierSpecHelpers
   end
 
   # key_usage: nil uses the default for is_ca; :none omits the extension.
-  def issue_cert(subject:, key:, serial:, is_ca:, issuer_cert: nil, issuer_key: nil,
-                 not_before: Time.now - 3600, not_after: Time.now + 86_400, key_usage: nil)
+  def issue_cert(
+    subject:,
+    key:,
+    serial:,
+    is_ca:,
+    issuer_cert: nil,
+    issuer_key: nil,
+    not_before: Time.now - 3600,
+    not_after: Time.now + 86_400,
+    key_usage: nil
+  )
     cert = OpenSSL::X509::Certificate.new
     cert.version = 2
     cert.serial = serial
@@ -80,10 +89,7 @@ RSpec.describe HankoXml::Verifier do
 
   describe "trust source selection" do
     it "rejects construction with no trust source" do
-      expect { described_class.new }.to raise_error(
-        HankoXml::ConfigurationError,
-        /exactly one trust source/
-      )
+      expect { described_class.new }.to raise_error(HankoXml::ConfigurationError, /exactly one trust source/)
     end
 
     it "rejects construction with two trust sources" do
@@ -100,8 +106,9 @@ RSpec.describe HankoXml::Verifier do
 
     it "is the pinned certificate, or the one in certificates: that verified" do
       expect(HankoXml::Verifier.new(certificate: signer_cert_pem).verify(signed).certificate).to eq(signer_cert)
-      expect(HankoXml::Verifier.new(certificates: [other_cert_pem,
-                                                   signer_cert_pem]).verify(signed).certificate).to eq(signer_cert)
+      expect(HankoXml::Verifier.new(certificates: [other_cert_pem, signer_cert_pem]).verify(signed).certificate).to eq(
+        signer_cert
+      )
     end
 
     it "is the chain leaf under store:" do
@@ -159,21 +166,38 @@ RSpec.describe HankoXml::Verifier do
 
       @root_cert = HankoXmlVerifierSpecHelpers.issue_cert(subject: "test-root", key: @root_key, serial: 1, is_ca: true)
       @intermediate_cert = HankoXmlVerifierSpecHelpers.issue_cert(
-        subject: "test-intermediate", key: @intermediate_key, serial: 2, is_ca: true,
-        issuer_cert: @root_cert, issuer_key: @root_key
+        subject: "test-intermediate",
+        key: @intermediate_key,
+        serial: 2,
+        is_ca: true,
+        issuer_cert: @root_cert,
+        issuer_key: @root_key
       )
       @leaf_cert = HankoXmlVerifierSpecHelpers.issue_cert(
-        subject: "test-leaf", key: @leaf_key, serial: 3, is_ca: false,
-        issuer_cert: @intermediate_cert, issuer_key: @intermediate_key
+        subject: "test-leaf",
+        key: @leaf_key,
+        serial: 3,
+        is_ca: false,
+        issuer_cert: @intermediate_cert,
+        issuer_key: @intermediate_key
       )
       @other_leaf_cert = HankoXmlVerifierSpecHelpers.issue_cert(
-        subject: "test-other-leaf", key: @other_leaf_key, serial: 4, is_ca: false,
-        issuer_cert: @intermediate_cert, issuer_key: @intermediate_key
+        subject: "test-other-leaf",
+        key: @other_leaf_key,
+        serial: 4,
+        is_ca: false,
+        issuer_cert: @intermediate_cert,
+        issuer_key: @intermediate_key
       )
       @expired_leaf_cert = HankoXmlVerifierSpecHelpers.issue_cert(
-        subject: "test-expired-leaf", key: @leaf_key, serial: 5, is_ca: false,
-        issuer_cert: @intermediate_cert, issuer_key: @intermediate_key,
-        not_before: Time.now - 7200, not_after: Time.now - 60
+        subject: "test-expired-leaf",
+        key: @leaf_key,
+        serial: 5,
+        is_ca: false,
+        issuer_cert: @intermediate_cert,
+        issuer_key: @intermediate_key,
+        not_before: Time.now - 7200,
+        not_after: Time.now - 60
       )
     end
 
@@ -186,12 +210,7 @@ RSpec.describe HankoXml::Verifier do
     end
 
     def sign_chain(certs)
-      HankoXml.sign(
-        unsigned_xml,
-        key: leaf_key,
-        certificate: certs.first,
-        certificates: certs.drop(1)
-      ).to_s
+      HankoXml.sign(unsigned_xml, key: leaf_key, certificate: certs.first, certificates: certs.drop(1)).to_s
     end
 
     it "validates a chain when only the root is in the store" do
@@ -247,10 +266,7 @@ RSpec.describe HankoXml::Verifier do
     end
 
     it "fails closed when two end-entity certs in KeyInfo both chain to the store" do
-      signed = add_keyinfo_certificate(
-        sign_chain([leaf_cert, intermediate_cert]),
-        @other_leaf_cert
-      )
+      signed = add_keyinfo_certificate(sign_chain([leaf_cert, intermediate_cert]), @other_leaf_cert)
       result = HankoXml::Verifier.new(store: root_store).verify(signed)
 
       expect(result.valid?).to be false
@@ -279,8 +295,13 @@ RSpec.describe HankoXml::Verifier do
 
     def leaf(serial, key_usage: nil, subject: "usage-leaf")
       HankoXmlVerifierSpecHelpers.issue_cert(
-        subject: subject, key: @leaf_key, serial: serial, is_ca: false,
-        issuer_cert: @ca_cert, issuer_key: @ca_key, key_usage: key_usage
+        subject: subject,
+        key: @leaf_key,
+        serial: serial,
+        is_ca: false,
+        issuer_cert: @ca_cert,
+        issuer_key: @ca_key,
+        key_usage: key_usage
       )
     end
 
@@ -304,9 +325,9 @@ RSpec.describe HankoXml::Verifier do
 
     it "skips the KeyUsage check when require_signing_key_usage is false" do
       policy = HankoXml::Policy.strict.with(require_signing_key_usage: false)
-      result = HankoXml::Verifier.new(store: store,
-                                      policy: policy).verify(signed_by(leaf(15,
-                                                                            key_usage: "keyEncipherment")))
+      result = HankoXml::Verifier
+        .new(store: store, policy: policy)
+        .verify(signed_by(leaf(15, key_usage: "keyEncipherment")))
 
       expect(result.valid?).to be true
     end
@@ -318,8 +339,7 @@ RSpec.describe HankoXml::Verifier do
 
     describe "certificate_subject:" do
       it "accepts a String equal to the only CN" do
-        expect(HankoXml.valid?(signed_by(leaf(20)), store: store, certificate_subject: "usage-leaf"))
-          .to be true
+        expect(HankoXml.valid?(signed_by(leaf(20)), store: store, certificate_subject: "usage-leaf")).to be true
       end
 
       it "rejects a different CN, including a prefix or suffix match" do
@@ -334,10 +354,9 @@ RSpec.describe HankoXml::Verifier do
 
       it "rejects a String when the subject has more than one CN" do
         name = OpenSSL::X509::Name.parse("/CN=usage-leaf/CN=attacker")
-        result = HankoXml::Verifier.new(store: store,
-                                        certificate_subject: "usage-leaf").verify(signed_by(leaf(
-                                                                                              22, subject: name
-                                                                                            )))
+        result = HankoXml::Verifier
+          .new(store: store, certificate_subject: "usage-leaf")
+          .verify(signed_by(leaf(22, subject: name)))
 
         expect(result.valid?).to be false
       end
@@ -347,16 +366,23 @@ RSpec.describe HankoXml::Verifier do
         cert = leaf(23, subject: name)
 
         expect(HankoXml.valid?(signed_by(cert), store: store, certificate_subject: name)).to be true
-        expect(HankoXml::Verifier.new(store: store,
-                                      certificate_subject: OpenSSL::X509::Name.parse("/CN=usage-leaf")).verify(signed_by(cert))
-          .valid?).to be false
+        expect(
+          HankoXml::Verifier
+            .new(store: store, certificate_subject: OpenSSL::X509::Name.parse("/CN=usage-leaf"))
+            .verify(signed_by(cert))
+            .valid?
+        ).to be false
       end
 
       it "is a ConfigurationError without store: or with an unsupported type" do
-        expect { described_class.new(certificate: signer_cert_pem, certificate_subject: "x") }
-          .to raise_error(HankoXml::ConfigurationError, /only applies to store:/)
-        expect { described_class.new(store: store, certificate_subject: /usage/) }
-          .to raise_error(HankoXml::ConfigurationError, /String .* or an OpenSSL::X509::Name/)
+        expect { described_class.new(certificate: signer_cert_pem, certificate_subject: "x") }.to raise_error(
+          HankoXml::ConfigurationError,
+          /only applies to store:/
+        )
+        expect { described_class.new(store: store, certificate_subject: /usage/) }.to raise_error(
+          HankoXml::ConfigurationError,
+          /String .* or an OpenSSL::X509::Name/
+        )
       end
     end
   end

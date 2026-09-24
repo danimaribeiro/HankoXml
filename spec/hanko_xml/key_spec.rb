@@ -33,8 +33,10 @@ RSpec.describe HankoXml::Key do
 
       it "raises KeyLoadError without a password, never asking OpenSSL to prompt" do
         expect(OpenSSL::PKey).to receive(:read).with(encrypted_pem, "").and_call_original
-        expect { described_class.from_pem(encrypted_pem) }
-          .to raise_error(HankoXml::KeyLoadError, /encrypted; pass password:/)
+        expect { described_class.from_pem(encrypted_pem) }.to raise_error(
+          HankoXml::KeyLoadError,
+          /encrypted; pass password:/
+        )
       end
 
       it "does not prompt for an encrypted DER key either" do
@@ -44,8 +46,9 @@ RSpec.describe HankoXml::Key do
 
       it "fails the same way through Signer.new and Verifier#verify" do
         expect { HankoXml::Signer.new(key: encrypted_pem) }.to raise_error(HankoXml::KeyLoadError)
-        expect { HankoXml::Verifier.new(key: encrypted_pem).verify(fixtures.join("signed.xml").read) }
-          .to raise_error(HankoXml::KeyLoadError)
+        expect { HankoXml::Verifier.new(key: encrypted_pem).verify(fixtures.join("signed.xml").read) }.to raise_error(
+          HankoXml::KeyLoadError
+        )
       end
 
       it "never echoes the key material" do
@@ -64,17 +67,21 @@ RSpec.describe HankoXml::Key do
     # S-15: classification by PEM block label, not substring.
     it "raises instead of silently dropping the certificate from a key + certificate bundle" do
       [key_pem + cert_pem, cert_pem + key_pem].each do |bundle|
-        expect { described_class.from_pem(bundle) }
-          .to raise_error(HankoXml::KeyLoadError, /both a certificate and a key/) do |error|
-            expect(error.message).not_to include("-----BEGIN")
-          end
+        expect { described_class.from_pem(bundle) }.to raise_error(
+          HankoXml::KeyLoadError,
+          /both a certificate and a key/
+        ) do |error|
+          expect(error.message).not_to include("-----BEGIN")
+        end
       end
     end
 
     # S-21: README used to pass filenames as Strings.
     it "treats a filename String as content, with a hint to use Pathname" do
-      expect { described_class.coerce("private.pem") }
-        .to raise_error(HankoXml::KeyLoadError, /not a file path.*Pathname/)
+      expect { described_class.coerce("private.pem") }.to raise_error(
+        HankoXml::KeyLoadError,
+        /not a file path.*Pathname/
+      )
     end
 
     it "does not add the path hint to a malformed PEM, and never echoes the input" do

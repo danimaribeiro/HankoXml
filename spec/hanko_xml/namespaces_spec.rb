@@ -15,8 +15,14 @@ RSpec.describe "namespaces: (#96)" do
 
   describe "Signer" do
     it "resolves a placement XPath with the Signer's namespaces:" do
-      signed = HankoXml::Signer.new(key: key_pem, certificate: cert_pem, namespaces: ns,
-                                    placement: HankoXml::Placement.append_to("/x:Envelope/x:Other")).sign(xml)
+      signed = HankoXml::Signer
+        .new(
+          key: key_pem,
+          certificate: cert_pem,
+          namespaces: ns,
+          placement: HankoXml::Placement.append_to("/x:Envelope/x:Other")
+        )
+        .sign(xml)
 
       doc = Nokogiri::XML(signed.to_s)
       expect(doc.at_xpath("/x:Envelope/x:Other/ds:Signature", ns.merge("ds" => HankoXml::NS["ds"]))).not_to be_nil
@@ -24,7 +30,9 @@ RSpec.describe "namespaces: (#96)" do
 
     it "lets Placement's own namespaces: win over the Signer's" do
       signer = HankoXml::Signer.new(
-        key: key_pem, certificate: cert_pem, namespaces: { "x" => "urn:wrong" },
+        key: key_pem,
+        certificate: cert_pem,
+        namespaces: { "x" => "urn:wrong" },
         placement: HankoXml::Placement.append_to("/x:Envelope/x:Other", namespaces: ns)
       )
 
@@ -32,8 +40,11 @@ RSpec.describe "namespaces: (#96)" do
     end
 
     it "raises PlacementError when the prefix is bound nowhere" do
-      signer = HankoXml::Signer.new(key: key_pem, certificate: cert_pem,
-                                    placement: HankoXml::Placement.append_to("/y:Envelope"))
+      signer = HankoXml::Signer.new(
+        key: key_pem,
+        certificate: cert_pem,
+        placement: HankoXml::Placement.append_to("/y:Envelope")
+      )
 
       expect { signer.sign(xml) }.to raise_error(HankoXml::PlacementError, /bind every prefix/)
     end

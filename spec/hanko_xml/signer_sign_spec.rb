@@ -119,14 +119,14 @@ RSpec.describe "HankoXml::Signer signing" do
 
       signer.sign!(doc)
       expect(doc.xpath("//ds:Signature", ds).size).to eq(1)
-      expect { signer(template: :build).sign!(doc) }
-        .to raise_error(HankoXml::ConfigurationError, /already exists/)
+      expect { signer(template: :build).sign!(doc) }.to raise_error(HankoXml::ConfigurationError, /already exists/)
     end
 
     it "A12 signs an ISO-8859-1 document and keeps its declaration" do
       declaration = %(<?xml version="1.0" encoding="ISO-8859-1"?>\n)
-      latin1 = %(#{declaration}<Envelope xmlns="urn:x"><Data>ol\xE1 a\xE7\xE3o</Data></Envelope>)
-               .force_encoding("ISO-8859-1")
+      latin1 = %(#{declaration}<Envelope xmlns="urn:x"><Data>ol\xE1 a\xE7\xE3o</Data></Envelope>).force_encoding(
+        "ISO-8859-1"
+      )
       signed = signer.sign(latin1).to_s
 
       expect(signed).to start_with(%(<?xml version="1.0" encoding="ISO-8859-1"?>))
@@ -154,14 +154,19 @@ RSpec.describe "HankoXml::Signer signing" do
       XML
       signed = signer.sign(source).to_s
 
-      expect(signed).to include("<?xml-stylesheet", "<!-- before -->", "<!-- inside -->", "<!-- after -->",
-                                "<![CDATA[x<y]]>")
+      expect(signed).to include(
+        "<?xml-stylesheet",
+        "<!-- before -->",
+        "<!-- inside -->",
+        "<!-- after -->",
+        "<![CDATA[x<y]]>"
+      )
       expect(valid?(signed)).to be true
     end
 
     it "A15 keeps an internal DTD subset" do
       source = %(<?xml version="1.0"?>\n<!DOCTYPE Envelope [<!ELEMENT Envelope ANY>]>\n) +
-               %(<Envelope xmlns="urn:x"><Data>A</Data></Envelope>)
+        %(<Envelope xmlns="urn:x"><Data>A</Data></Envelope>)
       signed = signer.sign(source).to_s
 
       expect(signed).to include("<!DOCTYPE Envelope")
@@ -176,7 +181,9 @@ RSpec.describe "HankoXml::Signer signing" do
 
       it "rejects nesting past libxml2's default depth limit as a ParseError" do
         deep = %(<Envelope xmlns="urn:x">#{"<n>" * 5000}x#{"</n>" * 5000}</Envelope>)
-        expect { signer.sign(deep) }.to raise_error(HankoXml::ParseError) { |e| expect(e.xmlsec_errors.join).to match(/depth/i) }
+        expect { signer.sign(deep) }.to raise_error(HankoXml::ParseError) { |e|
+          expect(e.xmlsec_errors.join).to match(/depth/i)
+        }
       end
 
       it "signs a 15 MiB document spread over many elements" do
@@ -216,13 +223,14 @@ RSpec.describe "HankoXml::Signer signing" do
 
     it "D2 template: :build refuses a document that already has a Signature" do
       signed = signer.sign(xml).to_s
-      expect { signer(template: :build).sign(signed) }
-        .to raise_error(HankoXml::ConfigurationError, /already exists/)
+      expect { signer(template: :build).sign(signed) }.to raise_error(HankoXml::ConfigurationError, /already exists/)
     end
 
     it "D3 template: :require refuses a document without a Signature" do
-      expect { signer(template: :require).sign(xml) }
-        .to raise_error(HankoXml::ConfigurationError, /no <Signature> found/)
+      expect { signer(template: :require).sign(xml) }.to raise_error(
+        HankoXml::ConfigurationError,
+        /no <Signature> found/
+      )
     end
 
     it "D4 template: :require signs an existing empty template" do
@@ -248,8 +256,10 @@ RSpec.describe "HankoXml::Signer signing" do
       doc = Nokogiri::XML(xml)
       doc.root.add_child(signer(references: ["#b"]).template(doc))
 
-      expect { signer(references: ["#a"], policy: fragment).sign!(doc) }
-        .to raise_error(HankoXml::ConfigurationError, /do not match/)
+      expect { signer(references: ["#a"], policy: fragment).sign!(doc) }.to raise_error(
+        HankoXml::ConfigurationError,
+        /do not match/
+      )
     end
 
     it "D6 signs an inner signature first, then an outer one that covers it" do
@@ -285,9 +295,12 @@ RSpec.describe "HankoXml::Signer signing" do
       policy = HankoXml::Policy.legacy_sha1.with(require_signed_root: false)
       signed = signer(
         placement: HankoXml::Placement.after("//n:infNFe", namespaces: { "n" => "http://www.portalfiscal.inf.br/nfe" }),
-        references: [HankoXml::Reference.new(uri: "#NFe1", transforms: %i[enveloped_signature c14n],
-                                             digest_method: :sha1)],
-        signature_method: :rsa_sha1, canonicalization_method: :c14n, policy: policy
+        references: [
+          HankoXml::Reference.new(uri: "#NFe1", transforms: %i[enveloped_signature c14n], digest_method: :sha1)
+        ],
+        signature_method: :rsa_sha1,
+        canonicalization_method: :c14n,
+        policy: policy
       ).sign(nfe).to_s
 
       expect(signed).to include("</infNFe><Signature")
@@ -320,7 +333,9 @@ RSpec.describe "HankoXml::Signer signing" do
     end
 
     it "G7 Placement.custom" do
-      placement = HankoXml::Placement.custom { |doc, signature| doc.root.first_element_child.add_next_sibling(signature) }
+      placement = HankoXml::Placement.custom do |doc, signature|
+        doc.root.first_element_child.add_next_sibling(signature)
+      end
       signed = signer(placement: placement).sign(xml).to_s
 
       expect(signed).to include("A</Data><Signature")
@@ -329,10 +344,14 @@ RSpec.describe "HankoXml::Signer signing" do
 
     it "G8 raises PlacementError before signing when the XPath matches zero or several nodes" do
       expect(HankoXml::Native).not_to receive(:sign)
-      expect { signer(placement: HankoXml::Placement.after("//nope")).sign(xml) }
-        .to raise_error(HankoXml::PlacementError, /matched no nodes/)
-      expect { signer(placement: HankoXml::Placement.after("/*/*")).sign(xml) }
-        .to raise_error(HankoXml::PlacementError, /matched 2 nodes/)
+      expect { signer(placement: HankoXml::Placement.after("//nope")).sign(xml) }.to raise_error(
+        HankoXml::PlacementError,
+        /matched no nodes/
+      )
+      expect { signer(placement: HankoXml::Placement.after("/*/*")).sign(xml) }.to raise_error(
+        HankoXml::PlacementError,
+        /matched 2 nodes/
+      )
     end
   end
 
@@ -348,13 +367,16 @@ RSpec.describe "HankoXml::Signer signing" do
 
     it "H3 an xmlsec signing failure is a SigningError carrying the xmlsec log" do
       # A missing reference target gets past policy and fails inside xmlsec.
-      expect { signer(references: ["#nope"], policy: HankoXml::Policy.fragment).sign(xml) }
-        .to raise_error(HankoXml::SigningError) { |e| expect(e.xmlsec_errors).not_to be_empty }
+      expect { signer(references: ["#nope"], policy: HankoXml::Policy.fragment).sign(xml) }.to raise_error(
+        HankoXml::SigningError
+      ) { |e| expect(e.xmlsec_errors).not_to be_empty }
     end
 
     it "H4 a non-String id_attributes entry reaching native is a NativeError" do
-      expect { HankoXml::Native.sign(xml, key_pem, [cert_pem], [1], 0) }
-        .to raise_error(HankoXml::NativeError, /not a String/)
+      expect { HankoXml::Native.sign(xml, key_pem, [cert_pem], [1], 0) }.to raise_error(
+        HankoXml::NativeError,
+        /not a String/
+      )
     end
 
     it "H5 an unsupported input type is an ArgumentError" do

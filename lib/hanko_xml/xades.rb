@@ -37,7 +37,7 @@ module HankoXml
           digest_value.to_s.unpack1("m0")
         rescue ArgumentError
           raise HankoXml::ConfigurationError,
-                "signature_policy digest_value: must be Base64 (the policy document's digest)"
+            "signature_policy digest_value: must be Base64 (the policy document's digest)"
         end
 
         super
@@ -60,8 +60,13 @@ module HankoXml
     # The authenticated view of a verified <xades:SignedProperties>
     # (Xades::Verification#signed_properties). Unsigned properties
     # (timestamps, validation data) are never read.
-    SignedProperties = Struct.new(:signing_time, :signature_policy, :claimed_roles, :data_object_formats,
-                                  keyword_init: true) do
+    SignedProperties = Struct.new(
+      :signing_time,
+      :signature_policy,
+      :claimed_roles,
+      :data_object_formats,
+      keyword_init: true
+    ) do
       def initialize(**)
         super
         freeze
@@ -91,12 +96,22 @@ module HankoXml
       # @param signature_id [String, nil] The <Signature> Id; generated when nil, since QualifyingProperties
       #   targets it.
       # All other keywords are {HankoXml::Signer}'s.
-      def initialize(certificate: nil, signing_time: nil, signature_policy: nil, claimed_roles: [],
-                     data_object_format: nil, signature_id: nil, template: :build, **options, &block)
+      def initialize(
+        certificate: nil,
+        signing_time: nil,
+        signature_policy: nil,
+        claimed_roles: [],
+        data_object_format: nil,
+        signature_id: nil,
+        template: :build,
+        **options,
+        &block
+      )
         unless template.to_sym == :build
           raise HankoXml::ConfigurationError,
-                "template: #{template.inspect} is not supported for XAdES; it always builds a new <Signature>"
+            "template: #{template.inspect} is not supported for XAdES; it always builds a new <Signature>"
         end
+
         if signing_time && !signing_time.respond_to?(:utc)
           raise HankoXml::ConfigurationError, "signing_time: must be a Time, got #{signing_time.class}"
         end
@@ -106,8 +121,13 @@ module HankoXml
         @claimed_roles = Array(claimed_roles).map { |role| role.to_s.dup.freeze }.freeze
         @data_object_format = coerce_data_object_format(data_object_format)
 
-        super(certificate: certificate, signature_id: signature_id || "xades-#{SecureRandom.hex(8)}",
-              template: :build, **options, &block)
+        super(
+          certificate: certificate,
+          signature_id: signature_id || "xades-#{SecureRandom.hex(8)}",
+          template: :build,
+          **options,
+          &block
+        )
       end
 
       # This Signer's own references (the whole document when it has none),
@@ -133,34 +153,47 @@ module HankoXml
       private
 
       def signed_properties_reference
-        HankoXml::Reference.new(uri: "##{signed_properties_id}", type: SIGNED_PROPERTIES_TYPE,
-                                transforms: [:exc_c14n], digest_method: digest_method)
+        HankoXml::Reference.new(
+          uri: "##{signed_properties_id}",
+          type: SIGNED_PROPERTIES_TYPE,
+          transforms: [:exc_c14n],
+          digest_method: digest_method
+        )
       end
 
       def with_id(ref, index)
         return ref if ref.id
 
-        HankoXml::Reference.new(uri: ref.uri, transforms: ref.transforms, digest_method: ref.digest_method,
-                                id: "#{signature_id}-ref-#{index}", type: ref.type)
+        HankoXml::Reference.new(
+          uri: ref.uri,
+          transforms: ref.transforms,
+          digest_method: ref.digest_method,
+          id: "#{signature_id}-ref-#{index}",
+          type: ref.type
+        )
       end
 
       def coerce_signature_policy(value)
         case value
-        when nil, :implied, SignaturePolicy then value
-        when Hash then SignaturePolicy.new(**value)
+        when nil, :implied, SignaturePolicy
+          value
+        when Hash
+          SignaturePolicy.new(**value)
         else
           raise HankoXml::ConfigurationError,
-                "signature_policy: must be a Xades::SignaturePolicy, a Hash of its keywords, :implied or nil"
+            "signature_policy: must be a Xades::SignaturePolicy, a Hash of its keywords, :implied or nil"
         end
       end
 
       def coerce_data_object_format(value)
         case value
-        when nil, DataObjectFormat then value
-        when Hash then DataObjectFormat.new(**value)
+        when nil, DataObjectFormat
+          value
+        when Hash
+          DataObjectFormat.new(**value)
         else
           raise HankoXml::ConfigurationError,
-                "data_object_format: must be a Xades::DataObjectFormat, a Hash of its keywords or nil"
+            "data_object_format: must be a Xades::DataObjectFormat, a Hash of its keywords or nil"
         end
       end
 

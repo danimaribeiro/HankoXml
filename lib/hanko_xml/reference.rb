@@ -37,12 +37,16 @@ module HankoXml
 
     def self.coerce(value)
       case value
-      when Reference then value
-      when String then new(uri: value)
-      when Hash then new(**value)
+      when Reference
+        value
+      when String
+        new(uri: value)
+      when Hash
+        new(**value)
       else
-        raise ArgumentError, "expected a HankoXml::Reference, URI String, or Hash of Reference " \
-                              "keywords, got #{value.class}"
+        raise ArgumentError,
+          "expected a HankoXml::Reference, URI String, or Hash of Reference " \
+            "keywords, got #{value.class}"
       end
     end
   end

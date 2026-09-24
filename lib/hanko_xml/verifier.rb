@@ -5,8 +5,14 @@ module HankoXml
   # Handles fetching signatures, validating against a schema, verifying cryptographic integrity,
   # and enforcing security policies.
   class Verifier # rubocop:disable Metrics/ClassLength
-    attr_reader :policy, :id_attributes, :namespaces, :signature, :verification_time, :schema, :referenced_documents,
-                :resolver
+    attr_reader :policy,
+      :id_attributes,
+      :namespaces,
+      :signature,
+      :verification_time,
+      :schema,
+      :referenced_documents,
+      :resolver
 
     # Distinguishes "caller did not pass schema:" from "caller explicitly
     # passed schema: nil" so schema: can default to policy.schema (S-06)
@@ -45,14 +51,26 @@ module HankoXml
     #   reference is read from, keyed by its URI (without any `#fragment`). Pass the exact bytes that were signed
     #   as a String; a Document is serialized first, which only matches if that reproduces those bytes. Nothing
     #   is ever fetched, and a URI not in the map fails with {ReferenceError} (#74).
-    def initialize(certificate: nil, certificates: nil, store: nil, key: nil, keys: nil,
-                   policy: HankoXml::Policy.strict, id_attributes: %w[Id ID id], resolver: nil,
-                   namespaces: {}, signature: nil, verification_time: nil,
-                   schema: UNSET_SCHEMA, referenced_documents: {}, certificate_subject: nil)
+    def initialize(
+      certificate: nil,
+      certificates: nil,
+      store: nil,
+      key: nil,
+      keys: nil,
+      policy: HankoXml::Policy.strict,
+      id_attributes: %w[Id ID id],
+      resolver: nil,
+      namespaces: {},
+      signature: nil,
+      verification_time: nil,
+      schema: UNSET_SCHEMA,
+      referenced_documents: {},
+      certificate_subject: nil
+    )
       supplied_trusts = [certificate, certificates, store, key, keys].compact
       if supplied_trusts.size != 1
         raise HankoXml::ConfigurationError,
-              "Specify exactly one trust source: certificate, certificates, store, key, or keys"
+          "Specify exactly one trust source: certificate, certificates, store, key, or keys"
       end
 
       @certificate = certificate && HankoXml::Key.coerce(certificate)
@@ -210,14 +228,14 @@ module HankoXml
         matches = sigs.document.xpath(signature_option, namespaces).to_a & sigs.to_a
         if matches.size > 1
           raise HankoXml::MultipleSignatures,
-                "signature: XPath must select exactly 1 <Signature>, selected #{matches.size}"
+            "signature: XPath must select exactly 1 <Signature>, selected #{matches.size}"
         end
 
         node = matches.first
         [node, node && sigs.index(node)]
       when :all
         raise HankoXml::ConfigurationError,
-              "signature: :all is not supported; use Verifier#verify_all for one Verification per <Signature> (#105)"
+          "signature: :all is not supported; use Verifier#verify_all for one Verification per <Signature> (#105)"
       else
         raise HankoXml::ConfigurationError, "Invalid signature: option"
       end
@@ -234,18 +252,22 @@ module HankoXml
       # Schema validation before any crypto
       if @schema
         xsd = if @schema == :default
-                self.class.default_schema
-              else
-                @schema
-              end
+          self.class.default_schema
+        else
+          @schema
+        end
         tmp_doc = Nokogiri::XML::Document.new
         tmp_doc.add_child(sig_node.dup)
         xsd_errors = xsd.validate(tmp_doc)
         if xsd_errors.any?
           return HankoXml::Verification.new(
             valid: false,
-            errors: [HankoXml::SchemaError.new("<Signature> does not validate against the XML-DSig schema",
-                                               xmlsec_errors: xsd_errors.map(&:message))],
+            errors: [
+              HankoXml::SchemaError.new(
+                "<Signature> does not validate against the XML-DSig schema",
+                xmlsec_errors: xsd_errors.map(&:message)
+              )
+            ],
             signature_info: nil,
             signature_node: sig_node,
             document: doc,
@@ -290,8 +312,14 @@ module HankoXml
       # id_attributes:/xml_bytes: additionally enable require_signed_root,
       # reject_duplicate_ids, and max_document_size (S-06).
       begin
-        @policy.enforce!(sig_info, document: doc, sig_node: sig_node, id_attributes: @id_attributes,
-                                   xml_bytes: xml_bytes, referenced_uris: @referenced_documents.keys)
+        @policy.enforce!(
+          sig_info,
+          document: doc,
+          sig_node: sig_node,
+          id_attributes: @id_attributes,
+          xml_bytes: xml_bytes,
+          referenced_uris: @referenced_documents.keys
+        )
       rescue HankoXml::PolicyError => e
         return failed_verification(doc, sig_node, [e], signature_info: sig_info)
       end
@@ -350,8 +378,14 @@ module HankoXml
       end
 
       begin
-        verify_result = Native.verify(xml_bytes, trusted, untrusted, native_id_attributes, index,
-                                      @referenced_documents.to_a)
+        verify_result = Native.verify(
+          xml_bytes,
+          trusted,
+          untrusted,
+          native_id_attributes,
+          index,
+          @referenced_documents.to_a
+        )
       rescue StandardError => e
         return HankoXml::Verification.new(
           valid: false,
@@ -371,8 +405,12 @@ module HankoXml
       unless valid
         # Fixed message: the xmlsec log can quote document text (S-13), so it
         # is only exposed through #xmlsec_errors.
-        errors << HankoXml::VerificationError.new("Signature verification failed (#{verify_result[:status]})",
-                                                  xmlsec_errors: verify_result[:errors], signature_node: sig_node)
+        errors <<
+          HankoXml::VerificationError.new(
+            "Signature verification failed (#{verify_result[:status]})",
+            xmlsec_errors: verify_result[:errors],
+            signature_node: sig_node
+          )
       end
 
       HankoXml::Verification.new(
@@ -389,6 +427,7 @@ module HankoXml
         certificate: valid ? verifying_certificate(trusted, verify_result[:trusted_index], store_leaf) : nil
       )
     end
+
     # rubocop:enable Metrics/CyclomaticComplexity, Metrics/AbcSize
     # rubocop:enable Metrics/MethodLength, Metrics/PerceivedComplexity
 
@@ -400,13 +439,15 @@ module HankoXml
       end
 
       documents.to_h do |uri, document|
-        bytes = if document.is_a?(String) then document.b
-                elsif Dom.document?(document) then HankoXml.serialize(document).b
-                else
-                  raise HankoXml::ConfigurationError,
-                        "referenced_documents: #{uri.to_s.inspect} must be a String of bytes or a " \
-                        "Nokogiri::XML::Document, got #{document.class}"
-                end
+        bytes = if document.is_a?(String)
+          document.b
+        elsif Dom.document?(document)
+          HankoXml.serialize(document).b
+        else
+          raise HankoXml::ConfigurationError,
+            "referenced_documents: #{uri.to_s.inspect} must be a String of bytes or a " \
+              "Nokogiri::XML::Document, got #{document.class}"
+        end
         [uri.to_s.split("#", 2).first.to_s.freeze, bytes.freeze]
       end.freeze
     end
@@ -430,6 +471,7 @@ module HankoXml
 
     def collect_trust(sig_info)
       return keys_trust(sig_info) if @keys
+
       return store_trust(sig_info) if @store
 
       trusted = []
@@ -442,8 +484,7 @@ module HankoXml
     def keys_trust(sig_info)
       key_name = sig_info.key_names.first
       unless key_name && @keys.key?(key_name)
-        return [nil, nil,
-                HankoXml::UntrustedCertificate.new("KeyName #{key_name.inspect} not found in keys: map")]
+        return [nil, nil, HankoXml::UntrustedCertificate.new("KeyName #{key_name.inspect} not found in keys: map")]
       end
 
       [[HankoXml::Key.coerce(@keys[key_name]).to_pem], [], nil]
@@ -453,13 +494,15 @@ module HankoXml
       begin
         embedded = load_embedded_certificates(sig_info)
       rescue OpenSSL::X509::CertificateError => e
-        return [nil, nil,
-                HankoXml::UntrustedCertificate.new("Invalid X509Certificate in KeyInfo: #{e.message}")]
+        return [nil, nil, HankoXml::UntrustedCertificate.new("Invalid X509Certificate in KeyInfo: #{e.message}")]
       end
 
       if embedded.empty?
-        return [nil, nil,
-                HankoXml::UntrustedCertificate.new("No X509Certificate found in KeyInfo for store verification")]
+        return [
+          nil,
+          nil,
+          HankoXml::UntrustedCertificate.new("No X509Certificate found in KeyInfo for store verification")
+        ]
       end
 
       leaf, error = verified_leaf_from_store(embedded)
@@ -508,9 +551,7 @@ module HankoXml
       when 0
         [nil, HankoXml::UntrustedCertificate.new(last_error)]
       else
-        [nil, HankoXml::UntrustedCertificate.new(
-          "Ambiguous KeyInfo: multiple certificates chain to the trust store"
-        )]
+        [nil, HankoXml::UntrustedCertificate.new("Ambiguous KeyInfo: multiple certificates chain to the trust store")]
       end
     end
 
@@ -525,15 +566,18 @@ module HankoXml
 
     def coerce_certificate_subject(subject)
       return nil if subject.nil?
+
       unless @store
         raise HankoXml::ConfigurationError,
-              "certificate_subject: only applies to store: (the other trust sources already pin the key)"
+          "certificate_subject: only applies to store: (the other trust sources already pin the key)"
       end
+
       return subject.dup.freeze if subject.is_a?(String)
+
       return subject if subject.is_a?(OpenSSL::X509::Name)
 
       raise HankoXml::ConfigurationError,
-            "certificate_subject: must be a String (the CN) or an OpenSSL::X509::Name, got #{subject.class}"
+        "certificate_subject: must be a String (the CN) or an OpenSSL::X509::Name, got #{subject.class}"
     end
 
     # Certificate-usage policy on the leaf store: already validated (#63):
@@ -542,9 +586,10 @@ module HankoXml
       if @policy.require_signing_key_usage && !signing_key_usage?(leaf)
         return HankoXml::UntrustedCertificate.new(
           "signing certificate's KeyUsage allows neither digitalSignature nor nonRepudiation " \
-          "(require_signing_key_usage)"
+            "(require_signing_key_usage)"
         )
       end
+
       return nil if @certificate_subject.nil? || certificate_subject_matches?(leaf)
 
       HankoXml::UntrustedCertificate.new(
@@ -590,6 +635,7 @@ module HankoXml
     # public key in keys:).
     def verifying_certificate(trusted, trusted_index, store_leaf)
       return store_leaf if store_leaf
+
       return nil if trusted_index.nil?
 
       pem = trusted[trusted_index]

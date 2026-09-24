@@ -46,7 +46,9 @@ RSpec.describe "Signer#sign with a Node (#96)" do
   end
 
   it "raises ConfigurationError for an element without an Id instead of signing something else" do
-    expect { signer.sign(doc.at("Other")) }
-      .to raise_error(HankoXml::ConfigurationError, /Other node .* has no .* attribute/)
+    expect { signer.sign(doc.at("Other")) }.to raise_error(
+      HankoXml::ConfigurationError,
+      /Other node .* has no .* attribute/
+    )
   end
 end

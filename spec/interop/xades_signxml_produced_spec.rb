@@ -55,8 +55,14 @@ RSpec.describe "SignXML-produced XAdES-B (#59)" do
       expect(result.signed_properties.signature_policy).to be_nil
       expect(result.signed_properties.claimed_roles).to eq([])
       expect(result.signed_properties.data_object_formats).to eq(
-        [{ object_reference: "#SignXMLReference5E10DBFA", mime_type: "text/xml",
-           description: "Default XAdES payload description", encoding: nil }]
+        [
+          {
+            object_reference: "#SignXMLReference5E10DBFA",
+            mime_type: "text/xml",
+            description: "Default XAdES payload description",
+            encoding: nil
+          }
+        ]
       )
     end
 
@@ -67,8 +73,9 @@ RSpec.describe "SignXML-produced XAdES-B (#59)" do
       expect(uris.size).to eq(3)
       expect(uris).to include("##{doc.at_xpath("//ds:KeyInfo", ns)["Id"]}")
       expect(doc.at_xpath("//ds:KeyValue", ns)).not_to be_nil
-      expect(SignxmlProducedXades.verify("enveloped-default.xml", certificate: SignxmlProducedXades::OTHER)
-               .valid?).to be false
+      expect(
+        SignxmlProducedXades.verify("enveloped-default.xml", certificate: SignxmlProducedXades::OTHER).valid?
+      ).to be false
     end
   end
 
@@ -84,20 +91,31 @@ RSpec.describe "SignXML-produced XAdES-B (#59)" do
       expect(result.signed_properties.to_h).to eq(
         signing_time: Time.utc(2026, 9, 20, 5, 29, 36),
         signature_policy: HankoXml::Xades::SignaturePolicy.new(
-          identifier: SignxmlProducedXades::POLICY_ID, digest_value: SignxmlProducedXades::POLICY_DIGEST,
-          digest_method: "http://www.w3.org/2001/04/xmlenc#sha256", description: "AD-RB"
+          identifier: SignxmlProducedXades::POLICY_ID,
+          digest_value: SignxmlProducedXades::POLICY_DIGEST,
+          digest_method: "http://www.w3.org/2001/04/xmlenc#sha256",
+          description: "AD-RB"
         ),
         claimed_roles: ["Chief Financial Officer"],
-        data_object_formats: [{ object_reference: "#SignXMLReference7950BC46", mime_type: "text/xml",
-                                description: "Invoice", encoding: nil }]
+        data_object_formats: [
+          {
+            object_reference: "#SignXMLReference7950BC46",
+            mime_type: "text/xml",
+            description: "Invoice",
+            encoding: nil
+          }
+        ]
       )
     end
 
     it "enforces signature_policy: against the signed identifier" do
       matching = SignxmlProducedXades.verify(
         "enveloped-full.xml",
-        signature_policy: { identifier: SignxmlProducedXades::POLICY_ID,
-                            digest_value: SignxmlProducedXades::POLICY_DIGEST, description: "AD-RB" }
+        signature_policy: {
+          identifier: SignxmlProducedXades::POLICY_ID,
+          digest_value: SignxmlProducedXades::POLICY_DIGEST,
+          description: "AD-RB"
+        }
       )
       mismatch = SignxmlProducedXades.verify(
         "enveloped-full.xml",
@@ -115,24 +133,36 @@ RSpec.describe "SignXML-produced XAdES-B (#59)" do
     it "is accepted when SignXML is installed (expect_references: 2)" do
       skip "python3 with signxml==5.1.0 is not installed" unless SignxmlProducedXades.signxml_available?
 
-      signed = HankoXml::Xades::Signer.new(
-        key: SignxmlProducedXades::KEY, certificate: SignxmlProducedXades::CERT,
-        signing_time: Time.utc(2026, 9, 17, 14, 32, 5),
-        claimed_roles: ["Chief Financial Officer"],
-        data_object_format: { mime_type: "text/xml", description: "Invoice" },
-        signature_policy: { identifier: SignxmlProducedXades::POLICY_ID,
-                            digest_value: SignxmlProducedXades::POLICY_DIGEST, description: "AD-RB" },
-        signature_id: "xades-interop-59"
-      ).sign(SignxmlProducedXades::INVOICE).to_s
+      signed = HankoXml::Xades::Signer
+        .new(
+          key: SignxmlProducedXades::KEY,
+          certificate: SignxmlProducedXades::CERT,
+          signing_time: Time.utc(2026, 9, 17, 14, 32, 5),
+          claimed_roles: ["Chief Financial Officer"],
+          data_object_format: { mime_type: "text/xml", description: "Invoice" },
+          signature_policy: {
+            identifier: SignxmlProducedXades::POLICY_ID,
+            digest_value: SignxmlProducedXades::POLICY_DIGEST,
+            description: "AD-RB"
+          },
+          signature_id: "xades-interop-59"
+        )
+        .sign(SignxmlProducedXades::INVOICE)
+        .to_s
 
       Tempfile.create(["hanko-xades", ".xml"]) do |file|
         file.write(signed)
         file.flush
         out, status = Open3.capture2e(
-          "python3", SignxmlProducedXades::ROOT.join("verify.py").to_s, file.path,
-          "--policy-id", SignxmlProducedXades::POLICY_ID,
-          "--policy-digest", SignxmlProducedXades::POLICY_DIGEST,
-          "--policy-description", "AD-RB"
+          "python3",
+          SignxmlProducedXades::ROOT.join("verify.py").to_s,
+          file.path,
+          "--policy-id",
+          SignxmlProducedXades::POLICY_ID,
+          "--policy-digest",
+          SignxmlProducedXades::POLICY_DIGEST,
+          "--policy-description",
+          "AD-RB"
         )
         expect(status.success?).to eq(true), out
         expect(out).to include("ok")

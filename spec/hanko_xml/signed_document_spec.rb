@@ -48,8 +48,10 @@ RSpec.describe HankoXml::SignedDocument do
 
     it "raises FrozenSignatureError from mutators, pointing at #document" do
       %i[add_child root= remove content=].each do |mutator|
-        expect { signed_doc.public_send(mutator, Nokogiri::XML::Node.new("x", signed_doc.document)) }
-          .to raise_error(HankoXml::FrozenSignatureError, /#document/)
+        expect { signed_doc.public_send(mutator, Nokogiri::XML::Node.new("x", signed_doc.document)) }.to raise_error(
+          HankoXml::FrozenSignatureError,
+          /#document/
+        )
       end
     end
 

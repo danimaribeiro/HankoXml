@@ -17,8 +17,9 @@ RSpec.describe "referenced_documents: (#74)" do
   let(:cert) { OpenSSL::X509::Certificate.new(vectors.join("merlin-xmldsig-twenty-three/certs/badb.pem").binread) }
 
   def verify(xml = signed_xml, policy: HankoXml::Policy.interop, **options)
-    HankoXml::Verifier.new(certificate: cert, policy: policy, verification_time: Time.utc(2005, 1, 1), **options)
-                      .verify(xml)
+    HankoXml::Verifier
+      .new(certificate: cert, policy: policy, verification_time: Time.utc(2005, 1, 1), **options)
+      .verify(xml)
   end
 
   # A Signature whose only Reference points at +uri+ with the right SHA-256
@@ -54,9 +55,10 @@ RSpec.describe "referenced_documents: (#74)" do
 
   it "accepts a key with a #fragment, and a Nokogiri document" do
     xml = %(<Envelope xmlns="urn:x"><Data>A</Data></Envelope>)
-    verifier = HankoXml::Verifier.new(certificate: cert, referenced_documents: {
-                                        "#{stylesheet_uri}#part" => stylesheet, "urn:doc" => Nokogiri::XML(xml)
-                                      })
+    verifier = HankoXml::Verifier.new(
+      certificate: cert,
+      referenced_documents: { "#{stylesheet_uri}#part" => stylesheet, "urn:doc" => Nokogiri::XML(xml) }
+    )
 
     expect(verifier.referenced_documents.keys).to eq([stylesheet_uri, "urn:doc"])
     expect(verifier.referenced_documents["urn:doc"]).to eq(HankoXml.serialize(Nokogiri::XML(xml)))
@@ -74,10 +76,13 @@ RSpec.describe "referenced_documents: (#74)" do
   end
 
   it "rejects a map that is not URI => String or Document" do
-    expect { HankoXml::Verifier.new(certificate: cert, referenced_documents: [[stylesheet_uri, stylesheet]]) }
-      .to raise_error(HankoXml::ConfigurationError, /Hash/)
-    expect { HankoXml::Verifier.new(certificate: cert, referenced_documents: { stylesheet_uri => 42 }) }
-      .to raise_error(HankoXml::ConfigurationError, /Integer/)
+    expect do
+      HankoXml::Verifier.new(certificate: cert, referenced_documents: [[stylesheet_uri, stylesheet]])
+    end.to raise_error(HankoXml::ConfigurationError, /Hash/)
+    expect { HankoXml::Verifier.new(certificate: cert, referenced_documents: { stylesheet_uri => 42 }) }.to raise_error(
+      HankoXml::ConfigurationError,
+      /Integer/
+    )
   end
 
   describe "the native reader, below every Ruby check" do

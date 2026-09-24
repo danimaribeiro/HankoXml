@@ -21,17 +21,24 @@ RSpec.describe "S-11 multiple signatures" do
   # over #a, one over #b. Each is a separate Signer#sign call so the two
   # <Signature> elements are true siblings in document order.
   def two_signature_doc
-    signer_a = HankoXml::Signer.new(key: signer_key_pem, certificate: signer_cert_pem,
-                                    references: ["#a"], template: :build)
+    signer_a = HankoXml::Signer.new(
+      key: signer_key_pem,
+      certificate: signer_cert_pem,
+      references: ["#a"],
+      template: :build
+    )
     doc = signer_a.sign(two_targets_xml).document
 
-    unsigned_signer_b = HankoXml::Signer.new(key: signer_key_pem, certificate: signer_cert_pem,
-                                             references: ["#b"])
+    unsigned_signer_b = HankoXml::Signer.new(key: signer_key_pem, certificate: signer_cert_pem, references: ["#b"])
     template = unsigned_signer_b.template(doc)
     HankoXml::Placement.append_to_root.insert(doc, template)
 
-    signer_b = HankoXml::Signer.new(key: signer_key_pem, certificate: signer_cert_pem,
-                                    references: ["#b"], template: :require)
+    signer_b = HankoXml::Signer.new(
+      key: signer_key_pem,
+      certificate: signer_cert_pem,
+      references: ["#b"],
+      template: :require
+    )
     signer_b.sign!(doc)
     doc
   end
@@ -45,8 +52,11 @@ RSpec.describe "S-11 multiple signatures" do
     end
 
     it "still verifies the single signature in a normal, single-signature document" do
-      signed = HankoXml.sign(%(<Envelope xmlns="urn:hanko_xml:example"><Data>Hello</Data></Envelope>),
-                             key: signer_key_pem, certificate: signer_cert_pem)
+      signed = HankoXml.sign(
+        %(<Envelope xmlns="urn:hanko_xml:example"><Data>Hello</Data></Envelope>),
+        key: signer_key_pem,
+        certificate: signer_cert_pem
+      )
       verifier = HankoXml::Verifier.new(certificate: signer_cert_pem)
 
       expect(verifier.verify(signed.to_s).valid?).to be true
@@ -85,14 +95,18 @@ RSpec.describe "S-11 multiple signatures" do
     end
 
     it "raises MultipleSignatures when it matches more than one, instead of taking the first" do
-      expect { verifier("//ds:Signature").verify(two_signature_doc) }
-        .to raise_error(HankoXml::MultipleSignatures, /selected 2/)
+      expect { verifier("//ds:Signature").verify(two_signature_doc) }.to raise_error(
+        HankoXml::MultipleSignatures,
+        /selected 2/
+      )
     end
 
     it "honors the caller's namespaces: map" do
       doc = two_signature_doc
-      result = verifier("//ex:Envelope/sig:Signature[1]",
-                        namespaces: { "ex" => "urn:hanko_xml:example", "sig" => HankoXml::NS["ds"] }).verify(doc)
+      result = verifier(
+        "//ex:Envelope/sig:Signature[1]",
+        namespaces: { "ex" => "urn:hanko_xml:example", "sig" => HankoXml::NS["ds"] }
+      ).verify(doc)
 
       expect(result.valid?).to be true
       expect(result.signature_node).to eq(doc.xpath(".//ds:Signature", HankoXml::NS)[0])
@@ -165,8 +179,9 @@ RSpec.describe "S-11 multiple signatures" do
       verifier = HankoXml::Verifier.new(certificate: signer_cert_pem, policy: fragment_policy)
 
       expect { verifier.valid?(doc) }.to raise_error(HankoXml::MultipleSignatures)
-      expect { HankoXml.valid?(doc, certificate: signer_cert_pem, policy: fragment_policy) }
-        .to raise_error(HankoXml::MultipleSignatures)
+      expect { HankoXml.valid?(doc, certificate: signer_cert_pem, policy: fragment_policy) }.to raise_error(
+        HankoXml::MultipleSignatures
+      )
     end
 
     it "refuses signature: :all and points at verify_all (#105)" do

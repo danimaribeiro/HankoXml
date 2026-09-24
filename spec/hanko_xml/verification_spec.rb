@@ -140,8 +140,13 @@ RSpec.describe HankoXml::Verification do
       references: [{ uri: "#payload-1", digest_method: digest_method, transforms: [] }]
     )
     build = lambda do |valid|
-      described_class.new(valid: valid, errors: valid ? [] : [HankoXml::VerificationError.new("nope")],
-                          signature_info: info, signature_node: nil, document: doc)
+      described_class.new(
+        valid: valid,
+        errors: valid ? [] : [HankoXml::VerificationError.new("nope")],
+        signature_info: info,
+        signature_node: nil,
+        document: doc
+      )
     end
 
     expect(build.call(true).signed_nodes).to eq([doc.at_xpath("//signed")])
@@ -151,8 +156,11 @@ RSpec.describe HankoXml::Verification do
   # #94: a Verification that failed before inspection has no signature_info.
   it "answers every metadata accessor without raising when signature_info is nil" do
     verification = described_class.new(
-      valid: false, errors: [HankoXml::SignatureMissing.new("none")],
-      signature_info: nil, signature_node: nil, document: Nokogiri::XML("<root/>")
+      valid: false,
+      errors: [HankoXml::SignatureMissing.new("none")],
+      signature_info: nil,
+      signature_node: nil,
+      document: Nokogiri::XML("<root/>")
     )
 
     expect(verification.digest_methods).to eq([])
@@ -166,12 +174,20 @@ RSpec.describe HankoXml::Verification do
   # algorithm the registry does not know.
   it "reports algorithm names, falling back to the URI for unregistered ones" do
     info = HankoXml::SignatureInfo.new(
-      signature_method: signature_method, canonicalization_method: "urn:example:c14n",
-      references: [{ uri: "", digest_method: digest_method, transforms: [] },
-                   { uri: "", digest_method: "urn:example:digest", transforms: [] }]
+      signature_method: signature_method,
+      canonicalization_method: "urn:example:c14n",
+      references: [
+        { uri: "", digest_method: digest_method, transforms: [] },
+        { uri: "", digest_method: "urn:example:digest", transforms: [] }
+      ]
     )
-    verification = described_class.new(valid: false, errors: [], signature_info: info, signature_node: nil,
-                                       document: Nokogiri::XML("<root/>"))
+    verification = described_class.new(
+      valid: false,
+      errors: [],
+      signature_info: info,
+      signature_node: nil,
+      document: Nokogiri::XML("<root/>")
+    )
 
     expect(verification.signature_method).to eq(:rsa_sha256)
     expect(verification.canonicalization_method).to eq("urn:example:c14n")

@@ -35,8 +35,8 @@ module HankoXml
 
         if @by_name.key?(name) && !replace
           raise ArgumentError,
-                "#{@slot} algorithm #{name.inspect} is already registered " \
-                "(pass replace: true to override)"
+            "#{@slot} algorithm #{name.inspect} is already registered " \
+              "(pass replace: true to override)"
         end
 
         previous = @by_name[name]
@@ -93,10 +93,11 @@ module HankoXml
         if @builtin_names.key?(name)
           raise ArgumentError, "#{@slot} algorithm #{name.inspect} is built in and cannot be replaced"
         end
+
         return unless @builtin_uris.key?(uri)
 
         raise ArgumentError,
-              "#{@slot} URI #{uri} is built in as #{@by_uri[uri].name.inspect} and cannot be re-registered"
+          "#{@slot} URI #{uri} is built in as #{@by_uri[uri].name.inspect} and cannot be re-registered"
       end
     end
 
@@ -137,10 +138,14 @@ module HankoXml
 
       def table_for(slot)
         case slot.to_sym
-        when :canonicalization then canonicalization
-        when :digest then digest
-        when :signature then signature
-        when :transform then transform
+        when :canonicalization
+          canonicalization
+        when :digest
+          digest
+        when :signature
+          signature
+        when :transform
+          transform
         else
           raise ArgumentError, "unknown algorithm slot #{slot.inspect}"
         end
@@ -149,14 +154,15 @@ module HankoXml
       def build_canonicalization_table
         table = Table.new(:canonicalization)
         table.register(:c14n, "http://www.w3.org/TR/2001/REC-xml-c14n-20010315", secure: true)
-        table.register(:c14n_with_comments,
-                       "http://www.w3.org/TR/2001/REC-xml-c14n-20010315#WithComments", secure: true)
+        table.register(
+          :c14n_with_comments,
+          "http://www.w3.org/TR/2001/REC-xml-c14n-20010315#WithComments",
+          secure: true
+        )
         table.register(:exc_c14n, "http://www.w3.org/2001/10/xml-exc-c14n#", secure: true)
-        table.register(:exc_c14n_with_comments,
-                       "http://www.w3.org/2001/10/xml-exc-c14n#WithComments", secure: true)
+        table.register(:exc_c14n_with_comments, "http://www.w3.org/2001/10/xml-exc-c14n#WithComments", secure: true)
         table.register(:c14n11, "http://www.w3.org/2006/12/xml-c14n11", secure: true)
-        table.register(:c14n11_with_comments,
-                       "http://www.w3.org/2006/12/xml-c14n11#WithComments", secure: true)
+        table.register(:c14n11_with_comments, "http://www.w3.org/2006/12/xml-c14n11#WithComments", secure: true)
         table.seal_builtins!
       end
 
@@ -186,23 +192,17 @@ module HankoXml
         table.register(:rsa_sha512, "http://www.w3.org/2001/04/xmldsig-more#rsa-sha512", secure: true)
         # RFC 6931 RSA-PSS (MGF1, default salt = hash length). xmlsec 1.3
         # implements these without <RSAPSSParams>; xmlsec 1.2 does not (#60).
-        table.register(:rsa_pss_sha256, "http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1",
-                       secure: true)
-        table.register(:rsa_pss_sha384, "http://www.w3.org/2007/05/xmldsig-more#sha384-rsa-MGF1",
-                       secure: true)
-        table.register(:rsa_pss_sha512, "http://www.w3.org/2007/05/xmldsig-more#sha512-rsa-MGF1",
-                       secure: true)
+        table.register(:rsa_pss_sha256, "http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1", secure: true)
+        table.register(:rsa_pss_sha384, "http://www.w3.org/2007/05/xmldsig-more#sha384-rsa-MGF1", secure: true)
+        table.register(:rsa_pss_sha512, "http://www.w3.org/2007/05/xmldsig-more#sha512-rsa-MGF1", secure: true)
         table.register(:ecdsa_sha256, "http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256", secure: true)
         table.register(:ecdsa_sha384, "http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha384", secure: true)
         table.register(:ecdsa_sha512, "http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha512", secure: true)
         # RFC 9231 put ECDSA-SHA3 under the 2021/04 namespace, not RFC 6931's
         # 2007/05 one; xmlsec 1.3 uses the same URIs (#60).
-        table.register(:ecdsa_sha3_256, "http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-256",
-                       secure: true)
-        table.register(:ecdsa_sha3_384, "http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-384",
-                       secure: true)
-        table.register(:ecdsa_sha3_512, "http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-512",
-                       secure: true)
+        table.register(:ecdsa_sha3_256, "http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-256", secure: true)
+        table.register(:ecdsa_sha3_384, "http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-384", secure: true)
+        table.register(:ecdsa_sha3_512, "http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-512", secure: true)
         table.register(:dsa_sha1, "http://www.w3.org/2000/09/xmldsig#dsa-sha1", secure: false)
         table.register(:hmac_sha256, "http://www.w3.org/2001/04/xmldsig-more#hmac-sha256", secure: true)
         table.seal_builtins!
@@ -215,8 +215,7 @@ module HankoXml
           entry = canonicalization[name]
           table.register(entry.name, entry.uri, secure: entry.secure?)
         end
-        table.register(:enveloped_signature, "http://www.w3.org/2000/09/xmldsig#enveloped-signature",
-                       secure: true)
+        table.register(:enveloped_signature, "http://www.w3.org/2000/09/xmldsig#enveloped-signature", secure: true)
         table.register(:base64, "http://www.w3.org/2000/09/xmldsig#base64", secure: true)
         table.register(:xpath, "http://www.w3.org/TR/1999/REC-xpath-19991116", secure: false)
         table.register(:xpath_filter2, "http://www.w3.org/2002/06/xmldsig-filter2", secure: false)

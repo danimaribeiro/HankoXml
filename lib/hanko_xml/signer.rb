@@ -34,14 +34,26 @@ module HankoXml
     # KeyInfo leaves xmlsec derives from the signing key. It fills only empty
     # ones, so an adopted template's stale values must be emptied first (#72).
     KEY_DERIVED_LEAVES = %w[
-      ds:X509Data/ds:X509Certificate ds:X509Data/ds:X509SubjectName
-      ds:X509Data/ds:X509IssuerSerial ds:X509Data/ds:X509SKI ds:KeyValue
+      ds:X509Data/ds:X509Certificate
+      ds:X509Data/ds:X509SubjectName
+      ds:X509Data/ds:X509IssuerSerial
+      ds:X509Data/ds:X509SKI
+      ds:KeyValue
     ].map { |path| "./#{path}" }.join(" | ").freeze
     private_constant :KEY_DERIVED_LEAVES
 
-    attr_accessor :key, :certificate, :certificates, :signature_method, :canonicalization_method,
-                  :digest_method, :references, :placement, :id_attributes, :namespaces,
-                  :signature_id, :policy
+    attr_accessor :key,
+      :certificate,
+      :certificates,
+      :signature_method,
+      :canonicalization_method,
+      :digest_method,
+      :references,
+      :placement,
+      :id_attributes,
+      :namespaces,
+      :signature_id,
+      :policy
     attr_reader :template_mode
     # Reader only: #key_info below is a dual getter/setter (API_CONTRACT.md
     # §5.2), so an attr_accessor reader here would be dead code shadowed by it.
@@ -65,16 +77,26 @@ module HankoXml
     #   `#foo` references, optionally as `[namespace_href, name]` pairs.
     # @param template [Symbol] Either :adopt (reuse existing signature template), :build, or :require.
     # @param signature_id [String, nil] The Id attribute to place on the `<Signature>` element itself.
-    def initialize(key:, certificate: nil, certificates: nil, signature_method: :rsa_sha256,
-                   canonicalization_method: :exc_c14n, digest_method: :sha256, references: [],
-                   key_info: [:x509_certificate], placement: :append_to_root,
-                   id_attributes: %w[Id ID id], namespaces: {}, signature_id: nil,
-                   policy: HankoXml::Policy.strict, template: :adopt)
-      unless key.is_a?(HankoXml::Key) || Dom.pkey?(key) || key.is_a?(String) ||
-             key.respond_to?(:to_path)
+    def initialize(
+      key:,
+      certificate: nil,
+      certificates: nil,
+      signature_method: :rsa_sha256,
+      canonicalization_method: :exc_c14n,
+      digest_method: :sha256,
+      references: [],
+      key_info: [:x509_certificate],
+      placement: :append_to_root,
+      id_attributes: %w[Id ID id],
+      namespaces: {},
+      signature_id: nil,
+      policy: HankoXml::Policy.strict,
+      template: :adopt
+    )
+      unless key.is_a?(HankoXml::Key) || Dom.pkey?(key) || key.is_a?(String) || key.respond_to?(:to_path)
         raise HankoXml::ConfigurationError,
-              "key: must be key material or an HankoXml::Key (external signers are not supported " \
-              "in v1 -- see API_CONTRACT.md §5.2)"
+          "key: must be key material or an HankoXml::Key (external signers are not supported " \
+            "in v1 -- see API_CONTRACT.md §5.2)"
       end
 
       unless TEMPLATE_MODES.include?(template.to_sym)
@@ -138,11 +160,20 @@ module HankoXml
 
     def to_h
       {
-        key: key, certificate: certificate, certificates: certificates,
-        signature_method: signature_method, canonicalization_method: canonicalization_method,
-        digest_method: digest_method, references: references, key_info: key_info,
-        placement: placement, id_attributes: id_attributes, namespaces: namespaces,
-        signature_id: signature_id, policy: policy, template: template_mode
+        key: key,
+        certificate: certificate,
+        certificates: certificates,
+        signature_method: signature_method,
+        canonicalization_method: canonicalization_method,
+        digest_method: digest_method,
+        references: references,
+        key_info: key_info,
+        placement: placement,
+        id_attributes: id_attributes,
+        namespaces: namespaces,
+        signature_id: signature_id,
+        policy: policy,
+        template: template_mode
       }
     end
 
@@ -248,10 +279,11 @@ module HankoXml
     def check_key_type!
       pkey = key.is_a?(HankoXml::Key) ? key.to_openssl : key
       return unless pkey.is_a?(::OpenSSL::PKey::PKey)
+
       return if SIGNATURE_METHOD_FOR_KEY.key?(pkey.class)
 
       raise HankoXml::ConfigurationError,
-            "key: is an unsupported #{pkey.oid} key; signing supports RSA, EC and DSA keys"
+        "key: is an unsupported #{pkey.oid} key; signing supports RSA, EC and DSA keys"
     end
 
     # xmlsec reports a key that does not fit the signature method only as
@@ -264,8 +296,8 @@ module HankoXml
       return if needed.nil? || pkey.is_a?(needed)
 
       raise HankoXml::ConfigurationError,
-            "signature method #{name.inspect} needs #{key_type_name(needed)} key, but key: is " \
-            "#{key_type_name(pkey.class)} key; use signature_method: #{SIGNATURE_METHOD_FOR_KEY[pkey.class].inspect}"
+        "signature method #{name.inspect} needs #{key_type_name(needed)} key, but key: is " \
+          "#{key_type_name(pkey.class)} key; use signature_method: #{SIGNATURE_METHOD_FOR_KEY[pkey.class].inspect}"
     end
 
     # With +signature+, the one <Signature> at that document-order index, to
@@ -288,13 +320,14 @@ module HankoXml
     # this Signer already names its references.
     def signer_for_node(input)
       return nil unless HankoXml::Dom.node?(input) && !HankoXml::Dom.document?(input)
+
       return nil if input == input.document.root || !@references.empty?
 
       id = @id_attributes.lazy.map { |attr| input[attr.is_a?(Array) ? attr[1].to_s : attr.to_s] }.find { |v| v }
       unless id
         raise HankoXml::ConfigurationError,
-              "a #{input.name} node was passed to sign, so it is the reference target, but it has no " \
-              "#{@id_attributes.inspect} attribute; give it one or pass references:"
+          "a #{input.name} node was passed to sign, so it is the reference target, but it has no " \
+            "#{@id_attributes.inspect} attribute; give it one or pass references:"
       end
 
       self.class.new(**to_h.merge(references: ["##{id}"]))
@@ -306,7 +339,9 @@ module HankoXml
     def signature_key_kind(name)
       method = name.to_s
       return "ecdsa" if method.start_with?("ecdsa")
+
       return "rsa" if method.start_with?("rsa")
+
       return "dsa" if method.start_with?("dsa")
 
       nil
@@ -331,11 +366,12 @@ module HankoXml
       pkey = key.is_a?(HankoXml::Key) ? key.to_openssl : key
       cert = certificate.is_a?(HankoXml::Key) ? certificate.to_openssl : certificate
       return unless pkey.is_a?(::OpenSSL::PKey::PKey) && cert.is_a?(::OpenSSL::X509::Certificate)
+
       return if cert.check_private_key(pkey)
 
       raise HankoXml::ConfigurationError,
-            "key: does not match certificate: (subject #{cert.subject}); " \
-            "the signature would not verify against that certificate"
+        "key: does not match certificate: (subject #{cert.subject}); " \
+          "the signature would not verify against that certificate"
     end
 
     def find_or_build_signatures(doc)
@@ -349,8 +385,8 @@ module HankoXml
         # the unplaced node fell through to a TypeError (#52 G6).
         if @placement.detached?
           raise HankoXml::ConfigurationError,
-                "placement: :detached inserts no <Signature>, so there is nothing to sign; use " \
-                "Signer#template(doc) and insert it yourself, or Placement.custom"
+            "placement: :detached inserts no <Signature>, so there is nothing to sign; use " \
+              "Signer#template(doc) and insert it yourself, or Placement.custom"
         end
 
         template_node = template(doc)
@@ -358,8 +394,7 @@ module HankoXml
         [[template_node], false]
       else
         if @template_mode == :build
-          raise HankoXml::ConfigurationError,
-                "template: :build but <Signature> already exists"
+          raise HankoXml::ConfigurationError, "template: :build but <Signature> already exists"
         end
 
         [existing, true]
@@ -384,8 +419,14 @@ module HankoXml
       # constraint on what is legitimate to sign (see Policy#violations) --
       # Signer deliberately does not check it, so a caller-chosen fragment
       # signature (references:, R5) still signs under Policy.strict.
-      @policy.enforce!(sig_info, document: doc, sig_node: sig_node, id_attributes: @id_attributes,
-                                 xml_bytes: xml_bytes, check_root_signed: false)
+      @policy.enforce!(
+        sig_info,
+        document: doc,
+        sig_node: sig_node,
+        id_attributes: @id_attributes,
+        xml_bytes: xml_bytes,
+        check_root_signed: false
+      )
       ensure_adopted_references_match!(sig_info) if adopted
       check_key_fits_signature_method!(sig_info)
     end
@@ -419,8 +460,8 @@ module HankoXml
       key_name = @key_info.find { |c| c.name == :key_name && c.value }&.value
       unless key_name
         raise HankoXml::ConfigurationError,
-              "<KeyName> would be signed empty: a key has no name of its own; pass " \
-              "key_info: [{ key_name: \"...\" }] or, in the block form, s.key_info :key_name, name: \"...\""
+          "<KeyName> would be signed empty: a key has no name of its own; pass " \
+            "key_info: [{ key_name: \"...\" }] or, in the block form, s.key_info :key_name, name: \"...\""
       end
 
       empty.each { |node| node.content = key_name }
@@ -442,8 +483,8 @@ module HankoXml
       return if expected == actual
 
       raise HankoXml::ConfigurationError,
-            "template: #{@template_mode} would sign reference URIs #{actual.inspect}, " \
-            "which do not match this Signer's references #{expected.inspect}"
+        "template: #{@template_mode} would sign reference URIs #{actual.inspect}, " \
+          "which do not match this Signer's references #{expected.inspect}"
     end
 
     def effective_reference_uris

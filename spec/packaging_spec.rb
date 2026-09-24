@@ -93,9 +93,7 @@ RSpec.describe "gem packaging" do
   end
 
   it "carries the metadata rubygems.org links from" do
-    expect(gemspec.metadata).to include(
-      "homepage_uri", "source_code_uri", "changelog_uri", "bug_tracker_uri"
-    )
+    expect(gemspec.metadata).to include("homepage_uri", "source_code_uri", "changelog_uri", "bug_tracker_uri")
   end
 
   it "requires MFA to push, since this gem produces signatures" do

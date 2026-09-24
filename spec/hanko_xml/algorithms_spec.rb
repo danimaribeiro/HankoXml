@@ -3,16 +3,19 @@
 RSpec.describe HankoXml::Algorithms do
   describe ".uri_for / .name_for" do
     it "resolves RFC 6931 RSA-PSS and SHA-3 names (#60)" do
-      expect(described_class.uri_for(:signature, :rsa_pss_sha256))
-        .to eq("http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1")
-      expect(described_class.uri_for(:signature, :rsa_pss_sha384))
-        .to eq("http://www.w3.org/2007/05/xmldsig-more#sha384-rsa-MGF1")
-      expect(described_class.uri_for(:signature, :rsa_pss_sha512))
-        .to eq("http://www.w3.org/2007/05/xmldsig-more#sha512-rsa-MGF1")
-      expect(described_class.uri_for(:digest, :sha3_256))
-        .to eq("http://www.w3.org/2007/05/xmldsig-more#sha3-256")
-      expect(described_class.name_for(:signature, "http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-256"))
-        .to eq(:ecdsa_sha3_256)
+      expect(described_class.uri_for(:signature, :rsa_pss_sha256)).to eq(
+        "http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1"
+      )
+      expect(described_class.uri_for(:signature, :rsa_pss_sha384)).to eq(
+        "http://www.w3.org/2007/05/xmldsig-more#sha384-rsa-MGF1"
+      )
+      expect(described_class.uri_for(:signature, :rsa_pss_sha512)).to eq(
+        "http://www.w3.org/2007/05/xmldsig-more#sha512-rsa-MGF1"
+      )
+      expect(described_class.uri_for(:digest, :sha3_256)).to eq("http://www.w3.org/2007/05/xmldsig-more#sha3-256")
+      expect(described_class.name_for(:signature, "http://www.w3.org/2021/04/xmldsig-more#ecdsa-sha3-256")).to eq(
+        :ecdsa_sha3_256
+      )
     end
 
     it "resolves a URI back to its Symbol" do
@@ -52,11 +55,16 @@ RSpec.describe HankoXml::Algorithms do
     after { described_class.signature.instance_variable_get(:@by_name).delete(:rsa_pss_sha256_test) }
 
     it "adds a new algorithm" do
-      described_class.register(:signature, :rsa_pss_sha256_test,
-                               "http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1-test", secure: true)
+      described_class.register(
+        :signature,
+        :rsa_pss_sha256_test,
+        "http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1-test",
+        secure: true
+      )
 
-      expect(described_class.uri_for(:signature, :rsa_pss_sha256_test))
-        .to eq("http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1-test")
+      expect(described_class.uri_for(:signature, :rsa_pss_sha256_test)).to eq(
+        "http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1-test"
+      )
     end
 
     it "refuses to silently replace a built-in name" do
@@ -68,16 +76,26 @@ RSpec.describe HankoXml::Algorithms do
     # S-16: built-ins are what Policy presets are written in terms of.
     it "refuses to replace a built-in name even with replace: true" do
       expect do
-        described_class.register(:digest, :sha256, "http://www.w3.org/2000/09/xmldsig#sha1",
-                                 secure: true, replace: true)
+        described_class.register(
+          :digest,
+          :sha256,
+          "http://www.w3.org/2000/09/xmldsig#sha1",
+          secure: true,
+          replace: true
+        )
       end.to raise_error(ArgumentError, /built in/)
       expect(described_class.uri_for(:digest, :sha256)).to eq("http://www.w3.org/2001/04/xmlenc#sha256")
     end
 
     it "refuses to re-register a built-in URI under another name" do
       expect do
-        described_class.register(:digest, :sha1_is_fine_test, "http://www.w3.org/2000/09/xmldsig#sha1",
-                                 secure: true, replace: true)
+        described_class.register(
+          :digest,
+          :sha1_is_fine_test,
+          "http://www.w3.org/2000/09/xmldsig#sha1",
+          secure: true,
+          replace: true
+        )
       end.to raise_error(ArgumentError, /built in as :sha1/)
       expect(described_class.secure?(:digest, "http://www.w3.org/2000/09/xmldsig#sha1")).to be false
     end

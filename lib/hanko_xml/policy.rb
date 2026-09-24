@@ -7,32 +7,43 @@ module HankoXml
   # libxmlsec1, on both signing and verification. See API_CONTRACT.md §5.8.
   class Policy # rubocop:disable Metrics/ClassLength
     FIELDS = %i[
-      signature_methods digest_methods canonicalization_methods transforms
-      allow_external_references allow_retrieval_method allow_same_document_xpointer
-      max_references require_references
-      require_signed_root reject_duplicate_ids max_document_size max_transforms_per_reference
-      min_rsa_key_bits min_ec_key_bits min_dsa_key_bits allow_hmac check_certificate_validity clock_skew
-      require_signing_key_usage schema
+      signature_methods
+      digest_methods
+      canonicalization_methods
+      transforms
+      allow_external_references
+      allow_retrieval_method
+      allow_same_document_xpointer
+      max_references
+      require_references
+      require_signed_root
+      reject_duplicate_ids
+      max_document_size
+      max_transforms_per_reference
+      min_rsa_key_bits
+      min_ec_key_bits
+      min_dsa_key_bits
+      allow_hmac
+      check_certificate_validity
+      clock_skew
+      require_signing_key_usage
+      schema
     ].freeze
 
     STRICT_DEFAULTS = {
       signature_methods: %i[rsa_sha256 rsa_sha384 rsa_sha512 ecdsa_sha256 ecdsa_sha384 ecdsa_sha512],
       digest_methods: %i[sha256 sha384 sha512],
       canonicalization_methods: %i[c14n exc_c14n c14n11 c14n_with_comments exc_c14n_with_comments],
-      transforms: %i[enveloped_signature base64 c14n exc_c14n c14n11 c14n_with_comments
-                     exc_c14n_with_comments],
-
+      transforms: %i[enveloped_signature base64 c14n exc_c14n c14n11 c14n_with_comments exc_c14n_with_comments],
       allow_external_references: false,
       allow_retrieval_method: false,
       allow_same_document_xpointer: false,
       max_references: 8,
       require_references: true,
-
       require_signed_root: true,
       reject_duplicate_ids: true,
       max_document_size: 16 * 1024 * 1024,
       max_transforms_per_reference: 4,
-
       min_rsa_key_bits: 2048,
       min_ec_key_bits: 256,
       min_dsa_key_bits: 2048,
@@ -42,7 +53,6 @@ module HankoXml
       # store: only -- the signing certificate's KeyUsage, when present, must
       # allow digitalSignature or nonRepudiation (#63).
       require_signing_key_usage: true,
-
       schema: :default
     }.freeze
 
@@ -93,10 +103,8 @@ module HankoXml
       def xades
         @xades ||= strict.with(
           digest_methods: strict.digest_methods + %i[sha3_256 sha3_384 sha3_512],
-          signature_methods: strict.signature_methods + %i[
-            rsa_pss_sha256 rsa_pss_sha384 rsa_pss_sha512
-            ecdsa_sha3_256 ecdsa_sha3_384 ecdsa_sha3_512
-          ]
+          signature_methods: strict.signature_methods +
+            %i[rsa_pss_sha256 rsa_pss_sha384 rsa_pss_sha512 ecdsa_sha3_256 ecdsa_sha3_384 ecdsa_sha3_512]
         )
       end
 
@@ -179,8 +187,15 @@ module HankoXml
     # +min_rsa_key_bits+ / +min_ec_key_bits+ are not checked here -- they
     # need the actual signing/trust key material, which is only available
     # once Signer/Verifier have resolved it. See #enforce_key_size!.
-    def violations(signature_info, document: nil, sig_node: nil, id_attributes: nil, xml_bytes: nil,
-                   check_root_signed: true, referenced_uris: [])
+    def violations(
+      signature_info,
+      document: nil,
+      sig_node: nil,
+      id_attributes: nil,
+      xml_bytes: nil,
+      check_root_signed: true,
+      referenced_uris: []
+    )
       errors = []
 
       errors << algorithm_violation(:signature, signature_info.signature_method)
@@ -191,14 +206,14 @@ module HankoXml
       if require_references && signature_info.references.empty?
         errors << HankoXml::PolicyError.new(
           "this policy requires at least one <Reference>, but <SignedInfo> has none " \
-          "(require_references)"
+            "(require_references)"
         )
       end
 
       if signature_info.references.size > max_references
         errors << HankoXml::PolicyError.new(
           "<SignedInfo> has #{signature_info.references.size} references, more than this " \
-          "policy's max_references (#{max_references})"
+            "policy's max_references (#{max_references})"
         )
       end
 
@@ -213,11 +228,24 @@ module HankoXml
     # Raises HankoXml::PolicyError (with all violations joined into the
     # message) if +signature_info+ violates this policy. Accepts the same
     # optional context keywords as #violations.
-    def enforce!(signature_info, document: nil, sig_node: nil, id_attributes: nil, xml_bytes: nil,
-                 check_root_signed: true, referenced_uris: [])
-      errors = violations(signature_info, document: document, sig_node: sig_node, id_attributes: id_attributes,
-                                          xml_bytes: xml_bytes, check_root_signed: check_root_signed,
-                                          referenced_uris: referenced_uris)
+    def enforce!(
+      signature_info,
+      document: nil,
+      sig_node: nil,
+      id_attributes: nil,
+      xml_bytes: nil,
+      check_root_signed: true,
+      referenced_uris: []
+    )
+      errors = violations(
+        signature_info,
+        document: document,
+        sig_node: sig_node,
+        id_attributes: id_attributes,
+        xml_bytes: xml_bytes,
+        check_root_signed: check_root_signed,
+        referenced_uris: referenced_uris
+      )
       return if errors.empty?
 
       raise HankoXml::PolicyError, errors.map(&:message).join("; ")
@@ -259,14 +287,12 @@ module HankoXml
 
     def reference_violations(references, referenced_uris)
       references.flat_map do |ref|
-        errors = [
-          algorithm_violation(:digest, ref.digest_method, reference_uri: ref.uri)
-        ]
+        errors = [algorithm_violation(:digest, ref.digest_method, reference_uri: ref.uri)]
 
         if ref.transforms.size > max_transforms_per_reference
           errors << HankoXml::PolicyError.new(
             "reference #{ref.uri.inspect} has #{ref.transforms.size} transforms, more than this " \
-            "policy's max_transforms_per_reference (#{max_transforms_per_reference})"
+              "policy's max_transforms_per_reference (#{max_transforms_per_reference})"
           )
         end
 
@@ -275,15 +301,16 @@ module HankoXml
         end
 
         if !allow_external_references && ref.external? && !referenced_uris.include?(ref.document_uri)
-          errors << HankoXml::PolicyError.new(
-            "reference URI #{ref.uri.inspect} is external, and allow_external_references is false"
-          )
+          errors <<
+            HankoXml::PolicyError.new(
+              "reference URI #{ref.uri.inspect} is external, and allow_external_references is false"
+            )
         end
 
         if !allow_same_document_xpointer && ref.same_document_xpointer?
           errors << HankoXml::PolicyError.new(
             "reference URI #{ref.uri.inspect} is a same-document XPointer, and " \
-            "allow_same_document_xpointer is false"
+              "allow_same_document_xpointer is false"
           )
         end
 
@@ -299,17 +326,16 @@ module HankoXml
 
       HankoXml::PolicyError.new(
         "signature method #{signature_info.signature_method} (#{name.inspect}) is HMAC-based, " \
-        "and allow_hmac is false"
+          "and allow_hmac is false"
       )
     end
 
     def retrieval_method_violation(signature_info)
       return nil if allow_retrieval_method
+
       return nil unless signature_info.retrieval_method?
 
-      HankoXml::PolicyError.new(
-        "<KeyInfo> contains a <RetrievalMethod>, and allow_retrieval_method is false"
-      )
+      HankoXml::PolicyError.new("<KeyInfo> contains a <RetrievalMethod>, and allow_retrieval_method is false")
     end
 
     # Structural check: does any Reference cover the document root? Mirrors
@@ -321,12 +347,13 @@ module HankoXml
     def missing_context_violation(field)
       HankoXml::PolicyError.new(
         "#{field} needs the document to check; pass document:, sig_node: and id_attributes:, " \
-        "or use a policy with #{field}: false"
+          "or use a policy with #{field}: false"
       )
     end
 
     def root_signed_violation(document, sig_node, signature_info, id_attributes)
       return nil unless require_signed_root
+
       # Without the DOM this cannot be checked, and an unchecked structural
       # rule must fail closed, not pass (#96).
       return missing_context_violation(:require_signed_root) if document.nil? || sig_node.nil?
@@ -338,7 +365,7 @@ module HankoXml
 
       HankoXml::PolicyError.new(
         "this policy requires the root element to be signed (require_signed_root), but no " \
-        "<Reference> covers it"
+          "<Reference> covers it"
       )
     end
 
@@ -354,7 +381,9 @@ module HankoXml
     # only, ignoring namespace.
     def duplicate_id_violation(document, id_attributes)
       return nil unless reject_duplicate_ids
+
       return missing_context_violation(:reject_duplicate_ids) if document.nil? || id_attributes.nil?
+
       return nil if id_attributes.empty?
 
       names = id_attributes.map { |attr| attr.is_a?(Array) ? attr[1].to_s : attr.to_s }
@@ -371,17 +400,18 @@ module HankoXml
 
       HankoXml::PolicyError.new(
         "document has more than one element with the same ID attribute value, and " \
-        "reject_duplicate_ids is true"
+          "reject_duplicate_ids is true"
       )
     end
 
     def document_size_violation(bytesize)
       return nil if bytesize.nil?
+
       return nil if bytesize <= max_document_size
 
       HankoXml::PolicyError.new(
         "document is #{bytesize} bytes, more than this policy's max_document_size " \
-        "(#{max_document_size})"
+          "(#{max_document_size})"
       )
     end
 
@@ -443,8 +473,8 @@ module HankoXml
 
       HankoXml::PolicyError.new(
         "#{slot} method #{uri_or_name}#{name ? " (#{name.inspect})" : ""}#{location} is not in " \
-        "this policy's #{field_name}. Use a preset such as HankoXml::Policy.legacy_sha1, " \
-        "HankoXml::Policy.xades or Policy#with(#{field_name}: …) if this document genuinely requires it."
+          "this policy's #{field_name}. Use a preset such as HankoXml::Policy.legacy_sha1, " \
+          "HankoXml::Policy.xades or Policy#with(#{field_name}: …) if this document genuinely requires it."
       )
     end
   end

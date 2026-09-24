@@ -60,9 +60,12 @@ module HankoXml
       # :prepend_to_root, :detached), or leaves nil as-is.
       def coerce(value)
         case value
-        when Placement then value
-        when Symbol then new(value)
-        when nil then nil
+        when Placement
+          value
+        when Symbol
+          new(value)
+        when nil
+          nil
         else
           raise ArgumentError, "expected a HankoXml::Placement or Symbol, got #{value.class}"
         end
@@ -76,6 +79,7 @@ module HankoXml
     # node.
     def resolve(doc, namespaces: {})
       return doc.root if target.nil?
+
       return target if HankoXml::Dom.node?(target)
 
       ns = HankoXml::NS.merge((namespaces || {}).transform_keys(&:to_s)).merge(self.namespaces.transform_keys(&:to_s))
@@ -83,14 +87,14 @@ module HankoXml
         doc.xpath(target, ns)
       rescue Nokogiri::XML::XPath::SyntaxError
         raise HankoXml::PlacementError,
-              "placement XPath #{target.inspect} is not valid XPath; bind every prefix it uses in namespaces:"
+          "placement XPath #{target.inspect} is not valid XPath; bind every prefix it uses in namespaces:"
       end
 
       if matches.empty?
         raise HankoXml::PlacementError, "placement XPath #{target.inspect} matched no nodes"
       elsif matches.size > 1
         raise HankoXml::PlacementError,
-              "placement XPath #{target.inspect} matched #{matches.size} nodes, expected exactly one"
+          "placement XPath #{target.inspect} matched #{matches.size} nodes, expected exactly one"
       end
 
       matches.first

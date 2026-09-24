@@ -38,8 +38,7 @@ RSpec.describe "S-12 document size limits" do
         file.flush
         expect(File).not_to receive(:binread)
 
-        expect { verifier.verify(Pathname.new(file.path)) }
-          .to raise_error(HankoXml::PolicyError, /max_document_size/)
+        expect { verifier.verify(Pathname.new(file.path)) }.to raise_error(HankoXml::PolicyError, /max_document_size/)
       end
     end
 
@@ -69,13 +68,13 @@ RSpec.describe "S-12 document size limits" do
     it "still verifies a document within the limit" do
       roomy = HankoXml::Policy.strict.with(max_document_size: signed_xml.bytesize * 2)
 
-      expect(HankoXml.valid?(StringIO.new(signed_xml), certificate: signer_cert_pem, policy: roomy))
-        .to be true
+      expect(HankoXml.valid?(StringIO.new(signed_xml), certificate: signer_cert_pem, policy: roomy)).to be true
     end
 
     it "reads an IO in full under a policy with no size limit" do
-      result = HankoXml::Verifier.new(certificate: signer_cert_pem,
-                                      policy: HankoXml::Policy.permissive).verify(StringIO.new(signed_xml))
+      result = HankoXml::Verifier
+        .new(certificate: signer_cert_pem, policy: HankoXml::Policy.permissive)
+        .verify(StringIO.new(signed_xml))
       expect(result.valid?).to be true
     end
   end
@@ -83,7 +82,7 @@ RSpec.describe "S-12 document size limits" do
   describe "native length check" do
     # Needs several GiB of RAM (the String plus the native copy), so opt-in.
     it "rejects a document longer than libxml2's int length instead of truncating it",
-       skip: (ENV["HANKO_BIG"] ? false : "set HANKO_BIG=1 to allocate a 2 GiB String") do
+      skip: (ENV["HANKO_BIG"] ? false : "set HANKO_BIG=1 to allocate a 2 GiB String") do
       huge = "<a/>".ljust(2**31, " ")
 
       expect { HankoXml::Native.inspect_sig(huge, 0) }.to raise_error(HankoXml::ParseError, /2 GiB/)

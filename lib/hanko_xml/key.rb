@@ -21,21 +21,20 @@ module HankoXml
       # certificate and a key raises instead of silently keeping one.
       def from_pem(pem, password: nil)
         pem = pem.to_s
-        material =
-          if certificate_pem?(pem)
-            begin
-              ::OpenSSL::X509::Certificate.new(pem)
-            rescue ::OpenSSL::X509::CertificateError => e
-              raise HankoXml::KeyLoadError, "could not parse certificate PEM: #{e.message}"
-            end
-          else
-            begin
-              read_pkey(pem, password)
-            rescue ::OpenSSL::PKey::PKeyError => e
-              raise HankoXml::KeyLoadError,
-                    "could not parse key PEM: #{e.message}#{encrypted_hint(pem, password)}#{path_hint(pem)}"
-            end
+        material = if certificate_pem?(pem)
+          begin
+            ::OpenSSL::X509::Certificate.new(pem)
+          rescue ::OpenSSL::X509::CertificateError => e
+            raise HankoXml::KeyLoadError, "could not parse certificate PEM: #{e.message}"
           end
+        else
+          begin
+            read_pkey(pem, password)
+          rescue ::OpenSSL::PKey::PKeyError => e
+            raise HankoXml::KeyLoadError,
+              "could not parse key PEM: #{e.message}#{encrypted_hint(pem, password)}#{path_hint(pem)}"
+          end
+        end
 
         new(material)
       end
@@ -50,10 +49,12 @@ module HankoXml
 
       def encrypted_hint(pem, password)
         return "" unless password.nil?
+
         return "" unless pem.include?("ENCRYPTED")
 
         ". The key is encrypted; pass password: (HankoXml::Key.from_pem(pem, password: ...))"
       end
+
       private :encrypted_hint
 
       # A String is always key material, never a filename (S-21): accepting
@@ -65,6 +66,7 @@ module HankoXml
         ". A String is read as PEM/DER content, not a file path; to load a file, pass " \
           "Pathname.new(path) or use HankoXml::Key.from_file(path)"
       end
+
       private :path_hint
 
       def certificate_pem?(pem)
@@ -72,24 +74,25 @@ module HankoXml
         certificates = labels.count { |label| label.end_with?("CERTIFICATE") }
         keys = labels.count { |label| label.end_with?("KEY") }
         return false if certificates.zero?
+
         return true if keys.zero?
 
         raise HankoXml::KeyLoadError,
-              "PEM contains both a certificate and a key; pass them separately as key: and certificate:"
+          "PEM contains both a certificate and a key; pass them separately as key: and certificate:"
       end
+
       private :certificate_pem?
 
       def from_der(der)
-        material =
+        material = begin
+          ::OpenSSL::X509::Certificate.new(der)
+        rescue ::OpenSSL::X509::CertificateError
           begin
-            ::OpenSSL::X509::Certificate.new(der)
-          rescue ::OpenSSL::X509::CertificateError
-            begin
-              read_pkey(der, nil)
-            rescue ::OpenSSL::PKey::PKeyError => e
-              raise HankoXml::KeyLoadError, "could not parse DER key/certificate: #{e.message}"
-            end
+            read_pkey(der, nil)
+          rescue ::OpenSSL::PKey::PKeyError => e
+            raise HankoXml::KeyLoadError, "could not parse DER key/certificate: #{e.message}"
           end
+        end
 
         new(material)
       end
@@ -100,12 +103,11 @@ module HankoXml
 
       def from_pkcs12(path, password:)
         bytes = ::File.binread(path.respond_to?(:to_path) ? path.to_path : path)
-        pkcs12 =
-          begin
-            ::OpenSSL::PKCS12.new(bytes, password)
-          rescue ::OpenSSL::PKCS12::PKCS12Error => e
-            raise HankoXml::KeyLoadError, "could not read PKCS#12 bundle: #{e.message}"
-          end
+        pkcs12 = begin
+          ::OpenSSL::PKCS12.new(bytes, password)
+        rescue ::OpenSSL::PKCS12::PKCS12Error => e
+          raise HankoXml::KeyLoadError, "could not read PKCS#12 bundle: #{e.message}"
+        end
 
         Bundle.new(
           key: new(pkcs12.key),
@@ -130,8 +132,8 @@ module HankoXml
         from_file(input, password: password)
       else
         raise ArgumentError,
-              "expected an OpenSSL::PKey::PKey, OpenSSL::X509::Certificate, PEM String, " \
-              "path-like object, or HankoXml::Key, got #{input.class}"
+          "expected an OpenSSL::PKey::PKey, OpenSSL::X509::Certificate, PEM String, " \
+            "path-like object, or HankoXml::Key, got #{input.class}"
       end
     end
 
@@ -148,6 +150,7 @@ module HankoXml
     # OpenSSL::PKey::PKey is false.
     def private_key?
       return false unless @material.is_a?(::OpenSSL::PKey::PKey)
+
       return @material.private? if @material.respond_to?(:private?)
 
       # Generic PKey (e.g. Ed25519) has no #private?; only a private key

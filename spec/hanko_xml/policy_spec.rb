@@ -15,8 +15,11 @@ RSpec.describe HankoXml::Policy do
       signature_method: "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
       canonicalization_method: "http://www.w3.org/2001/10/xml-exc-c14n#",
       references: [
-        { uri: "", digest_method: "http://www.w3.org/2001/04/xmlenc#sha256",
-          transforms: ["http://www.w3.org/2000/09/xmldsig#enveloped-signature"] }
+        {
+          uri: "",
+          digest_method: "http://www.w3.org/2001/04/xmlenc#sha256",
+          transforms: ["http://www.w3.org/2000/09/xmldsig#enveloped-signature"]
+        }
       ]
     )
   end
@@ -57,8 +60,13 @@ RSpec.describe HankoXml::Policy do
 
       expect(xades.digest_methods).to include(:sha256, :sha3_256, :sha3_384, :sha3_512)
       expect(xades.digest_methods).not_to include(:sha1, :sha3_224)
-      expect(xades.signature_methods).to include(:rsa_sha256, :rsa_pss_sha256, :rsa_pss_sha384,
-                                                 :rsa_pss_sha512, :ecdsa_sha3_256)
+      expect(xades.signature_methods).to include(
+        :rsa_sha256,
+        :rsa_pss_sha256,
+        :rsa_pss_sha384,
+        :rsa_pss_sha512,
+        :ecdsa_sha3_256
+      )
       expect(xades.signature_methods).not_to include(:rsa_sha1)
       expect(xades.require_signed_root).to be true
     end
@@ -135,8 +143,7 @@ RSpec.describe HankoXml::Policy do
       info = HankoXml::SignatureInfo.new(
         signature_method: "http://www.w3.org/2007/05/xmldsig-more#sha256-rsa-MGF1",
         canonicalization_method: "http://www.w3.org/2001/10/xml-exc-c14n#",
-        references: [{ uri: "", digest_method: "http://www.w3.org/2007/05/xmldsig-more#sha3-256",
-                       transforms: [] }]
+        references: [{ uri: "", digest_method: "http://www.w3.org/2007/05/xmldsig-more#sha3-256", transforms: [] }]
       )
 
       expect(described_class.strict.violations(info).map(&:message).join).to match(/signature method|digest method/)
@@ -147,8 +154,13 @@ RSpec.describe HankoXml::Policy do
       info = HankoXml::SignatureInfo.new(
         signature_method: "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
         canonicalization_method: "http://www.w3.org/2001/10/xml-exc-c14n#",
-        references: [{ uri: "http://example.com/doc.xml", digest_method: "http://www.w3.org/2001/04/xmlenc#sha256",
-                       transforms: [] }]
+        references: [
+          {
+            uri: "http://example.com/doc.xml",
+            digest_method: "http://www.w3.org/2001/04/xmlenc#sha256",
+            transforms: []
+          }
+        ]
       )
 
       expect(described_class.strict.violations(info).map(&:message).join).to match(/external/)
@@ -156,8 +168,7 @@ RSpec.describe HankoXml::Policy do
 
     it "flags a reference count above max_references" do
       refs = 9.times.map do
-        { uri: "##{_1}", digest_method: "http://www.w3.org/2001/04/xmlenc#sha256",
-          transforms: [] }
+        { uri: "##{_1}", digest_method: "http://www.w3.org/2001/04/xmlenc#sha256", transforms: [] }
       end
       info = HankoXml::SignatureInfo.new(
         signature_method: "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
@@ -209,8 +220,7 @@ RSpec.describe HankoXml::Policy do
       info = HankoXml::SignatureInfo.new(
         signature_method: "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
         canonicalization_method: "http://www.w3.org/2001/10/xml-exc-c14n#",
-        references: [{ uri: "#xpointer(/)", digest_method: "http://www.w3.org/2001/04/xmlenc#sha256",
-                       transforms: [] }]
+        references: [{ uri: "#xpointer(/)", digest_method: "http://www.w3.org/2001/04/xmlenc#sha256", transforms: [] }]
       )
 
       expect(described_class.strict.violations(info).map(&:message).join).to match(/allow_same_document_xpointer/)
@@ -226,8 +236,9 @@ RSpec.describe HankoXml::Policy do
       HankoXml::SignatureInfo.new(
         signature_method: compliant_info.signature_method,
         canonicalization_method: compliant_info.canonicalization_method,
-        references: [{ uri: "", digest_method: uri,
-                       transforms: ["http://www.w3.org/2000/09/xmldsig#enveloped-signature"] }]
+        references: [
+          { uri: "", digest_method: uri, transforms: ["http://www.w3.org/2000/09/xmldsig#enveloped-signature"] }
+        ]
       )
     end
 
@@ -248,15 +259,18 @@ RSpec.describe HankoXml::Policy do
     end
 
     it "compares a document's algorithm String verbatim, not as a registry name" do
-      expect(described_class.strict.violations(info_with_digest("sha256")).map(&:message).join)
-        .to match(/digest_methods/)
+      expect(described_class.strict.violations(info_with_digest("sha256")).map(&:message).join).to match(
+        /digest_methods/
+      )
     end
   end
 
   describe "#enforce! without the document (#96)" do
     it "fails closed on require_signed_root and reject_duplicate_ids instead of skipping them" do
-      expect { described_class.strict.enforce!(compliant_info) }
-        .to raise_error(HankoXml::PolicyError, /require_signed_root needs the document.*reject_duplicate_ids needs/m)
+      expect { described_class.strict.enforce!(compliant_info) }.to raise_error(
+        HankoXml::PolicyError,
+        /require_signed_root needs the document.*reject_duplicate_ids needs/m
+      )
     end
 
     it "passes when the policy turns both off" do

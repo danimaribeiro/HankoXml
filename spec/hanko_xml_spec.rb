@@ -32,8 +32,9 @@ RSpec.describe HankoXml do
     end
 
     it "forwards Verifier keywords" do
-      expect { described_class.valid?(signed_xml, certificate: signer_cert_pem, bogus: 1) }
-        .to raise_error(ArgumentError)
+      expect { described_class.valid?(signed_xml, certificate: signer_cert_pem, bogus: 1) }.to raise_error(
+        ArgumentError
+      )
     end
 
     it "validates a signed XML String against a PEM cert String" do
@@ -97,11 +98,11 @@ RSpec.describe HankoXml do
         "signed_exc_c14n.xml" => "enveloped, Exclusive C14N (SignedInfo canon + digest transform)",
         "signed_sha512.xml" => "enveloped, plain C14N, SHA-512 digest + RSA-SHA512 signature",
         "signed_enveloping.xml" => "enveloping: signed data lives inside <Object> under <Signature>, " \
-                                    "Reference URI=\"#object-1\" resolved by ID",
+          "Reference URI=\"#object-1\" resolved by ID",
         "signed_detached.xml" => "detached: <Signature> and the signed element are siblings, connected " \
-                                  "only by Reference URI=\"#payload-1\" resolved by ID",
+          "only by Reference URI=\"#payload-1\" resolved by ID",
         "signed_nfe.xml" => "Brazilian NFe shape: detached (like signed_detached.xml above) with " \
-                             "SHA-1 digest + RSA-SHA1 signature, which the NFe technical spec mandates"
+          "SHA-1 digest + RSA-SHA1 signature, which the NFe technical spec mandates"
       }.each do |filename, description|
         it "validates a #{description} signature" do
           xml = fixtures.join(filename).read
@@ -111,13 +112,13 @@ RSpec.describe HankoXml do
           # the document root), so require_signed_root -- a verification-time
           # XSW defence, not a format constraint -- does not apply (S-06).
           policy = case filename
-                   when "signed_nfe.xml"
-                     HankoXml::Policy.legacy_sha1.with(require_signed_root: false)
-                   when "signed_enveloping.xml", "signed_detached.xml"
-                     HankoXml::Policy.strict.with(require_signed_root: false)
-                   else
-                     HankoXml::Policy.strict
-                   end
+          when "signed_nfe.xml"
+            HankoXml::Policy.legacy_sha1.with(require_signed_root: false)
+          when "signed_enveloping.xml", "signed_detached.xml"
+            HankoXml::Policy.strict.with(require_signed_root: false)
+          else
+            HankoXml::Policy.strict
+          end
 
           expect(described_class.valid?(xml, certificate: signer_cert_pem, policy: policy)).to be true
           expect(described_class.valid?(xml, certificate: other_cert_pem, policy: policy)).to be false

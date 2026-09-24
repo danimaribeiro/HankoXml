@@ -39,10 +39,10 @@ RSpec.describe "exported symbols" do
   # undefined symbols so we see just what this object actually defines.
   def exported_symbols(path)
     command = if RbConfig::CONFIG["host_os"].match?(/darwin/)
-                ["nm", "-gU", path.to_s]
-              else
-                ["nm", "-D", "--defined-only", path.to_s]
-              end
+      ["nm", "-gU", path.to_s]
+    else
+      ["nm", "-D", "--defined-only", path.to_s]
+    end
     out = IO.popen(command, err: IO::NULL, &:read)
     return nil unless $CHILD_STATUS&.success?
 
@@ -58,10 +58,10 @@ RSpec.describe "exported symbols" do
     leaked = symbols.grep(/\A_?(xml|xmlSec)/)
 
     expect(leaked).to be_empty,
-                      "#{leaked.size} vendored symbol(s) are exported and can be interposed " \
-                      "at load time: #{leaked.first(10).join(", ")}. Build the vendored " \
-                      "libraries with -fvisibility=hidden and, on Linux, link with " \
-                      "-Wl,--exclude-libs,ALL."
+      "#{leaked.size} vendored symbol(s) are exported and can be interposed " \
+        "at load time: #{leaked.first(10).join(", ")}. Build the vendored " \
+        "libraries with -fvisibility=hidden and, on Linux, link with " \
+        "-Wl,--exclude-libs,ALL."
   end
 
   it "exports only the Ruby entry point" do
@@ -70,7 +70,6 @@ RSpec.describe "exported symbols" do
     symbols = exported_symbols(artifact)
     skip "nm unavailable on this platform" if symbols.nil?
 
-    expect(symbols.map { |s| s.delete_prefix("_") })
-      .to contain_exactly("Init_hanko_xml", "ruby_abi_version")
+    expect(symbols.map { |s| s.delete_prefix("_") }).to contain_exactly("Init_hanko_xml", "ruby_abi_version")
   end
 end

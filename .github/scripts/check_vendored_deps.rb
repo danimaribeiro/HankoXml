@@ -73,8 +73,7 @@ end
 # (xmlsec tags as `xmlsec_1_3_12`, OpenSSL as `openssl-3.5.8`).
 def github_release_versions(repo, prefix)
   data = get_json("https://api.github.com/repos/#{repo}/releases?per_page=100")
-  Array(data).reject { |r| r["prerelease"] || r["draft"] }
-             .map { |r| r["tag_name"].to_s.sub(prefix, "").tr("_", ".") }
+  Array(data).reject { |r| r["prerelease"] || r["draft"] }.map { |r| r["tag_name"].to_s.sub(prefix, "").tr("_", ".") }
 end
 
 # libxml2 releases as GitLab tags rather than GitHub releases; 1665 is its
@@ -94,9 +93,7 @@ def upstream_versions(name)
   reader = UPSTREAM[name]
   return [] unless reader
 
-  reader.call
-        .map { |v| v.sub(/\Av/, "") }
-        .select { |v| v.match?(/\A\d+\.\d+\.\d+\z/) }
+  reader.call.map { |v| v.sub(/\Av/, "") }.select { |v| v.match?(/\A\d+\.\d+\.\d+\z/) }
 end
 
 # OSV has no generic ecosystem for C tarballs, so we query through a distro that
@@ -121,9 +118,9 @@ def fixed_versions(vuln)
     affected.fetch("ranges", []).flat_map { |range| range.fetch("events", []) }
   end
 
-  events.filter_map { |event| event["fixed"] }
-        .map { |v| v.sub(/[+~-].*\z/, "") }
-        .select { |v| v.match?(/\A\d+(\.\d+)*\z/) }
+  events.filter_map { |event| event["fixed"] }.map { |v| v.sub(/[+~-].*\z/, "") }.select do |v|
+    v.match?(/\A\d+(\.\d+)*\z/)
+  end
 end
 
 def advisory_summary(vuln)
@@ -169,24 +166,29 @@ def check_releases(name, pinned)
 
   latest = same_series.max_by { |v| version_tuple(v) }
   puts "  ! patch update available in the pinned series: #{pinned} -> #{latest}"
-  ["- **#{name}**: patch update `#{pinned}` → `#{latest}` in the pinned " \
-   "#{pin.first(2).join(".")}.x series. Security fixes usually arrive this way."]
+  [
+    "- **#{name}**: patch update `#{pinned}` → `#{latest}` in the pinned " \
+      "#{pin.first(2).join(".")}.x series. Security fixes usually arrive this way."
+  ]
 end
 
 def check_advisories(name, pinned)
   vulns = advisories(name, pinned)
   affected = vulns.select { |kind, _, _| kind == :affected }
 
-  vulns.select { |kind, _, _| kind == :unknown }
-       .each { |_, id, summary| puts "  · #{id} (no fix version recorded) #{summary}" }
+  vulns.select { |kind, _, _| kind == :unknown }.each do |_, id, summary|
+    puts "  · #{id} (no fix version recorded) #{summary}"
+  end
 
   return [] if affected.empty?
 
   puts "  ! #{affected.size} advisory/advisories fixed in a release newer than #{pinned}"
   affected.each { |_, id, summary| puts "      #{id} #{summary}" }
-  ["- **#{name} #{pinned}**: #{affected.size} advisory/advisories fixed upstream after " \
-   "our pin — #{affected.map { |_, id, _| id }.join(", ")}. (OSV via the Debian " \
-   "ecosystem as a proxy, so confirm against upstream before acting.)"]
+  [
+    "- **#{name} #{pinned}**: #{affected.size} advisory/advisories fixed upstream after " \
+      "our pin — #{affected.map { |_, id, _| id }.join(", ")}. (OSV via the Debian " \
+      "ecosystem as a proxy, so confirm against upstream before acting.)"
+  ]
 end
 
 findings = DEPS.flat_map do |name, dep|
