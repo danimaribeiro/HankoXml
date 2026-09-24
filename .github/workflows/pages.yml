@@ -1,0 +1,73 @@
+# Builds the docs site (docs/, Astro plus the YARD API reference generated
+# from lib/) and publishes it to GitHub Pages at https://danimar.dev/HankoXml/.
+# Requires the repository's Pages source to be set to "GitHub Actions".
+#
+# Runs only when the published docs can change, and not on pull requests, to
+# save Actions budget (see CI-PAUSED in main.yml). Check a docs change locally
+# with `npm run build` in docs/.
+name: Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "lib/**"
+      - "assets/**"
+      - ".yardopts"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# Read-only GITHUB_TOKEN unless a job asks for more (S-19).
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # YARD only parses lib/, so the native extension is not compiled here.
+      - uses: ruby/setup-ruby@984c0c890880bbf811283d6f09c4607c62d210a4 # v1.323.0
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Build site
+        working-directory: docs
+        run: |
+          npm ci
+          npm run build
+
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: docs/dist
+
+  deploy:
+    name: Deploy
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

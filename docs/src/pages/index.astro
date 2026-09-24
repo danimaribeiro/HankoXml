@@ -1,5 +1,6 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import { withBase } from '../url';
 
 const features = [
   {
@@ -25,7 +26,7 @@ const features = [
   <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
     <section class="py-16 sm:py-24 text-center">
       <img
-        src="/hanko-mark.svg"
+        src={withBase('hanko-mark.svg')}
         alt=""
         width="128"
         height="128"
@@ -37,7 +38,7 @@ const features = [
         backed by a native Rust extension binding directly to <code>libxmlsec1</code>.
       </p>
       <div class="mt-8 flex justify-center gap-4">
-        <a href="/guide/getting-started" class="py-3 px-6 inline-flex items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:bg-blue-700">
+        <a href={withBase('guide/getting-started')} class="py-3 px-6 inline-flex items-center gap-x-2 text-sm font-semibold rounded-lg border border-transparent bg-blue-600 text-white hover:bg-blue-700 focus:outline-none focus:bg-blue-700">
           Get Started
         </a>
         <a href="https://github.com/danimaribeiro/HankoXml" target="_blank" rel="noopener noreferrer" class="py-3 px-6 inline-flex items-center gap-x-2 text-sm font-semibold rounded-lg border border-gray-200 text-gray-800 hover:bg-gray-100 dark:border-gray-700 dark:text-white dark:hover:bg-white/10 glass:border-white/[0.15] glass:bg-white/[0.08] glass:text-white glass:hover:bg-white/[0.12]">
