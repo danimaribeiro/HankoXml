@@ -29,7 +29,7 @@ module HankoXml
     # @param namespaces [Hash<String, String>] Namespaces for XPath signature selection.
     # @param signature [Symbol, Integer, String, nil] Which signature to verify:
     #   `:first` (explicitly take the first signature even if more exist), `:only`
-    #   (require exactly one, raising {MultipleSignatures} otherwise), `:all`, an
+    #   (require exactly one, raising {MultipleSignatures} otherwise), an
     #   integer index (document order, matching {Signer#sign!}'s `signature:`), or
     #   an XPath. Defaults to `nil`, which behaves like `:only`: with a single
     #   `<Signature>` it is verified, but with more than one {MultipleSignatures}
@@ -95,6 +95,7 @@ module HankoXml
           signature_info: nil,
           signature_node: nil,
           document: doc,
+          namespaces: @namespaces,
           id_attributes: @id_attributes,
           resolver: @resolver
         )
@@ -110,6 +111,7 @@ module HankoXml
           signature_info: nil,
           signature_node: nil,
           document: doc,
+          namespaces: @namespaces,
           id_attributes: @id_attributes,
           resolver: @resolver
         )
@@ -168,6 +170,15 @@ module HankoXml
 
     private
 
+    # A HankoXml::Error from the native layer already has its fixed message,
+    # the class Rust chose, and #xmlsec_errors: keep it. Anything else gets a
+    # fixed NativeError, never its own message (#96, S-13).
+    def native_failure(error, message)
+      return error if error.is_a?(HankoXml::Error)
+
+      HankoXml::NativeError.new(message)
+    end
+
     # xmlSecAddIDs (the native ID table verification resolves "#id" against)
     # matches by unqualified attribute name only -- it has no concept of the
     # namespace-qualified [ns, name] entries Verification's Ruby-side XPath
@@ -204,6 +215,9 @@ module HankoXml
 
         node = matches.first
         [node, node && sigs.index(node)]
+      when :all
+        raise HankoXml::ConfigurationError,
+              "signature: :all is not supported; use Verifier#verify_all for one Verification per <Signature> (#105)"
       else
         raise HankoXml::ConfigurationError, "Invalid signature: option"
       end
@@ -230,10 +244,12 @@ module HankoXml
         if xsd_errors.any?
           return HankoXml::Verification.new(
             valid: false,
-            errors: [HankoXml::SchemaError.new(xsd_errors.map(&:message).join(", "))],
+            errors: [HankoXml::SchemaError.new("<Signature> does not validate against the XML-DSig schema",
+                                               xmlsec_errors: xsd_errors.map(&:message))],
             signature_info: nil,
             signature_node: sig_node,
             document: doc,
+            namespaces: @namespaces,
             id_attributes: @id_attributes,
             resolver: @resolver
           )
@@ -255,10 +271,11 @@ module HankoXml
       rescue StandardError => e
         return HankoXml::Verification.new(
           valid: false,
-          errors: [HankoXml::ParseError.new(e.message)],
+          errors: [native_failure(e, "the native layer could not read <SignedInfo>")],
           signature_info: nil,
           signature_node: sig_node,
           document: doc,
+          namespaces: @namespaces,
           id_attributes: @id_attributes,
           resolver: @resolver
         )
@@ -338,10 +355,11 @@ module HankoXml
       rescue StandardError => e
         return HankoXml::Verification.new(
           valid: false,
-          errors: [HankoXml::NativeError.new(e.message)],
+          errors: [native_failure(e, "the native layer failed unexpectedly while verifying")],
           signature_info: sig_info,
           signature_node: sig_node,
           document: doc,
+          namespaces: @namespaces,
           id_attributes: @id_attributes,
           resolver: @resolver
         )
@@ -363,6 +381,7 @@ module HankoXml
         signature_info: sig_info,
         signature_node: sig_node,
         document: doc,
+        namespaces: @namespaces,
         id_attributes: @id_attributes,
         resolver: @resolver,
         reference_element_indexes: verify_result[:reference_element_indexes],
@@ -403,6 +422,7 @@ module HankoXml
         signature_info: signature_info,
         signature_node: sig_node,
         document: doc,
+        namespaces: @namespaces,
         id_attributes: @id_attributes,
         resolver: @resolver
       )

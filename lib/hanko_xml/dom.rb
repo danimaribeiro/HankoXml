@@ -39,14 +39,16 @@ module HankoXml
 
         raise HankoXml::NokogiriRequired,
               "#{capability} needs a DOM to run, and Nokogiri is not loaded. " \
-              "Add `gem \"nokogiri\"` to your Gemfile, or use a capability that " \
-              "does not require a DOM -- see HankoXml.capabilities."
+              "Add `gem \"nokogiri\"` to your Gemfile and `require \"nokogiri\"`: " \
+              "every signing and verification call needs it for now (#96)."
       end
 
+      # Every capability needs Nokogiri until the DOM-free path exists
+      # (API_CONTRACT.md §6.1, #96), so each one is exactly available?.
       def capabilities
         {
-          verify: true,
-          sign: available? || :template_only,
+          verify: available?,
+          sign: available?,
           coverage_checks: available?,
           schema: available?,
           parse: available?,

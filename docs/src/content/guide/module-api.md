@@ -29,8 +29,8 @@ HankoXml.verify!(xml, certificate: cert)       # => Verification, or raises
 HankoXml.signature_present?(xml)               # => true / false
 ```
 
-`valid?`, `verify!` and `signature_present?` run with or without Nokogiri. `sign` and `sign!` need Nokogiri
-unless the document already carries a `<Signature>` template.
+Every one of these needs Nokogiri loaded (`require "nokogiri"`) in 0.1.0; without it they raise
+`HankoXml::NokogiriRequired`.
 
 ## Verification
 

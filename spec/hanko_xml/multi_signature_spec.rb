@@ -159,4 +159,20 @@ RSpec.describe "S-11 multiple signatures" do
       expect { signer.sign!(doc, signature: 99) }.to raise_error(HankoXml::ConfigurationError, /signature:/)
     end
   end
+  describe "#96 contract decisions" do
+    it "raises MultipleSignatures from valid? too: choosing a signature is a usage error, not a verdict" do
+      doc = two_signature_doc
+      verifier = HankoXml::Verifier.new(certificate: signer_cert_pem, policy: fragment_policy)
+
+      expect { verifier.valid?(doc) }.to raise_error(HankoXml::MultipleSignatures)
+      expect { HankoXml.valid?(doc, certificate: signer_cert_pem, policy: fragment_policy) }
+        .to raise_error(HankoXml::MultipleSignatures)
+    end
+
+    it "refuses signature: :all and points at verify_all (#105)" do
+      verifier = HankoXml::Verifier.new(certificate: signer_cert_pem, policy: fragment_policy, signature: :all)
+
+      expect { verifier.verify(two_signature_doc) }.to raise_error(HankoXml::ConfigurationError, /verify_all/)
+    end
+  end
 end

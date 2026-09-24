@@ -31,12 +31,9 @@ v.signed(xpath, ns = {})      # => Array<Node>, all of which are covered;
 v.signature_method        # => :rsa_sha256
 v.canonicalization_method # => :exc_c14n
 v.digest_methods          # => [:sha256]
-v.signed_info             # => HankoXml::SignedInfo (frozen value object)
 
 # --- Who signed -----------------------------------------------------------
 v.certificate        # => OpenSSL::X509::Certificate that trust resolved to, or nil
-v.certificate_chain  # => Array<OpenSSL::X509::Certificate> as validated
-v.key_info           # => HankoXml::KeyInfo::Parsed — what the document *claimed*
 
 # --- Provenance -----------------------------------------------------------
 v.signature_node     # => Nokogiri::XML::Element, the <ds:Signature> verified

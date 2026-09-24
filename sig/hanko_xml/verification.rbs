@@ -27,24 +27,55 @@ module HankoXml
   end
 
   class Verification
+    class Reference
+      attr_reader uri: String
+      attr_reader node: Nokogiri::XML::Node?
+      attr_reader digest_method: Symbol?
+      attr_reader transforms: Array[Symbol?]
+      attr_reader errors: Array[DigestMismatch]
+      def valid?: () -> bool
+      def enveloped?: () -> bool
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    type algorithm = Symbol | String
+
     attr_reader valid: bool
     attr_reader errors: Array[Error]
     attr_reader signature_info: SignatureInfo?
     attr_reader signature_node: Nokogiri::XML::Node?
     attr_reader document: Nokogiri::XML::Document
+    attr_reader certificate: OpenSSL::X509::Certificate?
+    attr_reader id_attributes: Array[String | [String, String]]
+    attr_reader namespaces: Hash[String, String]
+    attr_reader resolver: untyped
+    attr_reader references: Array[Reference]
+    attr_reader reference_element_indexes: Array[Integer?]?
+    attr_reader reference_valid: Array[bool?]?
 
     def initialize: (
       valid: bool,
       errors: Array[Error],
       signature_info: SignatureInfo?,
       signature_node: Nokogiri::XML::Node?,
-      document: Nokogiri::XML::Document
+      document: Nokogiri::XML::Document,
+      ?certificate: OpenSSL::X509::Certificate?,
+      ?id_attributes: Array[String | [String, String]]?,
+      ?resolver: untyped,
+      ?reference_element_indexes: Array[Integer?]?,
+      ?reference_valid: Array[bool?]?,
+      ?namespaces: Hash[String | Symbol, String]?
     ) -> void
 
     def valid?: () -> bool
-    def signed?: (Nokogiri::XML::Node target_node) -> bool
-    def at_signed: (String xpath) -> Nokogiri::XML::Node?
-    def signed_nodes: (String xpath) -> Nokogiri::XML::NodeSet
+    def signature_method: () -> algorithm?
+    def canonicalization_method: () -> algorithm?
+    def digest_methods: () -> Array[algorithm]
+    def signed?: (Nokogiri::XML::Node node) -> bool
+    def signed_nodes: () -> Array[Nokogiri::XML::Node]
+    def covers_root?: () -> bool
     def partial?: () -> bool
+    def at_signed: (String xpath, ?Hash[String | Symbol, String]? ns) -> Nokogiri::XML::Node
+    def signed: (String xpath, ?Hash[String | Symbol, String]? ns) -> Array[Nokogiri::XML::Node]
   end
 end

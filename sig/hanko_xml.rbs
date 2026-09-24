@@ -3,10 +3,15 @@ module HankoXml
   NS: Hash[String, String]
 
   class Error < StandardError
-    attr_accessor xmlsec_errors: Array[String]
+    PRIVATE_KEY_PEM: Regexp
+    FILTERED: String
+
+    attr_reader xmlsec_errors: Array[String]
     attr_accessor signature_node: Nokogiri::XML::Node?
 
-    def initialize: (?String? message, ?xmlsec_errors: Array[String], ?signature_node: Nokogiri::XML::Node?) -> void
+    def self.filter: (untyped value) -> String?
+    def initialize: (?untyped message, ?xmlsec_errors: Array[String], ?signature_node: Nokogiri::XML::Node?) -> void
+    def xmlsec_errors=: (Array[String] lines) -> Array[String]
   end
 
   class ConfigurationError < Error end

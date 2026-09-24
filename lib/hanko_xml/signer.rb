@@ -154,6 +154,9 @@ module HankoXml
     # @param signature [Symbol, Integer, String, nil] The target signature to sign (defaults to all).
     # @return [HankoXml::SignedDocument] The new signed document.
     def sign(doc_or_xml, force: false, signature: nil)
+      node_signer = signer_for_node(doc_or_xml)
+      return node_signer.sign(doc_or_xml.document, force: force, signature: signature) if node_signer
+
       doc = HankoXml.coerce_document(doc_or_xml, policy: policy)
       # Deep clone the document to avoid mutating the input if it's already a document.
       cloned = doc.dup
@@ -171,29 +174,16 @@ module HankoXml
     #   {Verifier}'s `signature:` Integer index (S-11).
     # @return [Nokogiri::XML::Node, Nokogiri::XML::Document] The mutated document.
     def sign!(doc_or_xml, force: false, signature: nil)
+      node_signer = signer_for_node(doc_or_xml)
+      return node_signer.sign!(doc_or_xml.document, force: force, signature: signature) if node_signer
+
       doc = HankoXml.coerce_document(doc_or_xml, policy: policy)
       Dom.require!("HankoXml::Signer#sign!")
 
       signatures, adopted = find_or_build_signatures(doc)
       all_sigs_in_order = doc.xpath(".//ds:Signature", ds: NS["ds"])
 
-      # Sort by depth descending (innermost first) so nested signatures are
-      # signed before the ones that envelope them.
-      depth_sorted = signatures.sort_by { |node| -node.ancestors.size }
-
-      signatures_to_sign = if signature
-                             # Document order, to agree with Verifier's Integer
-                             # index -- not the depth-sorted signing order (S-11).
-                             target = all_sigs_in_order[signature]
-                             unless target
-                               raise HankoXml::ConfigurationError, "signature: #{signature.inspect} not found"
-                             end
-
-                             [target]
-                           else
-                             depth_sorted
-                           end
-
+      signatures_to_sign = target_signatures(signatures, all_sigs_in_order, signature)
       signatures_to_sign.reject! { |node| node_signed?(node) } unless force
 
       return doc if signatures_to_sign.empty?
@@ -278,6 +268,38 @@ module HankoXml
             "#{key_type_name(pkey.class)} key; use signature_method: #{SIGNATURE_METHOD_FOR_KEY[pkey.class].inspect}"
     end
 
+    # With +signature+, the one <Signature> at that document-order index, to
+    # agree with Verifier's Integer index (S-11). Otherwise every signature,
+    # innermost first, so nested signatures are signed before the ones that
+    # envelope them.
+    def target_signatures(signatures, all_sigs_in_order, signature)
+      return signatures.sort_by { |node| -node.ancestors.size } unless signature
+
+      target = all_sigs_in_order[signature]
+      raise HankoXml::ConfigurationError, "signature: #{signature.inspect} not found" unless target
+
+      [target]
+    end
+
+    # A Node other than the root is the default reference target (API_CONTRACT.md
+    # §6.2, #96): with no references: of its own, the Signer signs "#<its Id>",
+    # exactly as if the caller had written references: ["#<its Id>"]. Returns
+    # that Signer, or nil when the input is a whole document, the root, or
+    # this Signer already names its references.
+    def signer_for_node(input)
+      return nil unless HankoXml::Dom.node?(input) && !HankoXml::Dom.document?(input)
+      return nil if input == input.document.root || !@references.empty?
+
+      id = @id_attributes.lazy.map { |attr| input[attr.is_a?(Array) ? attr[1].to_s : attr.to_s] }.find { |v| v }
+      unless id
+        raise HankoXml::ConfigurationError,
+              "a #{input.name} node was passed to sign, so it is the reference target, but it has no " \
+              "#{@id_attributes.inspect} attribute; give it one or pass references:"
+      end
+
+      self.class.new(**to_h.merge(references: ["##{id}"]))
+    end
+
     # Built-in method names encode the key class in the prefix: rsa_sha256
     # and rsa_pss_sha256 are RSA, ecdsa_sha256 and ecdsa_sha3_256 are EC.
     # HMAC and custom registrations are left to xmlsec (needed is nil).
@@ -332,7 +354,7 @@ module HankoXml
         end
 
         template_node = template(doc)
-        @placement.insert(doc, template_node)
+        @placement.insert(doc, template_node, namespaces: @namespaces)
         [[template_node], false]
       else
         if @template_mode == :build

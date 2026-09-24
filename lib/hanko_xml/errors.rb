@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "openssl"
+
 module HankoXml
   # Base class for everything this gem raises. Rescue this to catch anything
   # hanko_xml-specific. See API_CONTRACT.md §5.10 for the full hierarchy and
@@ -7,18 +9,38 @@ module HankoXml
   # TypeError/IOError, which would shadow core Ruby constants inside this
   # module).
   class Error < StandardError
-    # Structured xmlsec1 error log lines captured for this failure, when the
-    # native layer produced any (populated starting Phase 2).
-    attr_accessor :xmlsec_errors
+    # A private key in PEM form, including a truncated one. Redacted from
+    # every message and log line (API_CONTRACT.md §5.10, #96).
+    PRIVATE_KEY_PEM = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?(?:-----END [A-Z0-9 ]*PRIVATE KEY-----|\z)/m
+    FILTERED = "[FILTERED]"
+
+    # The xmlsec1 error log lines captured for this failure, or libxml2's
+    # diagnostics for a ParseError / SchemaError. Untrusted: they can quote
+    # the document.
+    attr_reader :xmlsec_errors
 
     # The <ds:Signature> Nokogiri::XML::Element this error relates to, when
     # one was located.
     attr_accessor :signature_node
 
+    # Never carries key material: a HankoXml::Key or OpenSSL::PKey passed as
+    # +message+ becomes [FILTERED], and private-key PEM text is redacted.
+    # (NativeVersionMismatch can be raised before key.rb is loaded.)
+    def self.filter(value)
+      return nil if value.nil?
+      return FILTERED if value.is_a?(OpenSSL::PKey::PKey) || (defined?(HankoXml::Key) && value.is_a?(HankoXml::Key))
+
+      value.to_s.gsub(PRIVATE_KEY_PEM, FILTERED)
+    end
+
     def initialize(message = nil, xmlsec_errors: [], signature_node: nil)
-      super(message)
-      @xmlsec_errors = xmlsec_errors
+      super(Error.filter(message))
+      self.xmlsec_errors = xmlsec_errors
       @signature_node = signature_node
+    end
+
+    def xmlsec_errors=(lines)
+      @xmlsec_errors = Array(lines).map { |line| Error.filter(line) }
     end
   end
 

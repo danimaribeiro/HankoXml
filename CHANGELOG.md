@@ -105,6 +105,47 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **#96:** `ParseError`, `SchemaError` and `NativeError` messages are fixed
+  strings. libxml2's diagnostics, which quote the document, moved to
+  `#xmlsec_errors`. A native error during verification keeps its class and
+  xmlsec log instead of being re-wrapped as `NativeError`/`ParseError` with its
+  message copied. Anything that matched libxml2 text in `#message` (for
+  example `/depth/`) must match `#xmlsec_errors` now.
+- **#96:** `HankoXml::Error` filters key material: a `Key` or `OpenSSL::PKey`
+  passed as the message becomes `[FILTERED]`, and private-key PEM text is
+  redacted from `#message` and `#xmlsec_errors`, as the contract promised.
+- **#96:** `Policy#enforce!` / `#violations` called without `document:`
+  (or `sig_node:` / `id_attributes:`) report `require_signed_root` and
+  `reject_duplicate_ids` as violations instead of silently skipping them.
+  `Signer` and `Verifier` always passed the document, so they are unaffected.
+- **#96:** A non-root `Nokogiri::XML::Node` passed to `Signer#sign` / `#sign!`
+  is the default reference target (`"#<its Id>"`) when the `Signer` has no
+  `references:`. It used to sign the whole document. A node without an Id
+  raises `ConfigurationError`.
+- **#96:** `Verification::Reference#errors` holds a `DigestMismatch` (with
+  `#reference_uri`) when xmlsec reported that reference's digest as wrong. It
+  was always `[]`.
+- **#96:** `HankoXml.capabilities` reports every capability as unavailable
+  without Nokogiri, including `verify`; it used to claim verification worked.
+  `NokogiriRequired` no longer suggests a DOM-free alternative that doesn't
+  exist.
+- **#96:** `Verifier` `signature: :all` raises a `ConfigurationError` that
+  points at `#verify_all` (#105).
+- **#96:** `Verification#signature_method` and `#canonicalization_method`
+  return registry names (`:rsa_sha256`, `:exc_c14n`), as the contract always
+  showed, instead of URI Strings. An algorithm the registry doesn't know comes
+  back as its URI, here and in `#digest_methods` (which used to give `nil`).
+- **#96:** RBS: `Verification` (`Reference`, `certificate`, `references`,
+  `signed`, `covers_root?`, the metadata readers), `Signer` (`key:` required,
+  `namespaces:`, `policy:`, public `template`, `reference`), `Policy`
+  (`referenced_uris:`), `Verifier` (`resolver:`) and `Error` match the code.
+- **#96:** `namespaces:` now reaches every caller-supplied XPath. The
+  `Signer`'s map is merged under a `Placement`'s own, and `Verification#at_signed`
+  / `#signed` see their `ns` argument merged over the `Verifier`'s map and
+  `HankoXml::NS` (so `ds:` is always bound). Before, both options were stored
+  and ignored. A `Placement` XPath with an unbound prefix raises
+  `PlacementError` instead of Nokogiri's `XPath::SyntaxError`.
+
 - **#91:** `Verification#signed_nodes` returns `[]` when the verification is
   invalid, like `#signed?`. It used to return the resolved reference nodes even
   though nothing had been proven about them.
@@ -303,6 +344,19 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   `signKey` so KeyInfo is ignored, matching `API_CONTRACT.md` §5.6.
 
 ### Changed
+
+- **#96:** API_CONTRACT no longer describes features that don't exist. It now
+  says 0.1.0 needs Nokogiri for every call (DOM-free verification is #102), and
+  drops `Verifier.without_trust_verification` / `#trusted?` (#103),
+  `Verification#signed_info` / `#certificate_chain` / `#key_info` (#104),
+  `signature: :all` (#105), the `HankoXml.parse` NOBLANKS guard and
+  `zero_copy:`. It also records that `valid?` raises `MultipleSignatures`
+  (S-11).
+- **#96:** API_CONTRACT's stale sections now match the code: PKCS#12 bundles
+  hold `HankoXml::Key`s, `Policy`'s field list includes `schema:`,
+  `nokogiri_ext`'s `doc.sign` returns a `SignedDocument`,
+  `SignedDocument#inspect` has no `valid=`, and §7 lists the six native
+  functions with `Native.verify`'s real arguments and result keys.
 
 - **#89:** **Breaking:** `HankoXml.verify` is removed and `HankoXml.valid?` is
   added, as `API_CONTRACT.md` §5.1 always specified. A `Verification` is always

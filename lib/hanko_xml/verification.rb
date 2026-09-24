@@ -5,7 +5,7 @@ module HankoXml
   # Provides methods to inspect which nodes were actually signed, defending against
   # XML Signature Wrapping (XSW) attacks.
   # See API_CONTRACT.md §5.4.
-  class Verification
+  class Verification # rubocop:disable Metrics/ClassLength
     # Details about a specific `<Reference>` inside the verified signature.
     Reference = Struct.new(:uri, :node, :digest_method, :transforms, :valid?, :errors, keyword_init: true) do
       # @return [Boolean] True if the reference uses the enveloped-signature transform.
@@ -15,11 +15,11 @@ module HankoXml
     end
 
     attr_reader :valid, :errors, :signature_info, :signature_node, :document, :certificate, :id_attributes, :resolver,
-                :references, :reference_element_indexes, :reference_valid
+                :references, :reference_element_indexes, :reference_valid, :namespaces
 
     def initialize(valid:, errors:, signature_info:, signature_node:, document:, certificate: nil,
                    id_attributes: %w[Id ID id], resolver: nil, reference_element_indexes: nil,
-                   reference_valid: nil)
+                   reference_valid: nil, namespaces: {})
       @valid = valid
       @errors = errors.dup
       @signature_info = signature_info
@@ -28,6 +28,7 @@ module HankoXml
       @certificate = certificate
       @id_attributes = (id_attributes || []).dup.freeze
       @resolver = resolver
+      @namespaces = (namespaces || {}).transform_keys(&:to_s).freeze
       # Native.verify returns document-order element indexes from libxml2's ID
       # table (the same table xmlsec used for `#id`). When present, those are
       # authoritative for #references[].node / #signed? — Ruby does not
@@ -52,17 +53,21 @@ module HankoXml
     end
 
     # --- Authenticated metadata ---
+    # Registry names (:rsa_sha256), as API_CONTRACT.md §5.4 shows, or the URI
+    # String for an algorithm the registry does not know (#96).
     def signature_method
-      signature_info&.signature_method
+      signature_info && (signature_info.signature_method_name || signature_info.signature_method)
     end
 
     def canonicalization_method
-      signature_info&.canonicalization_method
+      signature_info && (signature_info.canonicalization_method_name || signature_info.canonicalization_method)
     end
 
     def digest_methods
       # nil signature_info: a verification that failed before inspection (#94).
-      signature_info ? signature_info.references.map(&:digest_method_name) : []
+      return [] unless signature_info
+
+      signature_info.references.map { |ref| ref.digest_method_name || ref.digest_method }
     end
 
     def signed_nodes
@@ -107,8 +112,10 @@ module HankoXml
       !covers_root?
     end
 
+    # +ns+ is merged over the Verifier's +namespaces:+, which is merged over
+    # HankoXml::NS, so +ds:+ is always bound (#96).
     def at_signed(xpath, ns = {})
-      node = document.at_xpath(xpath, ns)
+      node = document.at_xpath(xpath, xpath_namespaces(ns))
       raise HankoXml::NotSignedError, "No node found" unless node
       raise HankoXml::NotSignedError, "Node is not signed" unless signed?(node)
 
@@ -116,13 +123,17 @@ module HankoXml
     end
 
     def signed(xpath, ns = {})
-      nodes = document.xpath(xpath, ns).to_a
+      nodes = document.xpath(xpath, xpath_namespaces(ns)).to_a
       raise HankoXml::NotSignedError, "Some nodes are not signed" unless nodes.all? { |n| signed?(n) }
 
       nodes
     end
 
     private
+
+    def xpath_namespaces(ns)
+      HankoXml::NS.merge(namespaces).merge((ns || {}).transform_keys(&:to_s))
+    end
 
     def build_references
       return [] unless signature_info
@@ -136,7 +147,7 @@ module HankoXml
           digest_method: ref.digest_method_name,
           transforms: ref.transform_names,
           valid?: reference_valid_for(index),
-          errors: []
+          errors: reference_errors_for(ref, index)
         ).freeze
       end
     end
@@ -154,6 +165,16 @@ module HankoXml
 
       status = @reference_valid[index]
       status.nil? ? valid? : status
+    end
+
+    # A DigestMismatch only when xmlsec itself reported this Reference's
+    # digest as wrong; the fallback in #reference_valid_for proves nothing
+    # about one Reference (#96). The URI is document text, so it goes in
+    # #reference_uri, not the message.
+    def reference_errors_for(ref, index)
+      return [] unless @reference_valid && @reference_valid[index] == false
+
+      [HankoXml::DigestMismatch.new("a <Reference>'s digest does not match", reference_uri: ref.uri).freeze]
     end
 
     # When Native.verify supplied element indexes, those are the authority.

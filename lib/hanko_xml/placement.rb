@@ -69,16 +69,22 @@ module HankoXml
       end
     end
 
-    # Resolves +target+ to exactly one Nokogiri::XML::Node within +doc+,
-    # merging Placement#namespaces over HankoXml::NS. Raises
+    # Resolves +target+ to exactly one Nokogiri::XML::Node within +doc+.
+    # The XPath sees HankoXml::NS, then the Signer's +namespaces:+, then
+    # Placement#namespaces, each merged over the last (#96). Raises
     # HankoXml::PlacementError if the XPath matches zero or more than one
     # node.
-    def resolve(doc)
+    def resolve(doc, namespaces: {})
       return doc.root if target.nil?
       return target if HankoXml::Dom.node?(target)
 
-      ns = HankoXml::NS.merge(namespaces)
-      matches = doc.xpath(target, ns)
+      ns = HankoXml::NS.merge((namespaces || {}).transform_keys(&:to_s)).merge(self.namespaces.transform_keys(&:to_s))
+      matches = begin
+        doc.xpath(target, ns)
+      rescue Nokogiri::XML::XPath::SyntaxError
+        raise HankoXml::PlacementError,
+              "placement XPath #{target.inspect} is not valid XPath; bind every prefix it uses in namespaces:"
+      end
 
       if matches.empty?
         raise HankoXml::PlacementError, "placement XPath #{target.inspect} matched no nodes"
@@ -91,8 +97,8 @@ module HankoXml
     end
 
     # Inserts +signature_node+ into +doc+ per this placement's mode.
-    # Returns +signature_node+.
-    def insert(doc, signature_node)
+    # +namespaces+ are the Signer's, see #resolve. Returns +signature_node+.
+    def insert(doc, signature_node, namespaces: {})
       case mode
       when :append_to_root
         doc.root.add_child(signature_node)
@@ -103,14 +109,14 @@ module HankoXml
           doc.root.add_child(signature_node)
         end
       when :append_to
-        resolve(doc).add_child(signature_node)
+        resolve(doc, namespaces: namespaces).add_child(signature_node)
       when :prepend_to
-        node = resolve(doc)
+        node = resolve(doc, namespaces: namespaces)
         node.children.first ? node.children.first.add_previous_sibling(signature_node) : node.add_child(signature_node)
       when :after
-        resolve(doc).add_next_sibling(signature_node)
+        resolve(doc, namespaces: namespaces).add_next_sibling(signature_node)
       when :before
-        resolve(doc).add_previous_sibling(signature_node)
+        resolve(doc, namespaces: namespaces).add_previous_sibling(signature_node)
       when :detached
         # Caller does not insert; Signer#template returns the built node.
       when :custom

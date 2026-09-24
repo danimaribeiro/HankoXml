@@ -36,9 +36,9 @@ certificate + CA chain in one go.
 
 ```ruby
 bundle = HankoXml::Key.from_pkcs12("cert.pfx", password: ENV["PFX_PASSWORD"])
-bundle.key           # => OpenSSL::PKey::RSA
-bundle.certificate   # => OpenSSL::X509::Certificate
-bundle.certificates  # => [leaf, *ca_chain]
+bundle.key           # => HankoXml::Key (the private key)
+bundle.certificate   # => HankoXml::Key (the leaf certificate)
+bundle.certificates  # => [leaf, *ca_chain], each a HankoXml::Key
 
 signer = HankoXml::Signer.new(**bundle.to_h)   # key:, certificate:, certificates:
 ```

@@ -36,6 +36,9 @@ RSpec.describe "S-09 per-reference validity" do
     expect(result.valid?).to be false
     expect(result.references[0]).to be_valid
     expect(result.references[1]).not_to be_valid
+    expect(result.references[0].errors).to eq([])
+    expect(result.references[1].errors.map(&:class)).to eq([HankoXml::DigestMismatch])
+    expect(result.references[1].errors.first.reference_uri).to eq("#b")
   end
 
   it "reports every reference valid when the signature genuinely verifies" do
@@ -46,5 +49,6 @@ RSpec.describe "S-09 per-reference validity" do
 
     expect(result.valid?).to be true
     expect(result.references.map(&:valid?)).to eq([true, true])
+    expect(result.references.map(&:errors)).to eq([[], []])
   end
 end

@@ -13,7 +13,7 @@ discovered by the counterparty.
 
 ```ruby
 signed = HankoXml.sign(doc, key: key, certificate: cert)
-# => #<HankoXml::SignedDocument signatures=1 valid=true>
+# => #<HankoXml::SignedDocument signatures=1>
 
 signed.to_xml                       # => String, always AS_XML. Safe.
 signed.to_s                         # => same
