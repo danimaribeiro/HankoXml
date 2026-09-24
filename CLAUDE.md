@@ -46,6 +46,8 @@ Nokogiri is the optional DOM layer.
   their subject changes.
 - `ASSURANCE.md`: the roadmap for property-based specs, fuzzing and `unsafe`
   checks. When one of its items lands, move it to "In place".
+- `PORTS.md`: the plan for Rust and Python ports sharing one core. Mark a phase
+  done when it lands.
 
 ## Security conventions
 
