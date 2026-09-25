@@ -46,8 +46,8 @@ plan is therefore to move the language-neutral security logic into the Rust core
 first, and have the Ruby gem become the first thin binding over it.** The ports
 come after that.
 
-This reverses part of the API_CONTRACT.md §3 rule, so it needs a decision before
-Phase 1 starts. See "Decisions to make".
+This reverses part of the API_CONTRACT.md §3 rule. That was decided on
+2026-09-24 (see "Decisions"), and API_CONTRACT.md §3 is rewritten in Phase 0.
 
 ## Target architecture
 
@@ -113,7 +113,7 @@ conformance/            shared cases every binding must pass (see below)
   before verify (S-04), key pinning as `signKey` (S-01), and per-reference
   digest status (S-09).
 - **Trust-chain validation**, now done by `OpenSSL::X509::Store`. See
-  "Decisions to make".
+  "Decisions", item 3.
 - **XAdES-B**: the signed-properties checks and `SigningCertificate(V2)`
   matching.
 
@@ -142,9 +142,13 @@ Each phase is one or more PRs and leaves the Ruby gem shippable. The Ruby spec
 suite is the safety net throughout: it must pass unchanged, except for specs
 that assert where code lives.
 
-### Phase 0: Decisions and conformance seed
+### Phase 0: Contract update and conformance seed
 
-- Settle the decisions below and update API_CONTRACT.md §3.
+- Rewrite API_CONTRACT.md §3 for "security in the core, ergonomics in the
+  binding" (Decisions, item 2).
+- Check that `hanko-xml` is free on crates.io and PyPI (Decisions, item 5).
+- Decide the repo's visibility before the first crate or wheel is published
+  (Decisions, item 1).
 - Create `conformance/` and a Ruby runner for it, seeded from the existing
   fixtures and adversarial cases, passing against today's gem. This pins current
   behavior before anything moves.
@@ -207,32 +211,79 @@ in the same PR as each step. The public Ruby API doesn't change.
   rustdoc and Python API references next to the YARD one.
 - RELEASING.md covers all three packages.
 
-## Decisions to make
+## Decisions
 
-1. **Policy moves into Rust.** This replaces "policy in Ruby, crypto in Rust"
-   (API_CONTRACT.md §3) with "security in the core, ergonomics in the binding".
-   Its §3 argument was that Ruby is memory-safe and Rust grows `unsafe` with every
-   feature. That still holds if the ported logic is safe Rust and `unsafe` stays
-   confined to the FFI module, which Phase 1 enforces at compile time.
-   Recommended.
-2. **Who validates certificate chains.** Today Ruby's `OpenSSL::X509::Store`
-   does it. The options in the core are:
-   - xmlsec's keys manager with X.509 verification, which follows the "let
-     xmlsec1 do the security work" rule;
-   - the `openssl` crate's `X509Store`, linked to the same vendored OpenSSL,
-     which keeps today's exact semantics.
+Settled on 2026-09-24:
 
-   The keys manager is the recommendation, provided the conformance suite shows
-   the same results on every current trust case. If it doesn't, fall back to
-   the `openssl` crate.
-3. **Package names.** `hanko-xml` on crates.io and PyPI, imported as `hanko_xml`
-   in Python. Check both names are free before Phase 3.
-4. **Versioning.** Each package gets its own version, and every release notes the
-   core version it bundles. The alternative is lockstep releases, which are
-   simpler to explain but force empty releases.
-5. **CI cost.** CI is paused for budget reasons. The Python wheel matrix and a
-   Rust test job add to that cost. Consider running the full matrix only on
-   release tags and a small Linux job on PRs once CI resumes.
+1. **One repository for all three packages.** Phase 2 moves checks from Ruby into
+   the core one PR at a time, and the Ruby specs have to prove each move in that
+   same PR. Split repos would turn every step into a core release plus a version
+   bump in the gem. The core's `S-xx` findings, SECURITY_REVIEW.md, the fuzz
+   targets and the conformance suite stay in one place, and the conformance
+   suite runs against all three bindings in one CI run. polars, pydantic-core,
+   tokenizers and cryptography publish a Rust core and bindings from one repo
+   the same way.
+   - **CI:** every workflow filters on paths, so a Python-only change doesn't
+     build gems (as `pages.yml` already does). A change under `crates/` runs
+     all three bindings, since all three depend on the core.
+   - **Tags:** one prefix per package: `gem-v*`, `crate-v*` and `py-v*`. Each
+     release workflow triggers only on its own prefix.
+   - **Discoverability:** the README lists all three packages, and the
+     crates.io and PyPI metadata link to the package's subdirectory.
+   - **Visibility:** the repo is private today. Publishing works from a private
+     repo, but docs.rs and PyPI would link to source nobody can open. Decide
+     before Phase 3.
+   - A binding can still move out later, once the core API is stable, if it gets
+     its own maintainers or pace. Splitting later is easy; merging repos back
+     together is not.
+2. **Policy moves into Rust.** The reason for the ports is to reuse the security
+   rules, so they live in the core. This replaces "policy in Ruby, crypto in
+   Rust" (API_CONTRACT.md §3) with "security in the core, ergonomics in the
+   binding". §3 argued that Ruby is memory-safe while Rust grows `unsafe` with
+   every feature. That still holds if the ported logic is safe Rust and `unsafe`
+   stays in the FFI module, which Phase 1 enforces at compile time.
+3. **Certificate chains: xmlsec's X.509 store, called directly, with our checks on
+   top. Recommended, pending the conformance suite.** Both options run OpenSSL's
+   own `X509_verify_cert` underneath, so neither validates chains better. The
+   question is which wrapper, and what each costs:
+   - **xmlsec's normal path conflicts with S-01.** xmlsec validates chains while
+     resolving `<KeyInfo>`/`<X509Data>` through a keys manager. That is the path
+     where the document chooses the key, which S-01 forbids. So the core would
+     call `xmlSecOpenSSLX509StoreVerify` directly (public in xmlsec1 1.3.12),
+     with the certificates from `<KeyInfo>` as untrusted input and the trusted
+     roots in the store. The leaf's public key is then still pinned as
+     `signKey`, as `store:` does today.
+   - **Some checks aren't xmlsec features, so they stay in the core either way:**
+     rejecting a `<KeyInfo>` where more than one certificate chains to the store
+     (xmlsec returns the first certificate that verifies), requiring
+     `digitalSignature` or `nonRepudiation` in KeyUsage (#63), and
+     `certificate_subject:` matching.
+   - **System and vendored builds may disagree.** xmlsec1 1.3 added X.509 strict
+     checks and `XMLSEC_KEYINFO_FLAGS_X509DATA_SKIP_TIME_CHECKS`. Check whether
+     the system 1.2.39 build can express `check_certificate_validity: false`
+     and a fixed verification time (`certsVerificationTime`) with the same
+     results. If it can't, trust results would depend on the build, which the
+     rule "must pass on both" doesn't allow.
+   - **Revocation:** both options support CRLs only, not OCSP. There's no
+     difference here.
+   - **Fallback:** the `openssl` crate's `X509Store`, linked to the same vendored
+     OpenSSL, keeps today's semantics exactly. Use it if the conformance suite
+     shows a trust case where xmlsec's store differs and can't be configured to
+     match, or if the 1.2.39 gap is real.
+4. **Each package has its own version and its own changelog.** A core change is
+   released in each binding that ships it. The changelog entry in that binding
+   names the core change, so no package gets an empty release. Every release
+   records the core version it bundles (for Ruby, in `NativeVersion`).
+   `CHANGELOG.md` stays the gem's, and each other package gets a `CHANGELOG.md`
+   in its own directory. The `**#NN:**` tagging rule applies to all of them.
+
+Still open:
+
+5. **Package names.** `hanko-xml` on crates.io and PyPI, imported as `hanko_xml`
+   in Python. Check both are free in Phase 0.
+6. **CI cost.** CI is paused for budget reasons. The Python wheel matrix and a
+   Rust test job add to that cost. Once CI resumes, consider running the full
+   matrix only on release tags, with a small Linux job on PRs.
 
 ## Risks
 
