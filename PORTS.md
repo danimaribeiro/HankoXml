@@ -478,7 +478,15 @@ Each phase is one or more PRs and leaves the Ruby gem shippable. The Ruby spec
 suite is the safety net throughout: it must pass unchanged, except for specs
 that assert where code lives.
 
+Each phase is a GitHub milestone with its tickets listed under the heading
+(created 2026-09-24). The ports start after the Ruby gem ships 1.0, which has
+its own two milestones: "Ruby 1.0: fixes" for the open issues, then
+"Ruby 1.0: release" (#110, #111, #112 plus #18 to #21).
+
 ### Phase 0: Contract update, open decisions and conformance seed
+
+Milestone "Ports 0: contract, names, conformance seed": #113 (§3 rewrite),
+#114 (names), #115 (manifest vocabulary), #116 (conformance seed).
 
 - Rewrite API_CONTRACT.md §3 for "shared rules in the core, host-bound checks
   and ergonomics in each binding" (Ground rules, Decisions, item 2).
@@ -494,6 +502,9 @@ that assert where code lives.
   item 5).
 
 ### Phase 1: Split the crate (no behavior change)
+
+Milestone "Ports 1: crate split": #117 (the split), #118 (`unsafe`, P3),
+#119 (OpenSSL, P2 B), #120 (verify both builds), #121 (workflows).
 
 - Move bindgen, `build.rs` and `build/vendor.rs` into `crates/hanko-xml-sys`,
   along with `dependencies.yml` from the repo root, since `cargo package` only
@@ -512,6 +523,9 @@ that assert where code lives.
   pass.
 
 ### Phase 2: Move the easy-to-share security logic into the core
+
+Milestone "Ports 2: core takes the shared security logic": #122 (ASan and
+fuzz, P6), then #123 to #128 for steps 1 to 6.
 
 The ASan run and the `cargo-fuzz` verify target (P6) come first. Then, in this
 order, each step a PR. Each step deletes the Ruby it replaces, unless Ruby keeps
@@ -548,7 +562,9 @@ keywords, such as `trust_anchors:` and `crls:` under P1 option A, may be added.
 
 ### Phase 3: Rust crate
 
-Starts once Phase 2 is complete and the repo is public.
+Starts once Phase 2 is complete and the repo is public. Milestone "Ports 3:
+Rust crate": #129 (API), #130 (features, bindings, docs.rs, Windows, P7),
+#131 (hidden hooks), #132 (stress test, P9), #133 (docs and crates.io).
 
 - A public API for `hanko-xml`: a `Signer` builder, `Verifier`, `Policy`
   presets, and a `Verification` with the signed-reference view. It works on
@@ -565,7 +581,9 @@ Starts once Phase 2 is complete and the repo is public.
 
 ### Phase 4: Python package
 
-Starts once Phase 2 is complete and the repo is public.
+Starts once Phase 2 is complete and the repo is public. Milestone "Ports 4:
+Python package": #134 (PyO3 glue and wheels), #135 (Python layer), #136
+(chain validation), #137 (SignXML interop), #138 (PyPI).
 
 - PyO3 glue that holds the GIL during core calls (P9), with abi3 wheels built by
   maturin and the static vendored build: x86_64-linux and aarch64-linux
@@ -584,6 +602,8 @@ Starts once Phase 2 is complete and the repo is public.
 - Publishing to PyPI with trusted publishing.
 
 ### Phase 5: Docs and release
+
+Milestone "Ports 5: docs and release": #139 (docs site), #140 (RELEASING.md).
 
 - The docs site gets a language switcher on guide and reference pages, plus
   rustdoc and Python API references next to the YARD one.
