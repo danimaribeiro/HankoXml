@@ -10,7 +10,12 @@ with one or more ways to solve each, are under "Problems and options" (P1 to
 P10). The rest of the plan points to them. The second pass added P1 option C,
 moved the P2 recommendation to option B, and added the pregenerated bindings
 (P7), the gemspec allowlist (Phase 1), the XSD skip flag (Phase 2) and the fork
-note (P9).
+note (P9). The options were then decided the same day (Decisions, item 7).
+
+The Rust crate and the Python package will get names of their own (Decisions,
+item 6). Until they are chosen, `hanko-xml` and `hanko_xml` below stand in for
+them wherever the text means the crate or the Python package rather than the
+gem.
 
 ## Ground rules for the ports
 
@@ -193,11 +198,10 @@ core once, and all three packages benefit.
 
 ## Problems and options
 
-Found in the 2026-09-24 review. The recommended option is marked. None of these
-is decided until it moves to "Decisions".
-
-In short, the recommended path is: P1 C, P2 B, P3 A, P4 A, P5 A, P7 A, P9 A and
-P10 A, plus the single fixes for P6 and P8.
+Found in the 2026-09-24 reviews. The recommended option is marked, and each
+was decided on 2026-09-24 (Decisions, item 7): P1 C, P2 B, P3 A, P4 A, P5 A,
+P7 A, P9 A, and P10 resolved by the crate's own name, plus the single fixes for
+P6 and P8. The problems and the options stay here as the record of why.
 
 ### P1. Host objects can't cross the FFI
 
@@ -445,19 +449,28 @@ later, which abi3 wheels don't cover).
 
 ### P10. Crate names collide
 
-The gem's extension package is named `hanko_xml`, and the core would be
-`hanko-xml`. Cargo and crates.io treat `-` and `_` as the same, so the workspace
-would have two crates named `hanko_xml`.
+The gem's extension package is named `hanko_xml`. If the core were also called
+`hanko-xml`, Cargo and crates.io, which treat `-` and `_` as the same, would
+see two crates named `hanko_xml` in one workspace.
 
-- **Option A (recommended): rename the extension crate.** Give it a distinct
-  package and library name (for example `hanko_xml_ruby`, still
-  `publish = false`), and set the Ruby entry point explicitly with
-  `#[magnus::init(name = "hanko_xml")]`. Check that rb-sys still installs it as
-  `hanko_xml.so`. The core keeps `hanko-xml`, the name Rust users import. The
-  PyO3 module gets its own name, such as `hanko_xml._native`.
+- **Option A: rename the extension crate.** This is less free than it looks.
+  rb_sys builds the Makefile so that `RUSTLIB` is `lib<target>.so`, where
+  `<target>` is the argument to `create_rust_makefile` in `extconf.rb`, and
+  copies it to `<target>.so`. So the crate's library name and the installed
+  file name must match, and renaming the crate means renaming the whole
+  chain: the package, the extconf target (`hanko_xml/hanko_xml_ruby`),
+  `#[magnus::init(name = "hanko_xml_ruby")]` (Magnus supports `name` and emits
+  `Init_hanko_xml_ruby`, which Ruby expects for that file name), the two
+  `require_relative` lines in `lib/hanko_xml.rb`, the Rakefile's extension
+  task, the artifact list in `spec/symbols_spec.rb` and the cross-gem install
+  check.
 - **Option B: rename the core's library instead.** Keep the extension as is and
-  give the core crate a different library name. It is simpler for the gem, but
-  Rust users then import a name that doesn't match the package.
+  give the core crate a different library name. Rust users then import a name
+  that doesn't match the package.
+- **Resolved by Decisions, item 6:** the Rust crate gets a name of its own, so
+  there is no collision and the extension keeps `hanko_xml`. Option A stays
+  here as the recipe should the extension ever need renaming. The PyO3 module
+  gets a private name under the Python package, such as `<package>._native`.
 
 ## Phases
 
@@ -469,8 +482,11 @@ that assert where code lives.
 
 - Rewrite API_CONTRACT.md §3 for "shared rules in the core, host-bound checks
   and ergonomics in each binding" (Ground rules, Decisions, item 2).
-- Pick options for P1, P2, P3 and P10, since Phase 1 builds on them.
-- Check that `hanko-xml` is free on crates.io and PyPI (Decisions, item 6).
+- The options for P1 to P10 are decided (Decisions, item 7); Phase 1 builds on
+  P2 and P3.
+- Choose the names of the Rust crate and the Python package (Decisions,
+  item 6), and check they are free on crates.io and PyPI before anything is
+  named after them.
 - Define the manifest vocabulary (P8), then create `conformance/` and a Ruby
   runner for it, seeded from the existing fixtures and adversarial cases, and
   passing against today's gem. This pins current behavior before anything
@@ -487,7 +503,7 @@ that assert where code lives.
   Update the paths in the Rakefile, `.github/workflows/vendored-deps.yml`,
   `spec/packaging_spec.rb`, `spec/symbols_spec.rb` and VENDORING.md. Move
   `dsig.rs` and `errors.rs` into `crates/hanko-xml`. `ext/hanko_xml` keeps
-  only the Magnus glue, renamed per P10.
+  only the Magnus glue, under its current name (P10).
 - Confine `unsafe` per P3, and update `spec/hanko_xml/native_spec.rb` to match.
 - If P2 option B is picked, switch the OpenSSL build over here, since it
   changes the build graph.
@@ -607,10 +623,12 @@ Settled on 2026-09-24:
    (API_CONTRACT.md §3) with "shared rules in the core, host-bound checks and
    ergonomics in each binding". §3 also argued that Rust grows `unsafe` with
    every feature. That is true (P6), and the ground rules accept it.
-3. **Certificate chains: reopened.** The earlier choice was the `openssl` crate,
-   pointed at our vendored OpenSSL. That can't be built as planned (P2), and a
-   caller's `OpenSSL::X509::Store` can't reach the core (P1). What still holds,
-   whichever options win:
+3. **Certificate chains: the `openssl` crate over the OpenSSL that
+   `openssl-sys` owns (P2 option B), with the rules in the core and Ruby's
+   `store:` running only the verify call (P1 option C).** The earlier choice
+   was the `openssl` crate pointed at our vendored OpenSSL, which can't be
+   built as planned (P2), and a caller's `OpenSSL::X509::Store` can't reach the
+   core (P1); item 7 records the evidence. What holds under both:
    - **Not xmlsec's store.** Both P2 options call OpenSSL's `X509_verify_cert`
      directly, which is also what xmlsec's store runs underneath. Going through
      xmlsec's store brings problems:
@@ -644,13 +662,42 @@ Settled on 2026-09-24:
    ones. When CI resumes, consider running the full wheel matrix only on
    release tags, with a small Linux job on PRs.
 
+6. **Each package gets its own name.** The gem stays `hanko_xml`: hanko is
+   Japanese for a seal, a name chosen to sit next to Nokogiri. The Rust crate
+   and the Python package get names that fit their own ecosystems, still to be
+   chosen; `hanko-xml` and `hanko_xml` in this document are placeholders for
+   them. The Rust crate's own name also removes the P10 collision, so the
+   extension crate keeps `hanko_xml`. For the record, `hanko-xml`,
+   `hanko_xml` and `hanko-xml-sys` were unregistered on crates.io and
+   `hanko-xml` on PyPI on 2026-09-24.
+7. **The options in "Problems and options"**, decided on 2026-09-24 with what
+   was checked for each:
+   - **P1, option C.** Needs no outside fact: `Verifier#store_trust` already
+     separates the `StoreContext#verify` call from the leaf, ambiguity,
+     KeyUsage and subject logic, so the two-call split follows its shape.
+   - **P2, option B.** openssl-sys 0.9.117 declares `links = "openssl"`, has a
+     `vendored` feature backed by `openssl-src`, and its build script prints
+     `cargo:include` always and `cargo:root` when vendored, which is what the
+     sys crate needs to configure xmlsec. Whether `openssl-src` honors the
+     hidden-visibility `CFLAGS` and matches the current algorithm set is
+     checked by the Phase 1 spec, not assumed.
+   - **P3, P4 and P9, option A.** Design choices with no open facts. The P9
+     stress test still runs before the crate is published.
+   - **P5, option A.** xmlsec has `xmlSecTmplSignatureCreateNsPref`, so the
+     core can build the fragment with the `ds:` prefix Ruby's template uses.
+   - **P7, option A** for Linux and macOS, with the pregenerated bindings.
+     Windows is easier than the text above assumed: PyO3 now links
+     `python3.dll` through `raw-dylib`, so the GNU target no longer needs the
+     import-library machinery. Whether a MinGW abi3 wheel loads in python.org's
+     CPython is checked in Phase 4.
+   - **P10.** Resolved by item 6. The rb_sys naming rule is recorded under P10
+     in case the extension ever needs renaming.
+   - **P6 and P8** are fixes, not choices, and stand as written.
+
 Still open:
 
-6. **Package names.** `hanko-xml` on crates.io and PyPI, imported as `hanko_xml`
-   in Python. Check both are free in Phase 0. The extension crate's rename is
-   P10.
-7. **The options in "Problems and options"**, until each one is picked and
-   recorded here. P1, P2, P3 and P10 are needed before Phase 1.
+8. **The names themselves** for the Rust crate and the Python package (item 6).
+   Phase 0 needs them before `crates/` and `python/` are created.
 
 ## Risks
 
