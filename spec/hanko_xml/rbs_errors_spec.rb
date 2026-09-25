@@ -13,8 +13,9 @@ RSpec.describe "RBS error hierarchy" do
   end
 
   let(:actual) do
-    HankoXml.constants.map { |name| HankoXml.const_get(name) }
-            .select { |const| const.is_a?(Class) && const <= HankoXml::Error && const != HankoXml::Error }
+    HankoXml.constants.map { |name| HankoXml.const_get(name) }.select do |const|
+      const.is_a?(Class) && const <= HankoXml::Error && const != HankoXml::Error
+    end
   end
 
   it "declares every error class with the superclass it really has" do

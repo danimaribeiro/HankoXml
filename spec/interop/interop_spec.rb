@@ -71,10 +71,14 @@ module InteropVectors
       "signature-rsa-enveloped" => [[:store, "certs/rsa-ca-cert.der"], :valid],
       "signature-rsa-enveloping" => [[:store, "certs/rsa-ca-cert.der"], :valid],
       # xmlsec expects both of these to fail too.
-      "signature-rsa-enveloped-bad-digest-val" => [[:certificate, "certs/rsa-cert.der"],
-                                                   [:native, /data and digest do not match/]],
-      "signature-rsa-enveloped-bad-sig" => [[:certificate, "certs/rsa-cert.der"],
-                                            [:schema, /Reference': Missing child/]],
+      "signature-rsa-enveloped-bad-digest-val" => [
+        [:certificate, "certs/rsa-cert.der"],
+        [:native, /data and digest do not match/]
+      ],
+      "signature-rsa-enveloped-bad-sig" => [
+        [:certificate, "certs/rsa-cert.der"],
+        [:schema, /Reference': Missing child/]
+      ],
       "signature-hmac-md5-c14n-enveloping" => [[:certificate, "certs/rsa-cert.der"], HMAC],
       "signature-hmac-sha1-40-c14n-comments-detached" => [[:certificate, "certs/rsa-cert.der"], HMAC],
       "signature-hmac-sha1-40-exclusive-c14n-comments-detached" => [[:certificate, "certs/rsa-cert.der"], HMAC],
@@ -84,14 +88,20 @@ module InteropVectors
       "signature-dsa-detached" => [[:certificate, "certs/dsa-cert.der"], :valid],
       "signature-rsa-detached" => [[:certificate, "certs/rsa-cert.der"], :valid],
       "signature-big" => [[:certificate, "certs/rsa-cert.der"], [:policy, /more than this policy's max_references/]],
-      "signature-rsa-xpath-transform-enveloped" => [[:certificate, "certs/rsa-cert.der"],
-                                                    [:policy, /\(:xpath\) .* not in this policy's transforms/]],
+      "signature-rsa-xpath-transform-enveloped" => [
+        [:certificate, "certs/rsa-cert.der"],
+        [:policy, /\(:xpath\) .* not in this policy's transforms/]
+      ],
       # With a pinned key, a wrong RetrievalMethod would not matter, but
       # Policy refuses RetrievalMethod before that. xmlsec fails the "bad" one.
-      "signature-rsa-detached-xslt-transform-retrieval-method" => [[:certificate, "certs/rsa-cert.der"],
-                                                                   RETRIEVAL_METHOD],
-      "signature-rsa-detached-xslt-transform-bad-retrieval-method" => [[:certificate, "certs/rsa-cert.der"],
-                                                                       RETRIEVAL_METHOD],
+      "signature-rsa-detached-xslt-transform-retrieval-method" => [
+        [:certificate, "certs/rsa-cert.der"],
+        RETRIEVAL_METHOD
+      ],
+      "signature-rsa-detached-xslt-transform-bad-retrieval-method" => [
+        [:certificate, "certs/rsa-cert.der"],
+        RETRIEVAL_METHOD
+      ],
       # SignedInfo signs a <Manifest> whose own references are external (and
       # some carry XPath or XSLT). xmlsec does not resolve those (#75): the
       # Manifest element is what is signed, as XML-DSig core validation says.
@@ -121,25 +131,33 @@ module InteropVectors
   # The RSA or DSA public key in the vector's <KeyValue>, as SubjectPublicKeyInfo.
   def key_value(doc)
     ds = { "ds" => HankoXml::NS["ds"] }
-    int = ->(name) { OpenSSL::ASN1::Integer(OpenSSL::BN.new(doc.at_xpath("//ds:KeyValue//ds:#{name}", ds).text.unpack1("m"), 2)) }
+    int = lambda { |name|
+      OpenSSL::ASN1::Integer(OpenSSL::BN.new(doc.at_xpath("//ds:KeyValue//ds:#{name}", ds).text.unpack1("m"), 2))
+    }
 
-    algorithm, parameters, public_key =
-      if doc.at_xpath("//ds:DSAKeyValue", ds)
-        ["DSA", OpenSSL::ASN1::Sequence([int["P"], int["Q"], int["G"]]), int["Y"]]
-      else
-        ["rsaEncryption", OpenSSL::ASN1::Null(nil), OpenSSL::ASN1::Sequence([int["Modulus"], int["Exponent"]])]
-      end
-    spki = OpenSSL::ASN1::Sequence([OpenSSL::ASN1::Sequence([OpenSSL::ASN1::ObjectId(algorithm), parameters]),
-                                    OpenSSL::ASN1::BitString(public_key.to_der)])
+    algorithm, parameters, public_key = if doc.at_xpath("//ds:DSAKeyValue", ds)
+      ["DSA", OpenSSL::ASN1::Sequence([int["P"], int["Q"], int["G"]]), int["Y"]]
+    else
+      ["rsaEncryption", OpenSSL::ASN1::Null(nil), OpenSSL::ASN1::Sequence([int["Modulus"], int["Exponent"]])]
+    end
+    spki = OpenSSL::ASN1::Sequence(
+      [
+        OpenSSL::ASN1::Sequence([OpenSSL::ASN1::ObjectId(algorithm), parameters]),
+        OpenSSL::ASN1::BitString(public_key.to_der)
+      ]
+    )
     OpenSSL::PKey.read(spki.to_der)
   end
 
   def trust(suite, source, doc)
     kind, file = source
     case kind
-    when :key_value then { key: key_value(doc) }
-    when :certificate then { certificate: certificate(suite, file) }
-    when :store then { store: OpenSSL::X509::Store.new.tap { |store| store.add_cert(certificate(suite, file)) } }
+    when :key_value
+      { key: key_value(doc) }
+    when :certificate
+      { certificate: certificate(suite, file) }
+    when :store
+      { store: OpenSSL::X509::Store.new.tap { |store| store.add_cert(certificate(suite, file)) } }
     end
   end
 end
@@ -157,12 +175,14 @@ RSpec.describe "Interop vectors (#62)" do
       vectors.each do |name, (source, outcome)|
         it "#{name}: #{outcome == :valid ? "valid" : outcome.first}" do
           xml = InteropVectors::ROOT.join(suite, "#{name}.xml").binread
-          verification = HankoXml::Verifier.new(
-            **InteropVectors.trust(suite, source, Nokogiri::XML(xml)),
-            policy: HankoXml::Policy.interop,
-            verification_time: InteropVectors::VERIFICATION_TIME[suite],
-            referenced_documents: InteropVectors::REFERENCED_DOCUMENTS
-          ).verify(xml)
+          verification = HankoXml::Verifier
+            .new(
+              **InteropVectors.trust(suite, source, Nokogiri::XML(xml)),
+              policy: HankoXml::Policy.interop,
+              verification_time: InteropVectors::VERIFICATION_TIME[suite],
+              referenced_documents: InteropVectors::REFERENCED_DOCUMENTS
+            )
+            .verify(xml)
 
           if outcome == :valid
             expect(verification.errors).to be_empty
@@ -174,9 +194,12 @@ RSpec.describe "Interop vectors (#62)" do
           error = verification.errors.first
           expect(verification.valid?).to be false
           case kind
-          when :policy then expect(error).to be_a(HankoXml::PolicyError)
-          when :schema then expect(error).to be_a(HankoXml::SchemaError)
-          when :native then expect(error).to be_a(HankoXml::VerificationError)
+          when :policy
+            expect(error).to be_a(HankoXml::PolicyError)
+          when :schema
+            expect(error).to be_a(HankoXml::SchemaError)
+          when :native
+            expect(error).to be_a(HankoXml::VerificationError)
           end
           text = kind == :policy ? error.message : Array(error.xmlsec_errors).join("\n")
           expect(text).to match(pattern)
@@ -191,9 +214,13 @@ RSpec.describe "Interop vectors (#62)" do
     it "phaos signature-#{algorithm}-#{shape} verifies against its pinned certificate" do
       suite = InteropVectors::PHAOS
       xml = InteropVectors::ROOT.join(suite, "signature-#{algorithm}-#{shape}.xml").binread
-      result = HankoXml::Verifier.new(certificate: InteropVectors.certificate(suite, "certs/#{algorithm}-cert.der"),
-                                      policy: HankoXml::Policy.interop,
-                                      verification_time: InteropVectors::VERIFICATION_TIME[suite]).verify(xml)
+      result = HankoXml::Verifier
+        .new(
+          certificate: InteropVectors.certificate(suite, "certs/#{algorithm}-cert.der"),
+          policy: HankoXml::Policy.interop,
+          verification_time: InteropVectors::VERIFICATION_TIME[suite]
+        )
+        .verify(xml)
 
       expect(result.valid?).to be true
     end
@@ -205,8 +232,9 @@ RSpec.describe "Interop vectors (#62)" do
 
     def verify(xml, **trust)
       trust = { certificate: InteropVectors.certificate(suite, "certs/rsa-cert.der") } if trust.empty?
-      HankoXml::Verifier.new(**trust, policy: HankoXml::Policy.interop,
-                                      verification_time: InteropVectors::VERIFICATION_TIME[suite]).verify(xml)
+      HankoXml::Verifier
+        .new(**trust, policy: HankoXml::Policy.interop, verification_time: InteropVectors::VERIFICATION_TIME[suite])
+        .verify(xml)
     end
 
     it "still signs the Manifest element: editing a digest inside it breaks the signature" do
@@ -233,8 +261,12 @@ RSpec.describe "Interop vectors (#62)" do
   it "Policy.strict refuses the SHA-1 signatures that Policy.interop verifies" do
     suite = InteropVectors::PHAOS
     xml = InteropVectors::ROOT.join(suite, "signature-rsa-enveloped.xml").binread
-    result = HankoXml::Verifier.new(certificate: InteropVectors.certificate(suite, "certs/rsa-cert.der"),
-                                    verification_time: InteropVectors::VERIFICATION_TIME[suite]).verify(xml)
+    result = HankoXml::Verifier
+      .new(
+        certificate: InteropVectors.certificate(suite, "certs/rsa-cert.der"),
+        verification_time: InteropVectors::VERIFICATION_TIME[suite]
+      )
+      .verify(xml)
 
     expect(result.errors.first).to be_a(HankoXml::PolicyError)
   end

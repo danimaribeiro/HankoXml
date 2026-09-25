@@ -55,9 +55,12 @@ module HankoXml
     end
 
     def ==(other)
-      other.is_a?(Transform) && other.uri == uri && other.xpath == xpath &&
+      other.is_a?(Transform) &&
+        other.uri == uri &&
+        other.xpath == xpath &&
         other.inclusive_prefixes == inclusive_prefixes
     end
+
     alias eql? ==
 
     def hash
@@ -71,14 +74,13 @@ module HankoXml
       return prefixes.freeze if prefixes.empty?
 
       unless EXCLUSIVE.include?(name)
-        raise HankoXml::ConfigurationError,
-              "inclusive_prefixes: applies only to exclusive c14n transforms, not #{uri}"
+        raise HankoXml::ConfigurationError, "inclusive_prefixes: applies only to exclusive c14n transforms, not #{uri}"
       end
 
       invalid = prefixes.grep_v(PREFIX)
       unless invalid.empty?
         raise HankoXml::ConfigurationError,
-              "inclusive_prefixes: #{invalid.inspect} are not namespace prefixes (NCName or \"#default\")"
+          "inclusive_prefixes: #{invalid.inspect} are not namespace prefixes (NCName or \"#default\")"
       end
 
       prefixes.uniq.freeze

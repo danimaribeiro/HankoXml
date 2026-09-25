@@ -19,19 +19,21 @@ RSpec.describe "S-09 per-reference validity" do
   let(:fragment_policy) { HankoXml::Policy.strict.with(require_signed_root: false) }
 
   def tamper_digest!(doc, reference_index)
-    digest_value = doc.xpath(".//ds:Reference", HankoXml::NS)[reference_index]
-                      .at_xpath("./ds:DigestValue", HankoXml::NS)
+    digest_value = doc.xpath(".//ds:Reference", HankoXml::NS)[reference_index].at_xpath(
+      "./ds:DigestValue",
+      HankoXml::NS
+    )
     digest_value.content = ["\x00" * 32].pack("m0")
   end
 
   it "reports the tampered reference invalid, the untouched one valid, though the signature as a whole is invalid" do
-    signed = HankoXml.sign(two_targets_xml, key: signer_key_pem, certificate: signer_cert_pem,
-                                            references: ["#a", "#b"])
+    signed = HankoXml.sign(two_targets_xml, key: signer_key_pem, certificate: signer_cert_pem, references: ["#a", "#b"])
     doc = signed.document
     tamper_digest!(doc, 1)
 
-    result = HankoXml::Verifier.new(certificate: signer_cert_pem,
-                                    policy: fragment_policy).verify(HankoXml.serialize(doc))
+    result = HankoXml::Verifier
+      .new(certificate: signer_cert_pem, policy: fragment_policy)
+      .verify(HankoXml.serialize(doc))
 
     expect(result.valid?).to be false
     expect(result.references[0]).to be_valid
@@ -42,8 +44,7 @@ RSpec.describe "S-09 per-reference validity" do
   end
 
   it "reports every reference valid when the signature genuinely verifies" do
-    signed = HankoXml.sign(two_targets_xml, key: signer_key_pem, certificate: signer_cert_pem,
-                                            references: ["#a", "#b"])
+    signed = HankoXml.sign(two_targets_xml, key: signer_key_pem, certificate: signer_cert_pem, references: ["#a", "#b"])
 
     result = HankoXml::Verifier.new(certificate: signer_cert_pem, policy: fragment_policy).verify(signed.to_s)
 

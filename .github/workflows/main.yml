@@ -25,7 +25,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Formatting is checked first and alone: it takes seconds, needs neither
+  # libxmlsec1 nor Rust, and a formatting miss should not cost the whole
+  # matrix. RuboCop (inside `rake` below) lints the formatted code, so its
+  # Layout cops are set to what Tuxedo emits (.rubocop.yml).
+  format:
+    name: tuxedo format --check
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+    - uses: ruby/setup-ruby@984c0c890880bbf811283d6f09c4607c62d210a4 # v1.323.0
+      with:
+        ruby-version: '3.4'
+        bundler-cache: true
+
+    # Tuxedo skips hidden directories, so .github/scripts (which RuboCop
+    # does lint) is named explicitly.
+    - name: Check formatting
+      run: bundle exec tuxedo format --check . .github/scripts
+
   build:
+    needs: format
     runs-on: ${{ matrix.os }}
     name: Ruby ${{ matrix.ruby }} on ${{ matrix.os }}
     strategy:

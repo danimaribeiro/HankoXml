@@ -17,12 +17,12 @@ module XadesInteropVectors
   # path => outcome: :valid, or [:policy | :native, message].
   EXPECTED = {
     "signxml/11068_signed.xml" => :valid,
-    "signxml/Signature-X-CZ_SEF-4.xml" => :valid,  # XAdES-T
-    "signxml/Signature-X-CZ_SEF-5.xml" => :valid,  # XAdES-LT
-    "signxml/Signature-X-HU_POL-3.xml" => :valid,  # XAdES-LTA
+    "signxml/Signature-X-CZ_SEF-4.xml" => :valid, # XAdES-T
+    "signxml/Signature-X-CZ_SEF-5.xml" => :valid, # XAdES-LT
+    "signxml/Signature-X-HU_POL-3.xml" => :valid, # XAdES-LTA
     "signxml/Signature-X-SK_DIT-1.xml" => :valid,
     "signxml/Signature-X-UK_ASC-2.xml" => :valid,
-    "signxml/X_AT_SIT_1.xml" => :valid,            # ECDSA
+    "signxml/X_AT_SIT_1.xml" => :valid, # ECDSA
     "signxml/TEST_S1a_C1a_InTL_VALID.xml" => XPATH,
     "dss/validation/xsw/original.xml" => :valid,
     "dss/validation/xsw/TSL-CY-sign.xml" => :valid,
@@ -46,8 +46,9 @@ module XadesInteropVectors
     xml = ROOT.join(path).binread
     certificate = embedded_certificate(xml)
     midpoint = Time.at((certificate.not_before.to_i + certificate.not_after.to_i) / 2)
-    HankoXml::Xades::Verifier.new(certificate: certificate, policy: policy, verification_time: midpoint,
-                                  signature: :first).verify(xml)
+    HankoXml::Xades::Verifier
+      .new(certificate: certificate, policy: policy, verification_time: midpoint, signature: :first)
+      .verify(xml)
   end
 
   def embedded_certificate(xml)
@@ -58,8 +59,9 @@ end
 
 RSpec.describe "XAdES interop vectors (#58)" do
   it "has an expectation for every vendored XAdES file" do
-    files = Dir.glob(XadesInteropVectors::ROOT.join("**", "*.xml").to_s)
-               .reject { |f| f.include?("/corpus/") || f.include?("/signxml-produced/") }
+    files = Dir.glob(XadesInteropVectors::ROOT.join("**", "*.xml").to_s).reject do |f|
+      f.include?("/corpus/") || f.include?("/signxml-produced/")
+    end
     expect(XadesInteropVectors::EXPECTED.keys).to match_array(
       files.map { |f| f.delete_prefix("#{XadesInteropVectors::ROOT}/") }
     )
@@ -98,8 +100,12 @@ RSpec.describe "XAdES interop vectors (#58)" do
       result = XadesInteropVectors.verify(path)
 
       expect(result.signed?(result.document.root)).to be false
-      expect(XadesInteropVectors.verify(path, policy: HankoXml::Policy.interop.with(require_signed_root: true))
-               .errors.first.message).to match(/require_signed_root/)
+      expect(
+        XadesInteropVectors.verify(
+          path,
+          policy: HankoXml::Policy.interop.with(require_signed_root: true)
+        ).errors.first.message
+      ).to match(/require_signed_root/)
     end
 
     it "fake enveloping <Object>: the one named evil is not signed" do

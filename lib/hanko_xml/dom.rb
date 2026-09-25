@@ -38,9 +38,9 @@ module HankoXml
         return if available?
 
         raise HankoXml::NokogiriRequired,
-              "#{capability} needs a DOM to run, and Nokogiri is not loaded. " \
-              "Add `gem \"nokogiri\"` to your Gemfile and `require \"nokogiri\"`: " \
-              "every signing and verification call needs it for now (#96)."
+          "#{capability} needs a DOM to run, and Nokogiri is not loaded. " \
+            "Add `gem \"nokogiri\"` to your Gemfile and `require \"nokogiri\"`: " \
+            "every signing and verification call needs it for now (#96)."
       end
 
       # Every capability needs Nokogiri until the DOM-free path exists

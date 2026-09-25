@@ -30,7 +30,7 @@ module HankoXml
     #
     # Needs certificate-based trust (certificate:, certificates:, store:).
     # Unsigned properties (XAdES-T/LT/LTA) are ignored: #81, #82.
-    class Verifier < HankoXml::Verifier # rubocop:disable Metrics/ClassLength
+    class Verifier < HankoXml::Verifier
       DS = { "ds" => HankoXml::NS["ds"], "xades" => NS }.freeze
       private_constant :DS
 
@@ -40,8 +40,8 @@ module HankoXml
       def initialize(signature_policy: nil, **options)
         if options[:key] || options[:keys]
           raise HankoXml::ConfigurationError,
-                "XAdES verification needs certificate:, certificates: or store:, since the signed properties " \
-                "commit to a certificate"
+            "XAdES verification needs certificate:, certificates: or store:, since the signed properties " \
+              "commit to a certificate"
         end
 
         @expected_signature_policy = coerce_signature_policy(signature_policy)
@@ -96,9 +96,14 @@ module HankoXml
         SignedProperties.new(
           signing_time: signing_time(signature_properties),
           signature_policy: policy,
-          claimed_roles: signature_properties.xpath("xades:SignerRoleV2/xades:ClaimedRoles/xades:ClaimedRole | " \
-                                                    "xades:SignerRole/xades:ClaimedRoles/xades:ClaimedRole", DS)
-                                             .map { |role| role.text.strip.freeze }.freeze,
+          claimed_roles: signature_properties
+            .xpath(
+              "xades:SignerRoleV2/xades:ClaimedRoles/xades:ClaimedRole | " \
+                "xades:SignerRole/xades:ClaimedRoles/xades:ClaimedRole",
+              DS
+            )
+            .map { |role| role.text.strip.freeze }
+            .freeze,
           data_object_formats: data_object_formats(node)
         )
       end
@@ -111,8 +116,10 @@ module HankoXml
           verification.signature_info.references[i].type == SIGNED_PROPERTIES_TYPE
         end
         unless indexes.size == 1
-          fail!("a XAdES signature has exactly one <Reference> of Type #{SIGNED_PROPERTIES_TYPE}, " \
-                "this one has #{indexes.size}")
+          fail!(
+            "a XAdES signature has exactly one <Reference> of Type #{SIGNED_PROPERTIES_TYPE}, " \
+              "this one has #{indexes.size}"
+          )
         end
 
         reference = verification.references[indexes.first]
@@ -211,6 +218,7 @@ module HankoXml
       def signature_policy(signature_properties)
         identifier = signature_properties.at_xpath("xades:SignaturePolicyIdentifier", DS)
         return nil unless identifier
+
         return :implied if identifier.at_xpath("xades:SignaturePolicyImplied", DS)
 
         policy_id = identifier.at_xpath("xades:SignaturePolicyId", DS)
@@ -227,11 +235,16 @@ module HankoXml
       def check_signature_policy!(policy)
         expected = @expected_signature_policy
         return if expected.nil?
+
         return if expected == :implied && policy == :implied
-        return if policy.is_a?(SignaturePolicy) && expected.is_a?(SignaturePolicy) &&
-                  policy.identifier == expected.identifier &&
-                  policy.digest_value == expected.digest_value &&
-                  policy.digest_method == HankoXml::Algorithms.uri_for(:digest, expected.digest_method)
+
+        if policy.is_a?(SignaturePolicy) &&
+            expected.is_a?(SignaturePolicy) &&
+            policy.identifier == expected.identifier &&
+            policy.digest_value == expected.digest_value &&
+            policy.digest_method == HankoXml::Algorithms.uri_for(:digest, expected.digest_method)
+          return
+        end
 
         fail!("the signed SignaturePolicyIdentifier is not the expected signature policy")
       end
@@ -249,11 +262,13 @@ module HankoXml
 
       def coerce_signature_policy(value)
         case value
-        when nil, :implied, SignaturePolicy then value
-        when Hash then SignaturePolicy.new(**value)
+        when nil, :implied, SignaturePolicy
+          value
+        when Hash
+          SignaturePolicy.new(**value)
         else
           raise HankoXml::ConfigurationError,
-                "signature_policy: must be a Xades::SignaturePolicy, a Hash of its keywords, :implied or nil"
+            "signature_policy: must be a Xades::SignaturePolicy, a Hash of its keywords, :implied or nil"
         end
       end
 

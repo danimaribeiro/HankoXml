@@ -17,11 +17,17 @@ RSpec.describe HankoXml::Xades::Verifier do
   let(:xml) { %(<Invoice xmlns="urn:x"><Total>150.00</Total></Invoice>) }
   let(:policy_hash) { OpenSSL::Digest::SHA256.base64digest("policy document") }
   let(:signed) do
-    HankoXml::Xades::Signer.new(
-      key: key_pem, certificate: cert_pem, signing_time: Time.utc(2026, 9, 17, 14, 32, 5),
-      claimed_roles: ["Chief Financial Officer"], data_object_format: { mime_type: "text/xml" },
-      signature_policy: { identifier: "urn:oid:2.16.76.1.7.1.6.2.3", digest_value: policy_hash }
-    ).sign(xml).to_s
+    HankoXml::Xades::Signer
+      .new(
+        key: key_pem,
+        certificate: cert_pem,
+        signing_time: Time.utc(2026, 9, 17, 14, 32, 5),
+        claimed_roles: ["Chief Financial Officer"],
+        data_object_format: { mime_type: "text/xml" },
+        signature_policy: { identifier: "urn:oid:2.16.76.1.7.1.6.2.3", digest_value: policy_hash }
+      )
+      .sign(xml)
+      .to_s
   end
 
   def verify(document = signed, **options)
@@ -50,12 +56,19 @@ RSpec.describe HankoXml::Xades::Verifier do
       expect(result.signed_properties.to_h).to eq(
         signing_time: Time.utc(2026, 9, 17, 14, 32, 5),
         signature_policy: HankoXml::Xades::SignaturePolicy.new(
-          identifier: "urn:oid:2.16.76.1.7.1.6.2.3", digest_value: policy_hash,
+          identifier: "urn:oid:2.16.76.1.7.1.6.2.3",
+          digest_value: policy_hash,
           digest_method: "http://www.w3.org/2001/04/xmlenc#sha256"
         ),
         claimed_roles: ["Chief Financial Officer"],
-        data_object_formats: [{ object_reference: result.signed_properties.data_object_formats.first[:object_reference],
-                                mime_type: "text/xml", description: nil, encoding: nil }]
+        data_object_formats: [
+          {
+            object_reference: result.signed_properties.data_object_formats.first[:object_reference],
+            mime_type: "text/xml",
+            description: nil,
+            encoding: nil
+          }
+        ]
       )
     end
 
@@ -177,8 +190,10 @@ RSpec.describe HankoXml::Xades::Verifier do
     end
 
     policy = HankoXml::Policy.xades
-    document = HankoXml::Xades::Signer.new(key: key_pem, certificate: cert_pem, digest_method: :sha3_256,
-                                           policy: policy).sign(xml).to_s
+    document = HankoXml::Xades::Signer
+      .new(key: key_pem, certificate: cert_pem, digest_method: :sha3_256, policy: policy)
+      .sign(xml)
+      .to_s
     sha3 = HankoXml::Algorithms.uri_for(:digest, :sha3_256)
 
     expect(Nokogiri::XML(document).at_xpath("//xades:CertDigest/ds:DigestMethod", ns)["Algorithm"]).to eq(sha3)
@@ -186,9 +201,13 @@ RSpec.describe HankoXml::Xades::Verifier do
   end
 
   it "needs certificate-based trust" do
-    expect { described_class.new(key: certificate.public_key) }
-      .to raise_error(HankoXml::ConfigurationError, /certificate:, certificates: or store:/)
-    expect { described_class.new(keys: { "a" => certificate.public_key }) }
-      .to raise_error(HankoXml::ConfigurationError, /certificate:/)
+    expect { described_class.new(key: certificate.public_key) }.to raise_error(
+      HankoXml::ConfigurationError,
+      /certificate:, certificates: or store:/
+    )
+    expect { described_class.new(keys: { "a" => certificate.public_key }) }.to raise_error(
+      HankoXml::ConfigurationError,
+      /certificate:/
+    )
   end
 end

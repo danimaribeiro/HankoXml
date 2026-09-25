@@ -13,13 +13,38 @@ module HankoXml
   # live tree, so serialization also checks that the document is unchanged
   # since signing and raises FrozenSignatureError if it is not.
   class SignedDocument
-    READ_METHODS = %i[at at_css at_xpath css search xpath root encoding errors namespaces
-                      children version url].freeze
+    READ_METHODS = %i[at at_css at_xpath css search xpath root encoding errors namespaces children version url].freeze
 
-    MUTATORS = %i[<< add_child add_next_sibling add_previous_sibling after before children= content=
-                  inner_html= native_content= parent= remove remove_attribute replace root= set_attribute
-                  []= delete encoding= unlink add_namespace add_namespace_definition default_namespace=
-                  do_xinclude canonicalize! remove_namespaces! swap wrap].freeze
+    MUTATORS = %i[
+      <<
+      add_child
+      add_next_sibling
+      add_previous_sibling
+      after
+      before
+      children=
+      content=
+      inner_html=
+      native_content=
+      parent=
+      remove
+      remove_attribute
+      replace
+      root=
+      set_attribute
+      []=
+      delete
+      encoding=
+      unlink
+      add_namespace
+      add_namespace_definition
+      default_namespace=
+      do_xinclude
+      canonicalize!
+      remove_namespaces!
+      swap
+      wrap
+    ].freeze
 
     # @return [Nokogiri::XML::Document] The underlying Nokogiri document.
     #   Escape hatch: mutating it invalidates the signature, and this
@@ -42,8 +67,8 @@ module HankoXml
     MUTATORS.each do |name|
       define_method(name) do |*|
         raise HankoXml::FrozenSignatureError,
-              "SignedDocument##{name} would invalidate the signature; use #document if you really mean to " \
-              "modify it, and HankoXml.serialize to write the result"
+          "SignedDocument##{name} would invalidate the signature; use #document if you really mean to " \
+            "modify it, and HankoXml.serialize to write the result"
       end
     end
 
@@ -56,8 +81,8 @@ module HankoXml
       current = serialize(declaration: true)
       unless current == @signed_xml
         raise HankoXml::FrozenSignatureError,
-              "the signed document was modified after signing, so this serialization would not verify; " \
-              "use HankoXml.serialize(signed.document) if the change is intentional"
+          "the signed document was modified after signing, so this serialization would not verify; " \
+            "use HankoXml.serialize(signed.document) if the change is intentional"
       end
 
       declaration ? current : serialize(declaration: false)

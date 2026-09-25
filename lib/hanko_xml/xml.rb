@@ -37,6 +37,7 @@ module HankoXml
     def parse_error(errors)
       HankoXml::ParseError.new("the document is not well-formed XML", xmlsec_errors: errors.map(&:message))
     end
+
     private :parse_error
 
     # Byte-faithful serialization: AS_XML only, never FORMAT (which
@@ -79,8 +80,8 @@ module HankoXml
         parse(source)
       else
         raise ArgumentError,
-              "expected a Nokogiri::XML::Document/Node, an XML String, a path-like object " \
-              "(Pathname/File), or an IO, got #{input.class}"
+          "expected a Nokogiri::XML::Document/Node, an XML String, a path-like object " \
+            "(Pathname/File), or an IO, got #{input.class}"
       end
     end
   end

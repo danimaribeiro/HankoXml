@@ -30,8 +30,9 @@ RSpec.describe "HankoXml::Signer references and transforms" do
     references = Nokogiri::XML(signed).xpath("//ds:Reference", ds)
 
     expect(references.map { |r| r["URI"] }).to eq([""])
-    expect(references.first.xpath("ds:Transforms/ds:Transform/@Algorithm", ds).map(&:value))
-      .to eq([HankoXml::Algorithms.uri_for(:transform, :enveloped_signature)])
+    expect(references.first.xpath("ds:Transforms/ds:Transform/@Algorithm", ds).map(&:value)).to eq(
+      [HankoXml::Algorithms.uri_for(:transform, :enveloped_signature)]
+    )
     expect(verify(signed).valid?).to be true
   end
 
@@ -58,8 +59,7 @@ RSpec.describe "HankoXml::Signer references and transforms" do
 
   it "C5 resolves each default id attribute: Id, ID and id" do
     { "#a" => xml, "#c" => xml, "#d" => xml.sub('<Other Id="b">', '<Other id="d">') }.each do |uri, source|
-      expect(verify(signer(references: [uri], policy: fragment).sign(source), policy: fragment).valid?)
-        .to be(true), uri
+      expect(verify(signer(references: [uri], policy: fragment).sign(source), policy: fragment).valid?).to be(true), uri
     end
   end
 
@@ -86,8 +86,10 @@ RSpec.describe "HankoXml::Signer references and transforms" do
     let(:duplicated) { xml.sub('Id="b"', 'Id="a"') }
 
     it "is a PolicyError under reject_duplicate_ids" do
-      expect { signer(references: ["#a"], policy: fragment).sign(duplicated) }
-        .to raise_error(HankoXml::PolicyError, /reject_duplicate_ids/)
+      expect { signer(references: ["#a"], policy: fragment).sign(duplicated) }.to raise_error(
+        HankoXml::PolicyError,
+        /reject_duplicate_ids/
+      )
     end
 
     it "signs the first element in document order with the check off" do
@@ -117,15 +119,17 @@ RSpec.describe "HankoXml::Signer references and transforms" do
         reference = HankoXml::Reference.new(uri: "", transforms: [transform])
 
         expect { signer(references: [reference]).sign(xml) }.to raise_error(HankoXml::PolicyError, /transform/)
-        expect { signer(references: [reference], policy: HankoXml::Policy.permissive).sign(xml) }
-          .to raise_error(HankoXml::SigningError)
+        expect { signer(references: [reference], policy: HankoXml::Policy.permissive).sign(xml) }.to raise_error(
+          HankoXml::SigningError
+        )
       end
     end
 
     it "emits the XPath expression as the transform's <XPath> child" do
       transform = HankoXml::Transform.new(:xpath, xpath: "count(//x) = 1")
-      template = signer(references: [HankoXml::Reference.new(uri: "", transforms: [transform])])
-                 .template(Nokogiri::XML(xml))
+      template = signer(references: [HankoXml::Reference.new(uri: "", transforms: [transform])]).template(
+        Nokogiri::XML(xml)
+      )
 
       expect(template.at_xpath(".//ds:Transform/ds:XPath", ds).text).to eq("count(//x) = 1")
     end
@@ -140,11 +144,14 @@ RSpec.describe "HankoXml::Signer references and transforms" do
   end
 
   it "C12 signs a base64 transform over an enveloping <Object>" do
-    template = fixtures.join("template_enveloping.xml").read
-                       .sub(%(<Data xmlns="urn:xmlsec_rb:example">Hello, enveloping world!</Data>),
-                            ["Hello, base64 world!"].pack("m0"))
-                       .sub(%(<Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>),
-                            %(<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#base64"/>))
+    template = fixtures
+      .join("template_enveloping.xml")
+      .read
+      .sub(%(<Data xmlns="urn:xmlsec_rb:example">Hello, enveloping world!</Data>), ["Hello, base64 world!"].pack("m0"))
+      .sub(
+        %(<Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>),
+        %(<Transform Algorithm="http://www.w3.org/2000/09/xmldsig#base64"/>)
+      )
     signed = signer(references: ["#object-1"], policy: fragment).sign(template)
 
     expect(verify(signed, policy: fragment).valid?).to be true

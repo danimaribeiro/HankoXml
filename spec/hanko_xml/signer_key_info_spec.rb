@@ -89,8 +89,9 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
       stale = "<X509Data><X509Certificate>#{pem_body(other_cert_pem)}</X509Certificate></X509Data>"
       doc = Nokogiri::XML(template.sub("<X509Data/>", stale))
 
-      expect { HankoXml::Signer.new(key: key_pem, certificate: cert_pem, references: ["#nope"]).sign!(doc) }
-        .to raise_error(HankoXml::ConfigurationError)
+      expect do
+        HankoXml::Signer.new(key: key_pem, certificate: cert_pem, references: ["#nope"]).sign!(doc)
+      end.to raise_error(HankoXml::ConfigurationError)
       expect(key_info(doc.to_xml).at_xpath("ds:X509Data/ds:X509Certificate", ds).text).to eq(pem_body(other_cert_pem))
     end
 
@@ -98,8 +99,13 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
       root_key = OpenSSL::PKey::RSA.new(2048)
       root = issue("/CN=root", key: root_key, authority: true)
       intermediate_key = OpenSSL::PKey::RSA.new(2048)
-      intermediate = issue("/CN=intermediate", key: intermediate_key, issuer: root, issuer_key: root_key,
-                                               authority: true)
+      intermediate = issue(
+        "/CN=intermediate",
+        key: intermediate_key,
+        issuer: root,
+        issuer_key: root_key,
+        authority: true
+      )
       leaf_key = OpenSSL::PKey::RSA.new(2048)
       leaf = issue("/CN=leaf", key: leaf_key, issuer: intermediate, issuer_key: intermediate_key)
 
@@ -118,8 +124,9 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
       public_key = OpenSSL::PKey.read(key_pem)
 
       expect(rsa).not_to be_nil
-      expect(rsa.at_xpath("ds:Modulus", ds).text.gsub(/\s/, "").unpack1("m").unpack1("H*").to_i(16))
-        .to eq(public_key.n.to_i)
+      expect(rsa.at_xpath("ds:Modulus", ds).text.gsub(/\s/, "").unpack1("m").unpack1("H*").to_i(16)).to eq(
+        public_key.n.to_i
+      )
       expect(HankoXml.valid?(signed, key: public_key.public_to_pem)).to be true
     end
 
@@ -199,15 +206,15 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
         ski = key_info(signed).at_xpath("ds:X509Data/ds:X509SKI", ds)
         extension = certificate.extensions.find { |e| e.oid == "subjectKeyIdentifier" }
 
-        expect(ski.text.gsub(/\s/, "").unpack1("m").unpack1("H*"))
-          .to eq(extension.value.delete(":").downcase)
+        expect(ski.text.gsub(/\s/, "").unpack1("m").unpack1("H*")).to eq(extension.value.delete(":").downcase)
       end
 
       it "writes every clause into one X509Data, and still verifies" do
         signed = sign_in_place(key_info: %i[x509_certificate x509_subject_name x509_issuer_serial x509_ski])
 
-        expect(key_info(signed).xpath("ds:X509Data/*", ds).map(&:name))
-          .to eq(%w[X509Certificate X509SubjectName X509IssuerSerial X509SKI])
+        expect(key_info(signed).xpath("ds:X509Data/*", ds).map(&:name)).to eq(
+          %w[X509Certificate X509SubjectName X509IssuerSerial X509SKI]
+        )
         expect(HankoXml.valid?(signed, certificate: cert_pem)).to be true
       end
     end
@@ -262,8 +269,14 @@ RSpec.describe "HankoXml::Signer KeyInfo and keys" do
       root_key = OpenSSL::PKey::RSA.new(2048)
       root = issue("/CN=root", key: root_key, authority: true)
       intermediate_key = OpenSSL::PKey::RSA.new(2048)
-      expired = issue("/CN=intermediate", key: intermediate_key, issuer: root, issuer_key: root_key, authority: true,
-                                          not_after: Time.now - 60)
+      expired = issue(
+        "/CN=intermediate",
+        key: intermediate_key,
+        issuer: root,
+        issuer_key: root_key,
+        authority: true,
+        not_after: Time.now - 60
+      )
       leaf_key = OpenSSL::PKey::RSA.new(2048)
       leaf = issue("/CN=leaf", key: leaf_key, issuer: expired, issuer_key: intermediate_key)
 

@@ -44,11 +44,17 @@ module HankoXml
       end
     end
 
-    attr_reader :signature_method, :canonicalization_method, :signature_count,
-                :key_names, :certificates, :references
+    attr_reader :signature_method, :canonicalization_method, :signature_count, :key_names, :certificates, :references
 
-    def initialize(signature_method:, canonicalization_method:, references:,
-                   signature_count: 1, key_names: [], certificates: [], has_retrieval_method: false)
+    def initialize(
+      signature_method:,
+      canonicalization_method:,
+      references:,
+      signature_count: 1,
+      key_names: [],
+      certificates: [],
+      has_retrieval_method: false
+    )
       @signature_method = signature_method
       @canonicalization_method = canonicalization_method
       @signature_count = signature_count
@@ -90,6 +96,7 @@ module HankoXml
     def self.fetch(hash, key)
       hash[key] || hash[key.to_s]
     end
+
     private_class_method :fetch
   end
 end

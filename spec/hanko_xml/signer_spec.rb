@@ -60,20 +60,23 @@ RSpec.describe HankoXml::Signer do
   describe "key:/certificate: material (S-15)" do
     it "rejects a public key as key:" do
       public_pem = OpenSSL::PKey::RSA.new(key_pem).public_to_pem
-      expect { described_class.new(key: public_pem) }
-        .to raise_error(HankoXml::ConfigurationError, /key: must be a private key \(got a public key\)/)
+      expect { described_class.new(key: public_pem) }.to raise_error(
+        HankoXml::ConfigurationError,
+        /key: must be a private key \(got a public key\)/
+      )
     end
 
     it "rejects a certificate as key:" do
-      expect { described_class.new(key: cert_pem) }
-        .to raise_error(HankoXml::ConfigurationError, /got a certificate/)
+      expect { described_class.new(key: cert_pem) }.to raise_error(HankoXml::ConfigurationError, /got a certificate/)
     end
 
     it "rejects a key as certificate:, without echoing it" do
-      expect { described_class.new(key: key_pem, certificate: key_pem) }
-        .to raise_error(HankoXml::ConfigurationError, /certificate: must be an X.509 certificate/) do |error|
-          expect(error.message).not_to include("-----BEGIN")
-        end
+      expect { described_class.new(key: key_pem, certificate: key_pem) }.to raise_error(
+        HankoXml::ConfigurationError,
+        /certificate: must be an X.509 certificate/
+      ) do |error|
+        expect(error.message).not_to include("-----BEGIN")
+      end
     end
 
     it "raises KeyLoadError for a disposed key instead of misreporting its kind" do
@@ -89,14 +92,18 @@ RSpec.describe HankoXml::Signer do
     let(:other_cert_pem) { fixtures.join("other.crt").read }
 
     it "raises HankoXml::ConfigurationError when key: does not match certificate:" do
-      expect { described_class.new(key: other_key_pem, certificate: cert_pem) }
-        .to raise_error(HankoXml::ConfigurationError, /does not match certificate/)
+      expect { described_class.new(key: other_key_pem, certificate: cert_pem) }.to raise_error(
+        HankoXml::ConfigurationError,
+        /does not match certificate/
+      )
     end
 
     it "checks OpenSSL objects and HankoXml::Key the same as PEM Strings" do
       expect do
-        described_class.new(key: HankoXml::Key.coerce(OpenSSL::PKey::RSA.new(other_key_pem)),
-                            certificate: OpenSSL::X509::Certificate.new(cert_pem))
+        described_class.new(
+          key: HankoXml::Key.coerce(OpenSSL::PKey::RSA.new(other_key_pem)),
+          certificate: OpenSSL::X509::Certificate.new(cert_pem)
+        )
       end.to raise_error(HankoXml::ConfigurationError)
     end
 
@@ -110,8 +117,9 @@ RSpec.describe HankoXml::Signer do
 
     it "rejects the mismatch through HankoXml.sign before any signature is produced" do
       xml = "<root><a>1</a></root>"
-      expect { HankoXml.sign(xml, key: other_key_pem, certificate: cert_pem) }
-        .to raise_error(HankoXml::ConfigurationError)
+      expect { HankoXml.sign(xml, key: other_key_pem, certificate: cert_pem) }.to raise_error(
+        HankoXml::ConfigurationError
+      )
     end
 
     it "never puts key material in the error message" do

@@ -6,8 +6,11 @@ RSpec.describe HankoXml::SignatureInfo do
       signature_method: "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
       canonicalization_method: "http://www.w3.org/2001/10/xml-exc-c14n#",
       references: [
-        { uri: "#infNFe01", digest_method: "http://www.w3.org/2001/04/xmlenc#sha256",
-          transforms: ["http://www.w3.org/2000/09/xmldsig#enveloped-signature"] }
+        {
+          uri: "#infNFe01",
+          digest_method: "http://www.w3.org/2001/04/xmlenc#sha256",
+          transforms: ["http://www.w3.org/2000/09/xmldsig#enveloped-signature"]
+        }
       ]
     )
   end
@@ -28,8 +31,10 @@ RSpec.describe HankoXml::SignatureInfo do
   end
 
   it "flags an external (non-fragment, non-empty) reference URI" do
-    ref = described_class::ReferenceInfo.new(uri: "http://example.com/doc.xml",
-                                             digest_method: "http://www.w3.org/2001/04/xmlenc#sha256")
+    ref = described_class::ReferenceInfo.new(
+      uri: "http://example.com/doc.xml",
+      digest_method: "http://www.w3.org/2001/04/xmlenc#sha256"
+    )
     expect(ref.external?).to be true
   end
 

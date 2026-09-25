@@ -20,7 +20,8 @@ RSpec.describe HankoXml::Xades::Signer do
     {
       claimed_roles: ["Chief Financial Officer"],
       signature_policy: { identifier: "urn:oid:2.16.76.1.7.1.6.2.3", description: "AD-RB",
-                          digest_value: OpenSSL::Digest::SHA256.base64digest("policy document") },
+                          digest_value: OpenSSL::Digest::SHA256.base64digest("policy document")
+},
       data_object_format: { mime_type: "text/xml", description: "Invoice", encoding: "UTF-8" }
     }
   end
@@ -172,7 +173,8 @@ RSpec.describe HankoXml::Xades::Signer do
   it "defaults SigningTime to when #sign runs" do
     before = Time.now.utc - 1
     time = Time.iso8601(Nokogiri::XML(described_class.new(key: key_pem, certificate: cert_pem).sign(xml).to_s)
-                                   .at_xpath("//xades:SigningTime", ns).text)
+                                   .at_xpath("//xades:SigningTime", ns).text
+                       )
 
     expect(time).to be_between(before, Time.now.utc + 1)
   end

@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
 
   spec.summary = "XML digital signature signing and verification for Ruby via a Rust extension calling libxmlsec1."
   spec.description = "hanko_xml signs and verifies XML-DSig signatures by binding to libxmlsec1 through " \
-                      "a Rust extension built with Magnus and rb-sys, integrating directly with Nokogiri."
+    "a Rust extension built with Magnus and rb-sys, integrating directly with Nokogiri."
   spec.homepage = "https://github.com/danimaribeiro/HankoXml"
   spec.license = "MIT"
   # 3.1 rather than 3.0: 3.0 is end-of-life and, more to the point, is not in
@@ -39,15 +39,7 @@ Gem::Specification.new do |spec|
   #
   # Sourced from `git ls-files` so nothing untracked can ride along.
   gem_dirs = %w[lib/ ext/ sig/]
-  gem_files = %w[
-    Cargo.toml
-    Cargo.lock
-    dependencies.yml
-    README.md
-    CHANGELOG.md
-    LICENSE.txt
-    THIRD_PARTY_LICENSES.md
-  ]
+  gem_files = %w[Cargo.toml Cargo.lock dependencies.yml README.md CHANGELOG.md LICENSE.txt THIRD_PARTY_LICENSES.md]
   spec.files = IO.popen(%w[git ls-files -z], chdir: __dir__, err: IO::NULL) do |ls|
     ls.readlines("\x0", chomp: true).select do |f|
       gem_files.include?(f) || f.start_with?(*gem_dirs)

@@ -18,17 +18,21 @@ RSpec.describe HankoXml::Template do
 
     expect(sig.name).to eq("Signature")
     expect(sig.namespace.href).to eq(HankoXml::NS["ds"])
-    expect(sig.at_xpath("ds:SignedInfo/ds:CanonicalizationMethod", HankoXml::NS)["Algorithm"])
-      .to eq("http://www.w3.org/2001/10/xml-exc-c14n#")
-    expect(sig.at_xpath("ds:SignedInfo/ds:SignatureMethod", HankoXml::NS)["Algorithm"])
-      .to eq("http://www.w3.org/2001/04/xmldsig-more#rsa-sha256")
+    expect(sig.at_xpath("ds:SignedInfo/ds:CanonicalizationMethod", HankoXml::NS)["Algorithm"]).to eq(
+      "http://www.w3.org/2001/10/xml-exc-c14n#"
+    )
+    expect(sig.at_xpath("ds:SignedInfo/ds:SignatureMethod", HankoXml::NS)["Algorithm"]).to eq(
+      "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
+    )
 
     reference = sig.at_xpath("ds:SignedInfo/ds:Reference", HankoXml::NS)
     expect(reference["URI"]).to eq("")
-    expect(reference.at_xpath("ds:Transforms/ds:Transform", HankoXml::NS)["Algorithm"])
-      .to eq("http://www.w3.org/2000/09/xmldsig#enveloped-signature")
-    expect(reference.at_xpath("ds:DigestMethod", HankoXml::NS)["Algorithm"])
-      .to eq("http://www.w3.org/2001/04/xmlenc#sha256")
+    expect(reference.at_xpath("ds:Transforms/ds:Transform", HankoXml::NS)["Algorithm"]).to eq(
+      "http://www.w3.org/2000/09/xmldsig#enveloped-signature"
+    )
+    expect(reference.at_xpath("ds:DigestMethod", HankoXml::NS)["Algorithm"]).to eq(
+      "http://www.w3.org/2001/04/xmlenc#sha256"
+    )
     expect(reference.at_xpath("ds:DigestValue", HankoXml::NS).content).to eq("")
   end
 
@@ -49,8 +53,9 @@ RSpec.describe HankoXml::Template do
   it "builds one X509Data placeholder per x509 clause, in order" do
     sig = signer(key_info: %i[x509_ski key_name x509_certificate x509_issuer_serial x509_subject_name]).template(doc)
     expect(sig.xpath("ds:KeyInfo/ds:X509Data", HankoXml::NS).size).to eq(1)
-    expect(sig.at_xpath("ds:KeyInfo/ds:X509Data", HankoXml::NS).element_children.map(&:name))
-      .to eq(%w[X509SKI X509Certificate X509IssuerSerial X509SubjectName])
+    expect(sig.at_xpath("ds:KeyInfo/ds:X509Data", HankoXml::NS).element_children.map(&:name)).to eq(
+      %w[X509SKI X509Certificate X509IssuerSerial X509SubjectName]
+    )
   end
 
   it "omits <KeyInfo> entirely when key_info: []" do
@@ -71,9 +76,9 @@ RSpec.describe HankoXml::Template do
     sig = s.template(doc)
     reference = sig.at_xpath("ds:SignedInfo/ds:Reference", HankoXml::NS)
     expect(reference["URI"]).to eq("#payload-1")
-    expect(reference.xpath("ds:Transforms/ds:Transform", HankoXml::NS).map { |t| t["Algorithm"] })
-      .to eq(["http://www.w3.org/2000/09/xmldsig#enveloped-signature",
-              "http://www.w3.org/TR/2001/REC-xml-c14n-20010315"])
+    expect(reference.xpath("ds:Transforms/ds:Transform", HankoXml::NS).map { |t| t["Algorithm"] }).to eq(
+      ["http://www.w3.org/2000/09/xmldsig#enveloped-signature", "http://www.w3.org/TR/2001/REC-xml-c14n-20010315"]
+    )
   end
 
   it "sets Signature/@Id when signature_id: is given" do

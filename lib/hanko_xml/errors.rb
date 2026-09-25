@@ -28,6 +28,7 @@ module HankoXml
     # (NativeVersionMismatch can be raised before key.rb is loaded.)
     def self.filter(value)
       return nil if value.nil?
+
       return FILTERED if value.is_a?(OpenSSL::PKey::PKey) || (defined?(HankoXml::Key) && value.is_a?(HankoXml::Key))
 
       value.to_s.gsub(PRIVATE_KEY_PEM, FILTERED)
@@ -45,26 +46,33 @@ module HankoXml
   end
 
   # Invalid Signer/Verifier construction.
-  class ConfigurationError < Error; end
+  class ConfigurationError < Error
+  end
 
   # A Policy allowlist was violated.
-  class PolicyError < ConfigurationError; end
+  class PolicyError < ConfigurationError
+  end
 
   # A Placement XPath matched zero or more than one node.
-  class PlacementError < ConfigurationError; end
+  class PlacementError < ConfigurationError
+  end
 
   # The requested capability needs a DOM, and Nokogiri is not loaded. See
   # API_CONTRACT.md §6.1.
-  class NokogiriRequired < ConfigurationError; end
+  class NokogiriRequired < ConfigurationError
+  end
 
   # <Signature> failed XSD validation (Verifier schema: option).
-  class SchemaError < ConfigurationError; end
+  class SchemaError < ConfigurationError
+  end
 
   # The XML would not parse.
-  class ParseError < Error; end
+  class ParseError < Error
+  end
 
   # A key or certificate was unreadable or in an unsupported format.
-  class KeyLoadError < Error; end
+  class KeyLoadError < Error
+  end
 
   # A Reference target does not exist, is ambiguous, or has no ID attribute.
   class ReferenceError < Error
@@ -77,30 +85,38 @@ module HankoXml
   end
 
   # libxmlsec1 could not produce a signature.
-  class SigningError < Error; end
+  class SigningError < Error
+  end
 
   # Verification did not succeed (raised by #verify!).
-  class VerificationError < Error; end
+  class VerificationError < Error
+  end
 
   # The signature verified as XML-DSig, but its XAdES signed properties do not
   # hold: they are not the ones xmlsec digested, or they do not commit to the
   # certificate that verified (#58).
-  class XadesError < VerificationError; end
+  class XadesError < VerificationError
+  end
 
   # Cryptographic mismatch.
-  class SignatureInvalid < VerificationError; end
+  class SignatureInvalid < VerificationError
+  end
 
   # No <ds:Signature> in the document.
-  class SignatureMissing < VerificationError; end
+  class SignatureMissing < VerificationError
+  end
 
   # Verifier#signature was :only and the document has more than one.
-  class MultipleSignatures < VerificationError; end
+  class MultipleSignatures < VerificationError
+  end
 
   # Certificate/key trust resolution (chain or pinning) failed.
-  class UntrustedCertificate < VerificationError; end
+  class UntrustedCertificate < VerificationError
+  end
 
   # Certificate is outside notBefore/notAfter as of verification_time.
-  class CertificateExpired < VerificationError; end
+  class CertificateExpired < VerificationError
+  end
 
   # One <Reference>'s digest did not match.
   class DigestMismatch < VerificationError
@@ -114,19 +130,24 @@ module HankoXml
 
   # A caller-supplied `resolver:` and xmlsec's ID table disagreed on what a
   # Reference URI points to. See API_CONTRACT.md §5.9.
-  class ResolutionMismatch < VerificationError; end
+  class ResolutionMismatch < VerificationError
+  end
 
   # Verification#at_signed found a node the signature does not cover.
-  class NotSignedError < Error; end
+  class NotSignedError < Error
+  end
 
   # A mutator was called on a HankoXml::SignedDocument.
-  class FrozenSignatureError < Error; end
+  class FrozenSignatureError < Error
+  end
 
   # libxmlsec1 failed in an unexpected way.
-  class NativeError < Error; end
+  class NativeError < Error
+  end
 
   # The loaded libxmlsec1 is not ABI compatible with the headers this
   # extension was compiled against. Raised at require time by
   # {HankoXml::NativeVersion}; see that file for why this cannot be a warning.
-  class NativeVersionMismatch < NativeError; end
+  class NativeVersionMismatch < NativeError
+  end
 end

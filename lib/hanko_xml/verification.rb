@@ -14,12 +14,32 @@ module HankoXml
       end
     end
 
-    attr_reader :valid, :errors, :signature_info, :signature_node, :document, :certificate, :id_attributes, :resolver,
-                :references, :reference_element_indexes, :reference_valid, :namespaces
+    attr_reader :valid,
+      :errors,
+      :signature_info,
+      :signature_node,
+      :document,
+      :certificate,
+      :id_attributes,
+      :resolver,
+      :references,
+      :reference_element_indexes,
+      :reference_valid,
+      :namespaces
 
-    def initialize(valid:, errors:, signature_info:, signature_node:, document:, certificate: nil,
-                   id_attributes: %w[Id ID id], resolver: nil, reference_element_indexes: nil,
-                   reference_valid: nil, namespaces: {})
+    def initialize(
+      valid:,
+      errors:,
+      signature_info:,
+      signature_node:,
+      document:,
+      certificate: nil,
+      id_attributes: %w[Id ID id],
+      resolver: nil,
+      reference_element_indexes: nil,
+      reference_valid: nil,
+      namespaces: {}
+    )
       @valid = valid
       @errors = errors.dup
       @signature_info = signature_info
@@ -117,6 +137,7 @@ module HankoXml
     def at_signed(xpath, ns = {})
       node = document.at_xpath(xpath, xpath_namespaces(ns))
       raise HankoXml::NotSignedError, "No node found" unless node
+
       raise HankoXml::NotSignedError, "Node is not signed" unless signed?(node)
 
       node
@@ -183,6 +204,7 @@ module HankoXml
     # that construct Verification directly), fall back to resolver / id_attributes.
     def detect_resolution_mismatches!
       return unless resolver
+
       return unless signature_info
 
       signature_info.references.each_with_index do |ref, index|
@@ -191,26 +213,26 @@ module HankoXml
         id = ref.uri[1..]
         resolver_node = resolver.call(document, id)
         expected = if reference_element_indexes
-                     node_at_element_index(reference_element_indexes[index])
-                   elsif !id_attributes.empty?
-                     resolve_by_id_attributes(id)
-                   else
-                     next
-                   end
+          node_at_element_index(reference_element_indexes[index])
+        elsif !id_attributes.empty?
+          resolve_by_id_attributes(id)
+        else
+          next
+        end
 
         record_resolution_mismatch(id) unless same_node?(resolver_node, expected)
       end
     end
 
     def record_resolution_mismatch(id)
-      @errors << HankoXml::ResolutionMismatch.new(
-        "resolver and xmlsec ID resolution disagree on the target of \"##{id}\""
-      )
+      @errors <<
+        HankoXml::ResolutionMismatch.new("resolver and xmlsec ID resolution disagree on the target of \"##{id}\"")
       @valid = false
     end
 
     def same_node?(left, right)
       return true if left.nil? && right.nil?
+
       return false if left.nil? || right.nil?
 
       left == right

@@ -74,12 +74,15 @@ RSpec.describe "Adversarial input" do
 
   describe "signature wrapping (XSW)" do
     let(:fragment_signed_xml) do
-      HankoXml::Signer.new(
-        key: signer_key_pem,
-        certificate: signer_cert_pem,
-        references: [HankoXml::Reference.new(uri: "#a", transforms: [])],
-        policy: HankoXml::Policy.fragment
-      ).sign(unsigned_xml).to_s
+      HankoXml::Signer
+        .new(
+          key: signer_key_pem,
+          certificate: signer_cert_pem,
+          references: [HankoXml::Reference.new(uri: "#a", transforms: [])],
+          policy: HankoXml::Policy.fragment
+        )
+        .sign(unsigned_xml)
+        .to_s
     end
 
     # Moves the signed <Data Id="a"> into a <Wrapper> and puts attacker
@@ -152,14 +155,17 @@ RSpec.describe "Adversarial input" do
 
     context "with an HMAC SignatureMethod keyed on the public certificate" do
       let(:hmac_forged_xml) do
-        doc = Nokogiri::XML(signed_xml.sub(
-                              "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
-                              "http://www.w3.org/2001/04/xmldsig-more#hmac-sha256"
-                            ))
+        doc = Nokogiri::XML(
+          signed_xml.sub(
+            "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256",
+            "http://www.w3.org/2001/04/xmldsig-more#hmac-sha256"
+          )
+        )
         signed_info = doc.at_xpath("//ds:SignedInfo", ds).canonicalize(Nokogiri::XML::XML_C14N_EXCLUSIVE_1_0)
         public_der = OpenSSL::X509::Certificate.new(signer_cert_pem).to_der
-        doc.at_xpath("//ds:SignatureValue", ds).content =
-          [OpenSSL::HMAC.digest("SHA256", public_der, signed_info)].pack("m0")
+        doc.at_xpath("//ds:SignatureValue", ds).content = [
+          OpenSSL::HMAC.digest("SHA256", public_der, signed_info)
+        ].pack("m0")
         doc.to_xml
       end
 
@@ -186,8 +192,9 @@ RSpec.describe "Adversarial input" do
         secrets.product(trusts).each do |secret, trust|
           doc = Nokogiri::XML(hmac_forged_xml)
           signed_info = doc.at_xpath("//ds:SignedInfo", ds).canonicalize(Nokogiri::XML::XML_C14N_EXCLUSIVE_1_0)
-          doc.at_xpath("//ds:SignatureValue", ds).content =
-            [OpenSSL::HMAC.digest("SHA256", secret, signed_info)].pack("m0")
+          doc.at_xpath("//ds:SignatureValue", ds).content = [OpenSSL::HMAC.digest("SHA256", secret, signed_info)].pack(
+            "m0"
+          )
 
           verifier = HankoXml::Verifier.new(policy: HankoXml::Policy.permissive, **trust)
           expect(verifier.verify(doc.to_xml).valid?).to be false
@@ -277,7 +284,9 @@ RSpec.describe "Adversarial input" do
 
     it "rejects it when parsing, without expanding it" do
       started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      expect { HankoXml.parse(bomb_xml) }.to raise_error(HankoXml::ParseError) { |e| expect(e.xmlsec_errors.join).to match(/amplification/) }
+      expect { HankoXml.parse(bomb_xml) }.to raise_error(HankoXml::ParseError) { |e|
+        expect(e.xmlsec_errors.join).to match(/amplification/)
+      }
       expect(Process.clock_gettime(Process::CLOCK_MONOTONIC) - started).to be < 5
     end
 
@@ -324,10 +333,13 @@ RSpec.describe "Adversarial input" do
 
     it "rejects a 224-bit EC trust certificate" do
       cert = self_signed(OpenSSL::PKey::EC.generate("secp224r1"))
-      expect { HankoXml::Policy.strict.enforce_key_size!([cert]) }
-        .to raise_error(HankoXml::PolicyError, /ec key is 224 bits/)
-      expect { HankoXml::Policy.strict.enforce_key_size!([self_signed(OpenSSL::PKey::EC.generate("prime256v1"))]) }
-        .not_to raise_error
+      expect { HankoXml::Policy.strict.enforce_key_size!([cert]) }.to raise_error(
+        HankoXml::PolicyError,
+        /ec key is 224 bits/
+      )
+      expect do
+        HankoXml::Policy.strict.enforce_key_size!([self_signed(OpenSSL::PKey::EC.generate("prime256v1"))])
+      end.not_to raise_error
     end
   end
 end

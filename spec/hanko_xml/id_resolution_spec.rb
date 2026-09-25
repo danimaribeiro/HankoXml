@@ -32,12 +32,15 @@ RSpec.describe "ID resolution (S-03 / #28)" do
   end
 
   def sign_fragment(xml)
-    HankoXml::Signer.new(
-      key: signer_key,
-      certificate: signer_cert,
-      references: [HankoXml::Reference.new(uri: "#inv-1", transforms: [])],
-      policy: fragment_policy
-    ).sign(xml).document
+    HankoXml::Signer
+      .new(
+        key: signer_key,
+        certificate: signer_cert,
+        references: [HankoXml::Reference.new(uri: "#inv-1", transforms: [])],
+        policy: fragment_policy
+      )
+      .sign(xml)
+      .document
   end
 
   def verify_fragment(doc)
@@ -81,10 +84,10 @@ RSpec.describe "ID resolution (S-03 / #28)" do
   end
 
   it "empty URI still covers the document root via native element index" do
-    signed = HankoXml::Signer.new(
-      key: signer_key,
-      certificate: signer_cert
-    ).sign("<Envelope xmlns=\"urn:ex\"><Data>hi</Data></Envelope>").document
+    signed = HankoXml::Signer
+      .new(key: signer_key, certificate: signer_cert)
+      .sign("<Envelope xmlns=\"urn:ex\"><Data>hi</Data></Envelope>")
+      .document
 
     result = HankoXml::Verifier.new(certificate: signer_cert).verify(signed)
 
@@ -97,9 +100,9 @@ RSpec.describe "ID resolution (S-03 / #28)" do
     signed = sign_fragment(dtd_duplicate_id_xml)
     resolver = ->(document, _id) { document.at_xpath("//Order") }
 
-    result = HankoXml::Verifier.new(certificate: signer_cert,
-                                    policy: fragment_policy,
-                                    resolver: resolver).verify(signed)
+    result = HankoXml::Verifier
+      .new(certificate: signer_cert, policy: fragment_policy, resolver: resolver)
+      .verify(signed)
 
     expect(result).not_to be_valid
     expect(result.errors).to include(an_instance_of(HankoXml::ResolutionMismatch))

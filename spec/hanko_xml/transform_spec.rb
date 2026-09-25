@@ -42,20 +42,25 @@ RSpec.describe HankoXml::Transform do
     end
 
     it "is part of equality" do
-      expect(described_class.exc_c14n(inclusive_prefixes: %w[xs]))
-        .to eq(described_class.new(:exc_c14n, inclusive_prefixes: %w[xs]))
+      expect(described_class.exc_c14n(inclusive_prefixes: %w[xs])).to eq(
+        described_class.new(:exc_c14n, inclusive_prefixes: %w[xs])
+      )
       expect(described_class.exc_c14n(inclusive_prefixes: %w[xs])).not_to eq(described_class.new(:exc_c14n))
     end
 
     it "rejects prefixes on a transform that is not exclusive c14n" do
-      expect { described_class.new(:c14n, inclusive_prefixes: %w[xs]) }
-        .to raise_error(HankoXml::ConfigurationError, /exclusive c14n/)
+      expect { described_class.new(:c14n, inclusive_prefixes: %w[xs]) }.to raise_error(
+        HankoXml::ConfigurationError,
+        /exclusive c14n/
+      )
     end
 
     it "rejects values that are not namespace prefixes" do
       ["x s", "1xs", "xs:string", "", "#other"].each do |bad|
-        expect { described_class.exc_c14n(inclusive_prefixes: [bad]) }
-          .to raise_error(HankoXml::ConfigurationError, /not namespace prefixes/)
+        expect { described_class.exc_c14n(inclusive_prefixes: [bad]) }.to raise_error(
+          HankoXml::ConfigurationError,
+          /not namespace prefixes/
+        )
       end
     end
   end
