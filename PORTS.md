@@ -5,9 +5,12 @@ security core with the Ruby gem. This is a plan, not a record of work done:
 nothing below is implemented yet. When a phase lands, mark it done here and
 cite the PR.
 
-The plan was reviewed on 2026-09-24. The problems that review found, with one or
-two ways to solve each, are under "Problems and options" (P1 to P10). The rest
-of the plan points to them.
+The plan was reviewed twice on 2026-09-24. The problems those reviews found,
+with one or more ways to solve each, are under "Problems and options" (P1 to
+P10). The rest of the plan points to them. The second pass added P1 option C,
+moved the P2 recommendation to option B, and added the pregenerated bindings
+(P7), the gemspec allowlist (Phase 1), the XSD skip flag (Phase 2) and the fork
+note (P9).
 
 ## Ground rules for the ports
 
@@ -193,7 +196,7 @@ core once, and all three packages benefit.
 Found in the 2026-09-24 review. The recommended option is marked. None of these
 is decided until it moves to "Decisions".
 
-In short, the recommended path is: P1 A, P2 A, P3 A, P4 A, P5 A, P7 A, P9 A and
+In short, the recommended path is: P1 C, P2 B, P3 A, P4 A, P5 A, P7 A, P9 A and
 P10 A, plus the single fixes for P6 and P8.
 
 ### P1. Host objects can't cross the FFI
@@ -205,7 +208,7 @@ store holds, so the core can't rebuild it from bytes. The same goes for
 `schema:`, which accepts any object with `#validate`, and `resolver:`, which is
 a Proc.
 
-- **Option A (recommended): the core validates chains from bytes, and Ruby keeps
+- **Option A: the core validates chains from bytes, and Ruby keeps
   `store:`.** The core takes trust anchors, intermediates, CRLs, a verification
   time and a flag to skip time checks (how it calls OpenSSL is P2). Rust and
   Python only offer this API. Ruby keeps its `store:` path working as it does
@@ -213,6 +216,7 @@ a Proc.
   The leaf rule, the ambiguity rule, KeyUsage (#63) and `certificate_subject:`
   then exist twice, in Ruby for `store:` and in the core for everything else,
   and conformance cases pin both. `store:` can be deprecated later or kept.
+  That duplicate is the first item under "Risks"; option C removes it.
 - **Option B: no chain validation in the core.** Each binding validates with its
   host library (Ruby's `OpenSSL::X509::Store`, Python's
   `cryptography.x509.verification`, the `openssl` crate in Rust) and hands the
@@ -220,9 +224,26 @@ a Proc.
   `Verifier#store_trust` does today. That is three copies, and Python's verifier
   isn't OpenSSL: it builds paths its own way and, as of this writing, doesn't
   check revocation. Confirm its CRL support before picking this.
+- **Option C (recommended): the core owns the rules, and Ruby's `store:` path
+  runs only the verify call.** The one host-bound step in
+  `Verifier#store_trust` is `OpenSSL::X509::StoreContext#verify`. The leaf
+  rule, the ambiguity rule, KeyUsage (#63) and `certificate_subject:` are logic
+  over certificate bytes, so the core exposes them as two calls: "candidate
+  leaves for this `<KeyInfo>`", which applies the leaf rule and returns each
+  candidate with the rest of the set as its chain, and "judge these verified
+  leaves", which applies the ambiguity rule, KeyUsage and the subject check and
+  returns the key to pin as `signKey` (S-01). Ruby's `store:` path runs
+  `StoreContext#verify` per candidate between the two calls, with the time and
+  flag handling it has today. The `trust_anchors:` and `crls:` keywords of
+  option A run the same two calls around the core's own `X509_verify_cert`
+  (P2), and Rust and Python only offer that path. One copy of each rule,
+  `store:` keeps working, at the cost of a second FFI round-trip. Passing
+  `store:` together with `trust_anchors:` is a `ConfigurationError`.
 
-Either way, the core validates against the bundled schema, and a caller's own
-`schema:` object or `resolver:` stays in the binding.
+Whichever option wins, the core validates against the bundled schema, and a
+caller's own `schema:` object or `resolver:` stays in the binding. The core's
+verify therefore takes a flag to skip its XSD step, and the binding runs the
+caller's schema at the same point in the order (size, XSD, policy, verify).
 
 ### P2. The planned single-OpenSSL build doesn't work
 
@@ -234,26 +255,40 @@ build first anyway. The plan also relied on `symbols_spec.rb` and
 symbols and the second only checks gem contents. Neither would see a second,
 hidden static copy.
 
-- **Option A (recommended): bindgen the X.509 functions from the libcrypto
-  xmlsec already links.** Add `X509_STORE`, `X509_STORE_CTX`,
-  `X509_verify_cert`, `X509_check_private_key` and the PEM/DER readers to the
-  bindgen allowlist, and wrap them in the FFI layer. There is one OpenSSL by
-  construction, and the OpenSSL pin stays in `dependencies.yml` with its SHA-256.
-  The cost is more `unsafe`, which the ground rules accept. The system path also
-  needs OpenSSL's headers, which pkg-config already reports for
-  `xmlsec1-openssl`.
-- **Option B: the `openssl` crate, with `openssl-sys` owning OpenSSL.**
-  `openssl-sys` with its `vendored` feature builds OpenSSL through
-  `openssl-src`, and hanko-xml-sys configures xmlsec against the paths
-  `openssl-sys` passes to the crates that depend on it (`DEP_OPENSSL_INCLUDE`,
-  and its install root when vendored), the way curl-sys and libgit2-sys share
-  one OpenSSL. The API is safe, and `openssl-src` also embeds OpenSSL's source
-  for crates.io (P7). The pin moves from `dependencies.yml` to an `openssl-src`
-  version (VENDORING.md changes), and `openssl-src`'s configure flags differ
-  from `vendor.rs`'s, which deliberately leaves out `no-legacy` and builds with
-  hidden visibility, so the algorithm set has to be checked again. Add a spec
-  that the built library holds exactly one OpenSSL, for example by comparing the
-  version each side reports at runtime.
+- **Option A: bindgen the X.509 functions from the libcrypto xmlsec already
+  links.** Add `X509_STORE`, `X509_STORE_CTX`, `X509_verify_cert`,
+  `X509_check_private_key` and the PEM/DER readers to the bindgen allowlist,
+  and wrap them in the FFI layer. The OpenSSL pin stays in `dependencies.yml`
+  with its SHA-256, and the system path gets OpenSSL's headers from
+  pkg-config, which already reports them for `xmlsec1-openssl`. The cost is
+  more `unsafe`, which the ground rules accept. "One OpenSSL by construction"
+  holds for the gem and the wheel, which are self-contained cdylibs, but not
+  for the Rust crate: the sys crate would link a libcrypto without going
+  through `openssl-sys`, whose `links = "openssl"` is what gives Cargo one
+  OpenSSL per build graph. A downstream program that also pulls in
+  `openssl-sys`, through reqwest with native-tls for example, links two
+  libcryptos into one binary. Hidden visibility guards against a second
+  dynamic copy, not against two static archives resolved by one linker, so
+  the outcome is duplicate-symbol errors or a silent mix of object files from
+  two versions. That rules A out for the crate, and using A for the gem and B
+  for the crate would be two OpenSSL build paths to keep in step.
+- **Option B (recommended): the `openssl` crate, with `openssl-sys` owning
+  OpenSSL.** The sys crate depends on `openssl-sys` and forwards its
+  `vendored` feature, which builds OpenSSL through `openssl-src`, and
+  hanko-xml-sys configures xmlsec against the paths `openssl-sys` passes to
+  the crates that depend on it (`DEP_OPENSSL_INCLUDE`, and its install root
+  when vendored), the way curl-sys and libgit2-sys share one OpenSSL. Every
+  Cargo graph then has one OpenSSL, the API is safe, chain validation uses the
+  `openssl` crate rather than new X.509 wrappers (most of that item in P6 goes
+  away), and `openssl-src` also embeds OpenSSL's source for crates.io (P7).
+  The pin moves from `dependencies.yml` to an `openssl-src` version
+  (VENDORING.md changes), and `openssl-src`'s configure flags differ from
+  `vendor.rs`'s, which deliberately leaves out `no-legacy` and builds with
+  hidden visibility, so the algorithm set has to be checked again. Keep the
+  hidden-visibility flags: `openssl-src` compiles through the `cc` crate,
+  which honors `CFLAGS`, and `spec/symbols_spec.rb` keeps guarding the
+  result. Add a spec that the built library holds exactly one OpenSSL, for
+  example by comparing the version each side reports at runtime.
 
 ### P3. `forbid(unsafe_code)` can't exclude one module
 
@@ -314,7 +349,10 @@ templates built in the core anyway.
 Walking the DOM for `require_signed_root` and duplicate IDs, xmlSecTmpl*,
 `xmlSchema*` for XSD validation, XPath for placement and XAdES, and the X.509
 wrappers of P2 option A are all new FFI. API_CONTRACT.md §3's promise that a new
-algorithm, document shape or trust mode adds no `unsafe` no longer holds.
+algorithm, document shape or trust mode adds no `unsafe` no longer holds. The
+DOM walk has a start: `collect_reference_element_indexes` in `dsig.rs` already
+walks the document in order and calls `xmlGetID`, and under P2 option B the
+X.509 wrappers aren't needed.
 
 The ground rules accept this. Two things keep it manageable, and both should
 happen:
@@ -335,8 +373,9 @@ sdist get built by strangers:
   network access, and offline builds fail.
 - `HANKO_XML_VENDOR` or `RUBY_TARGET` switches vendoring on, and neither is set
   in a Cargo or maturin build.
-- bindgen needs libclang and the headers, and docs.rs has neither xmlsec nor
-  our pinned libraries.
+- bindgen needs libclang and the headers. docs.rs has neither xmlsec nor our
+  pinned libraries, and every `cargo build` and sdist install would need
+  libclang too.
 - The vendored build is autotools plus MinGW. Rust's default Windows target and
   python.org's CPython are MSVC.
 
@@ -347,9 +386,13 @@ gems build with `vendored`. The options are about sources and Windows:
 
 - **Option A (recommended first): keep downloading, and use MinGW on Windows.**
   `vendored` keeps downloading, checked against `dependencies.yml`, and the
-  crate documents that it needs network access. On docs.rs (the `DOCS_RS`
-  variable) the build skips the C libraries and uses bindings generated ahead of
-  time and checked in. Windows wheels and the crate's `vendored` feature target
+  crate documents that it needs network access. `vendored` uses bindings
+  generated ahead of time and checked in, one file per target, since the
+  pinned libraries have a fixed ABI; bindgen becomes an opt-in
+  `buildtime-bindgen` feature for regenerating them. On docs.rs (the `DOCS_RS`
+  variable) the build skips the C libraries and uses the same files. `system`
+  keeps running bindgen at build time, because xmlsec 1.2 and 1.3 differ in
+  struct layout. Windows wheels and the crate's `vendored` feature target
   `x86_64-pc-windows-gnu`, reusing the MinGW path the gem already has. PyO3 and
   maturin support that target; confirm the wheel loads in python.org's CPython.
   MSVC Rust users get `system` only.
@@ -394,7 +437,9 @@ later, which abi3 wheels don't cover).
   the comments in `errors.rs`, `dsig.rs` and API_CONTRACT.md §9 are rewritten
   in those terms. Rust users will call concurrently from day one, so a
   concurrent-calls stress test under ASan and TSan runs before the crate is
-  published.
+  published. API_CONTRACT.md §9's advice to initialize in the parent before
+  forking carries over to Python's `multiprocessing` with the fork start
+  method, and the Python docs say so.
 - **Option B (later): release the GIL.** Release it around sign and verify for
   parallelism, and add free-threaded wheels, once that stress test passes.
 
@@ -436,10 +481,13 @@ that assert where code lives.
 
 - Move bindgen, `build.rs` and `build/vendor.rs` into `crates/hanko-xml-sys`,
   along with `dependencies.yml` from the repo root, since `cargo package` only
-  ships files inside the crate's directory. Update the paths in the Rakefile,
-  `vendored-deps.yml`, `packaging_spec.rb` and VENDORING.md. Move `dsig.rs` and
-  `errors.rs` into `crates/hanko-xml`. `ext/hanko_xml` keeps only the Magnus
-  glue, renamed per P10.
+  ships files inside the crate's directory. Add `crates/` to the allowlist in
+  `hanko_xml.gemspec` (today `lib/`, `ext/`, `sig/` plus the root Cargo files
+  and `dependencies.yml`), or the source gem can't compile the extension.
+  Update the paths in the Rakefile, `.github/workflows/vendored-deps.yml`,
+  `spec/packaging_spec.rb`, `spec/symbols_spec.rb` and VENDORING.md. Move
+  `dsig.rs` and `errors.rs` into `crates/hanko-xml`. `ext/hanko_xml` keeps
+  only the Magnus glue, renamed per P10.
 - Confine `unsafe` per P3, and update `spec/hanko_xml/native_spec.rb` to match.
 - If P2 option B is picked, switch the OpenSSL build over here, since it
   changes the build graph.
@@ -459,19 +507,23 @@ a copy on purpose (P1, P5):
    they need (the root's ID values, duplicate ID values, which elements the
    references resolve to), so `require_signed_root` and `reject_duplicate_ids`
    become checks over one record with no second parse, and Policy stays a pure
-   function that is easy to property-test. The safe DOM layer (P6) starts here.
+   function that is easy to property-test. The safe DOM layer (P6) starts
+   here, from the walk `collect_reference_element_indexes` already does.
 3. Verifier orchestration: size limit, XSD validation against the bundled
    schema, inspect, policy, verify, per-reference status. The core takes trust
    that's already resolved (pinned keys and certificates), so Ruby's trust
    collection, including `store:`, keeps working in front of it. The key size
    and certificate date checks (S-06, S-07) stay in Ruby until step 5 brings
-   X.509 parsing into the core. This returns a `Verification` data record that
-   Ruby wraps.
+   X.509 parsing into the core. The verify call takes a flag to skip the XSD
+   step for callers with their own `schema:` object (P1). This returns a
+   `Verification` data record that Ruby wraps.
 4. Signer: key type and size, the key matching the certificate, and S-05 in the
    core, plus the template-fragment builder (P5). Ruby keeps `Placement`
    resolution and write-back.
 5. Chain validation from bytes, with the key size and certificate date checks,
-   per Decisions, item 3 (P1, P2).
+   per Decisions, item 3 (P1, P2). Under P1 option C this lands as the two
+   calls (candidate leaves, judge verified leaves), and Ruby's `store:` path
+   switches to them in the same PR so only one copy of the rules remains.
 6. XAdES-B verification.
 
 API_CONTRACT.md, SECURITY_REVIEW.md citations and the RBS signatures are updated
@@ -509,7 +561,7 @@ Starts once Phase 2 is complete and the repo is public.
   the optional DOM, parsed under the P4 rules. Type hints ship with it
   (`py.typed`).
 - Chain validation per Decisions, item 3: `trust_anchors=` and `crls=` handed to
-  the core (P1 option A), or `cryptography`'s verifier (P1 option B).
+  the core (P1 option A or C), or `cryptography`'s verifier (P1 option B).
 - An interop check against SignXML both ways, like
   `spec/interop/xades_signxml_produced_spec.rb` does today. The SignXML
   comparison guide in the docs gets a Python version.
@@ -603,8 +655,8 @@ Still open:
 ## Risks
 
 - **Drift between duplicated copies.** Ruby's `store:` path and the core's chain
-  validation (P1), the template builders (P5 option B), and every binding
-  obligation (P4) exist more than once. The conformance suite is the only thing
+  validation (P1 option A; option C removes this one), the template builders
+  (P5 option B), and every binding obligation (P4) exist more than once. The conformance suite is the only thing
   that keeps them in agreement, so each duplicate needs cases that exercise both
   copies.
 - **Behavior drift during Phase 2.** Code that moves from Ruby into Rust can
@@ -615,8 +667,11 @@ Still open:
     libraries on Linux, which one ran used to depend on load order, so this
     makes it predictable, but the system libxml2 2.9.14 keeps its XSD integer
     limits.
-  - Chain verdicts come from the core's OpenSSL (3.5.8 in platform gems)
-    instead of whichever libcrypto Ruby's openssl links.
+  - Chain verdicts for the new `trust_anchors:` keyword come from the core's
+    OpenSSL (3.5.8 in platform gems) instead of whichever libcrypto Ruby's
+    openssl links. Under P1 option A or C the `store:` path keeps running
+    Ruby's `StoreContext#verify`, so existing callers see no change; it
+    becomes one only if `store:` is deprecated later.
 - **Two libxml2 versions in Python.** lxml bundles its own. Bytes-only crossing
   handles this, as it does for Nokogiri, but the Python layer must never be
   "optimized" into sharing pointers.
@@ -633,4 +688,9 @@ Still open:
   MSVC-built CPython. If that proves fragile, Windows waits for P7 option B.
 - **Scope.** Phase 2 is most of the work. Phases 3 and 4 are packaging plus the
   binding obligations of P4 once it's done, and neither should start before
-  Phase 2 is complete.
+  Phase 2 is complete. If Phase 2 stalls, there is a shorter route to a Python
+  package: after Phases 0 and 1, bind the existing six functions from PyO3,
+  duplicate the policy layer in Python, and let the conformance suite show
+  which duplicates actually hurt before moving them into the core. That fits
+  the ground rule to rewrite what isn't easy to share. Decision 2 chose the
+  core-first order, so this is the fallback, not the plan.
