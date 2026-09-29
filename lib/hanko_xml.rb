@@ -16,6 +16,7 @@ require_relative "hanko_xml/native_version"
 require_relative "hanko_xml/dom"
 require_relative "hanko_xml/algorithms"
 require_relative "hanko_xml/xml"
+require_relative "hanko_xml/input"
 require_relative "hanko_xml/key"
 require_relative "hanko_xml/transform"
 require_relative "hanko_xml/reference"
@@ -105,12 +106,8 @@ module HankoXml
     # @param xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The XML to check.
     # @return [Boolean] True if a non-empty <ds:SignatureValue> exists, false otherwise.
     def signature_present?(xml)
-      doc = HankoXml.coerce_document(xml)
-      sigs = doc.xpath(".//ds:Signature", ds: NS["ds"])
-      sigs.any? do |sig|
-        val = sig.at_xpath("./ds:SignatureValue", ds: NS["ds"])
-        val && !val.content.strip.empty?
-      end
+      # Structural, from the native parse; needs no DOM (#102).
+      HankoXml::Input.read(xml).scan([])[:signature_values].any?
     end
 
     # Returns whether zero-copy DOM verification is available on this platform.

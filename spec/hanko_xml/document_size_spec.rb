@@ -52,6 +52,8 @@ RSpec.describe "S-12 document size limits" do
 
     it "checks an already-parsed Document before any native call" do
       doc = Nokogiri::XML(signed_xml)
+      expect(HankoXml::Native).not_to receive(:scan)
+      expect(HankoXml::Native).not_to receive(:validate_schema)
       expect(HankoXml::Native).not_to receive(:inspect_sig)
       expect(HankoXml::Native).not_to receive(:verify)
 

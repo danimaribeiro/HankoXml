@@ -10,6 +10,20 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Added
 
+- **#102:** Verification works without Nokogiri. `Verifier` (`#verify`,
+  `#verify!`, `#valid?`, `#verify_all`), `HankoXml.valid?`, `HankoXml.verify!`
+  and `HankoXml.signature_present?` take a String, a path or an IO and run on
+  bytes, with every check they run with Nokogiri: policy, `schema: :default`,
+  `require_signed_root`, `reject_duplicate_ids`, `max_document_size` and
+  signature selection by index. Bytes input is parsed strictly, rejecting what
+  a strict Nokogiri parse rejects. Without a DOM, `Verification#covers_root?`
+  and `#partial?` still answer, and `#signed?`, `#signed_nodes`, `#at_signed`,
+  `#signed`, XPath `signature:`, `resolver:`, a custom `Nokogiri::XML::Schema`,
+  `Xades::Verifier` and signing raise `NokogiriRequired`.
+  `HankoXml.capabilities[:verify]` is always `true`. `spec/without_nokogiri`
+  runs in a process with Nokogiri hidden, from the regular suite and through
+  `rake spec:without_nokogiri`. Signing into a template on bytes is next.
+
 - **#60:** RSA-PSS (RFC 6931 `sha*-rsa-MGF1`), SHA-3 digests and ECDSA-SHA3
   are first-class `Algorithms` entries, allowed by `Policy.xades` (strict plus
   those methods) and still denied by `Policy.strict`. libxmlsec1 1.3 implements
@@ -104,6 +118,9 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   calls to the wrong library.
 
 ### Fixed
+
+- **#102:** libxml2's parse errors no longer go to stderr. They land in
+  `ParseError#xmlsec_errors`, like xmlsec's own log.
 
 - **#102:** `HankoXml::Verifier.default_schema` raises `NokogiriRequired`
   without Nokogiri, instead of a `NameError`. Every Nokogiri call now goes
@@ -350,6 +367,26 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   `signKey` so KeyInfo is ignored, matching `API_CONTRACT.md` §5.6.
 
 ### Changed
+
+- **#102:** Every check now runs on the document's bytes through the native
+  layer, with or without Nokogiri, so there is one implementation.
+  `schema: :default` validates on the extension's libxml2 rather than
+  Nokogiri's, so its verdict follows that build: the system libxml2 2.9 line
+  admits a no-namespace element under `<Object>`'s `##any` wildcard, as the XSD
+  allows, where newer releases reject it. `reject_duplicate_ids` now matches an
+  ID attribute by local name whatever its namespace, as `xmlSecAddIDs`
+  registers it, so `p:Id="a"` next to `Id="a"` is a duplicate; it used to see
+  only attributes without a namespace. `require_signed_root` takes the root's
+  IDs from xmlsec's ID table, so a namespaced or `xml:id` ID on the root now
+  counts. A String input is handed to the native layer as given rather than
+  re-serialized through Nokogiri. `Policy#violations` / `#enforce!` check both
+  from `xml_bytes:` alone; `document:` still works and is serialized, and
+  `sig_node:` is accepted but unused.
+
+- **#109:** Nokogiri stays an optional dependency. The gemspec's description
+  and comment, README's new installation section and `NokogiriRequired`'s
+  message now say HankoXml works with Nokogiri and without it, and name what
+  needs it.
 
 - **#96:** API_CONTRACT no longer describes features that don't exist. It now
   says 0.1.0 needs Nokogiri for every call (DOM-free verification is #102), and

@@ -49,29 +49,36 @@ module HankoXml
     # responding to #read.
     #
     # +policy+, when given, applies its +max_document_size+ to unparsed
-    # input before it is read or parsed (S-12): a String by #bytesize, a
-    # path by File.size, an IO by reading at most one byte past the limit.
-    # An existing Document/Node is not checked here; Signer/Verifier check
-    # its serialized form before any native call.
+    # input before it is read or parsed (S-12): see #read_source. An
+    # existing Document/Node is not checked here; Signer/Verifier check its
+    # serialized form before any native call.
     def coerce_document(input, policy: nil)
+      return input if Dom.document?(input)
+      return input.document if Dom.node?(input)
+
+      parse(read_source(input, policy: policy))
+    end
+
+    # Reads unparsed input (§6.2) without parsing it: a String as-is, a
+    # path-like object's file, or anything responding to #read. +policy+'s
+    # +max_document_size+ applies before the input is read (S-12): a String
+    # by #bytesize, a path by File.size, an IO by reading at most one byte
+    # past the limit.
+    def read_source(input, policy: nil)
       limit = policy&.max_document_size
       limit = nil unless limit&.finite?
 
       case input
-      when ->(obj) { Dom.document?(obj) }
-        input
-      when ->(obj) { Dom.node?(obj) }
-        input.document
       when String
         policy&.enforce_document_size!(input.bytesize)
-        parse(input)
+        input
       when ->(obj) { obj.respond_to?(:to_path) }
         policy&.enforce_document_size!(::File.size(input.to_path))
-        parse(::File.binread(input.to_path))
+        ::File.binread(input.to_path)
       when ->(obj) { obj.respond_to?(:read) }
         source = limit ? input.read(limit + 1) : input.read
         policy&.enforce_document_size!(source.to_s.bytesize)
-        parse(source)
+        source.to_s
       else
         raise ArgumentError,
               "expected a Nokogiri::XML::Document/Node, an XML String, a path-like object " \

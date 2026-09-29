@@ -10,7 +10,8 @@ Gem::Specification.new do |spec|
 
   spec.summary = "XML digital signature signing and verification for Ruby via a Rust extension calling libxmlsec1."
   spec.description = "hanko_xml signs and verifies XML-DSig signatures by binding to libxmlsec1 through " \
-                      "a Rust extension built with Magnus and rb-sys, integrating directly with Nokogiri."
+                      "a Rust extension built with Magnus and rb-sys. It works with Nokogiri documents when " \
+                      "Nokogiri is loaded, and verifies plain bytes without it."
   spec.homepage = "https://github.com/danimaribeiro/HankoXml"
   spec.license = "MIT"
   # 3.1 rather than 3.0: 3.0 is end-of-life and, more to the point, is not in
@@ -60,7 +61,10 @@ Gem::Specification.new do |spec|
   # workspace member, so cargo needs the workspace root to resolve and build it.
   spec.extensions = ["ext/hanko_xml/Cargo.toml"]
 
-  # Nokogiri is deliberately not a runtime dependency. HankoXml::Dom probes for
-  # it and degrades by removing capabilities rather than weakening them, so the
-  # gem is usable without it. See API_CONTRACT.md §6.1.
+  # Nokogiri is deliberately not a runtime dependency (#109). HankoXml works
+  # with it and without it: verification runs on bytes through the native
+  # layer, and the capabilities that need a DOM (signing, node-level coverage
+  # checks) raise NokogiriRequired until the caller loads it. hanko_xml never
+  # requires Nokogiri itself, because on Linux with system libraries the load
+  # order decides which libxml2 each runs on. See API_CONTRACT.md §6.1.
 end

@@ -28,7 +28,8 @@ module HankoXml
     # XPath would find it is never read (XAdES signature wrapping). The
     # SigningCertificate(V2) must then name the certificate that verified.
     #
-    # Needs certificate-based trust (certificate:, certificates:, store:).
+    # Needs certificate-based trust (certificate:, certificates:, store:), and
+    # Nokogiri: the signed properties are read from the DOM (#102).
     # Unsigned properties (XAdES-T/LT/LTA) are ignored: #81, #82.
     class Verifier < HankoXml::Verifier # rubocop:disable Metrics/ClassLength
       DS = { "ds" => HankoXml::NS["ds"], "xades" => NS }.freeze
@@ -38,6 +39,7 @@ module HankoXml
       #   SignaturePolicyIdentifier must be exactly this.
       # All other keywords are {HankoXml::Verifier}'s.
       def initialize(signature_policy: nil, **options)
+        Dom.require!("HankoXml::Xades::Verifier")
         if options[:key] || options[:keys]
           raise HankoXml::ConfigurationError,
                 "XAdES verification needs certificate:, certificates: or store:, since the signed properties " \
@@ -80,6 +82,7 @@ module HankoXml
           resolver: verification.resolver,
           reference_element_indexes: verification.reference_element_indexes,
           reference_valid: verification.reference_valid,
+          signature_element_index: verification.signature_element_index,
           signed_properties: signed_properties
         )
       end

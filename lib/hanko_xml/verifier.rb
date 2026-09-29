@@ -61,6 +61,9 @@ module HankoXml
       @key = key && HankoXml::Key.coerce(key)
       @keys = keys
 
+      # resolver: is called with the caller's document, so it needs one.
+      Dom.require!("Verifier resolver:") if resolver
+
       @policy = policy
       @id_attributes = id_attributes
       @resolver = resolver
@@ -80,44 +83,18 @@ module HankoXml
     # @param xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The signed XML.
     # @return [HankoXml::Verification] The verification result.
     def verify(xml)
-      doc = HankoXml.coerce_document(xml, policy: @policy)
-      # Find signatures
-      sigs = doc.xpath(".//ds:Signature", ds: NS["ds"])
+      input = HankoXml::Input.read(xml, policy: @policy)
+      count = signature_count(input)
 
-      if sigs.empty?
-        # Verification requires a signature, but verify() is supposed to return a failed Verification.
-        # Wait, if there are no signatures, what does Verification hold?
-        # A missing signature is an error state: return a Verification with
-        # valid=false and a SignatureMissing error.
-        return HankoXml::Verification.new(
-          valid: false,
-          errors: [HankoXml::SignatureMissing.new("No <Signature> element found")],
-          signature_info: nil,
-          signature_node: nil,
-          document: doc,
-          namespaces: @namespaces,
-          id_attributes: @id_attributes,
-          resolver: @resolver
-        )
-      end
+      # A missing signature is an error state: a Verification with
+      # valid=false and a SignatureMissing error, never a raise.
+      return missing_signature(input, "No <Signature> element found") if count.zero?
 
       # For :first, :only, integer, or xpath
-      target_sig, index = resolve_signature_target(sigs, @signature)
+      index = resolve_signature_target(input, count, @signature)
+      return missing_signature(input, "Target signature not found") if index.nil?
 
-      if target_sig.nil?
-        return HankoXml::Verification.new(
-          valid: false,
-          errors: [HankoXml::SignatureMissing.new("Target signature not found")],
-          signature_info: nil,
-          signature_node: nil,
-          document: doc,
-          namespaces: @namespaces,
-          id_attributes: @id_attributes,
-          resolver: @resolver
-        )
-      end
-
-      verify_single(doc, target_sig, index)
+      verify_single(input, index)
     end
 
     # Verifies the target signature(s) and raises an error if verification fails.
@@ -148,21 +125,22 @@ module HankoXml
     # @param xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The signed XML.
     # @return [Array<HankoXml::Verification>] An array of verification results.
     def verify_all(xml)
-      doc = HankoXml.coerce_document(xml, policy: @policy)
-      sigs = doc.xpath(".//ds:Signature", ds: NS["ds"])
+      input = HankoXml::Input.read(xml, policy: @policy)
+      count = signature_count(input)
 
-      return [] if sigs.empty?
-
-      sigs.map.with_index do |sig, index|
-        verify_single(doc, sig, index)
-      end
+      Array.new(count) { |index| verify_single(input, index) }
     end
 
-    # The bundled XML-DSig schema used by `schema: :default`. Parsed with its
-    # own path as the base URL so its relative import of exc-c14n.xsd
-    # resolves (#61), and only once: a racing first call just parses it twice.
+    # The bundled XML-DSig schema `schema: :default` validates against.
+    DEFAULT_SCHEMA_PATH = File.expand_path("xmldsig-core-schema.xsd", __dir__).freeze
+
+    # The bundled XML-DSig schema as a Nokogiri::XML::Schema, for callers who
+    # validate other documents with it. `schema: :default` itself validates
+    # natively and does not use this (#102). Parsed with its own path as the
+    # base URL so its relative import of exc-c14n.xsd resolves (#61), and
+    # only once: a racing first call just parses it twice.
     def self.default_schema
-      @default_schema ||= Dom.schema_from_file(File.expand_path("xmldsig-core-schema.xsd", __dir__))
+      @default_schema ||= Dom.schema_from_file(DEFAULT_SCHEMA_PATH)
     end
 
     private
@@ -187,37 +165,78 @@ module HankoXml
       @id_attributes.map { |attr| attr.is_a?(Array) ? attr[1].to_s : attr.to_s }
     end
 
-    def resolve_signature_target(sigs, signature_option)
+    # The index of the <Signature> to verify among +count+ in document
+    # order, or nil when the selection matches none.
+    def resolve_signature_target(input, count, signature_option)
       case signature_option
       when nil, :only
         # No explicit selection: fail closed on ambiguity rather than
         # silently verifying only the first of several signatures (S-11).
         # Pass `signature: :first` to opt into the old, unsafe default.
-        raise HankoXml::MultipleSignatures, "Expected exactly 1 signature, found #{sigs.size}" if sigs.size > 1
+        raise HankoXml::MultipleSignatures, "Expected exactly 1 signature, found #{count}" if count > 1
 
-        [sigs.first, 0]
+        0
       when :first
-        [sigs.first, 0]
+        0
       when Integer
-        [sigs[signature_option], signature_option]
+        index = signature_option.negative? ? count + signature_option : signature_option
+        index if index.between?(0, count - 1)
       when String
-        # XPath. It must pick exactly one <ds:Signature>: taking the first of
-        # several matches would be `:first` again under another name (S-11, #95).
-        namespaces = HankoXml::NS.merge(@namespaces.transform_keys(&:to_s))
-        matches = sigs.document.xpath(signature_option, namespaces).to_a & sigs.to_a
-        if matches.size > 1
-          raise HankoXml::MultipleSignatures,
-                "signature: XPath must select exactly 1 <Signature>, selected #{matches.size}"
-        end
-
-        node = matches.first
-        [node, node && sigs.index(node)]
+        xpath_signature_index(input, signature_option)
       when :all
         raise HankoXml::ConfigurationError,
               "signature: :all is not supported; use Verifier#verify_all for one Verification per <Signature> (#105)"
       else
         raise HankoXml::ConfigurationError, "Invalid signature: option"
       end
+    end
+
+    # XPath selection needs a DOM. It must pick exactly one <ds:Signature>:
+    # taking the first of several matches would be `:first` again under
+    # another name (S-11, #95).
+    def xpath_signature_index(input, xpath)
+      Dom.require!("Verifier signature: XPath selection")
+
+      sigs = signature_nodes(input)
+      namespaces = HankoXml::NS.merge(@namespaces.transform_keys(&:to_s))
+      matches = input.document.xpath(xpath, namespaces).to_a & sigs
+      if matches.size > 1
+        raise HankoXml::MultipleSignatures,
+              "signature: XPath must select exactly 1 <Signature>, selected #{matches.size}"
+      end
+
+      matches.first && sigs.index(matches.first)
+    end
+
+    # How many <ds:Signature> the document holds, from the native scan. A
+    # caller's DOM over max_document_size is counted on the DOM instead, so
+    # nothing native parses it (S-12); verify_single then fails each one on
+    # size before any native call.
+    def signature_count(input)
+      return signature_nodes(input).size if input.dom? && input.bytes.bytesize > @policy.max_document_size
+
+      input.scan(native_id_attributes)[:signature_count]
+    end
+
+    # The caller's <ds:Signature> nodes in document order, or [] without a
+    # DOM. The same libxml2 walk as the native count, so indexes agree.
+    def signature_nodes(input)
+      return [] unless input.document
+
+      input.document.xpath(".//ds:Signature", ds: NS["ds"]).to_a
+    end
+
+    def missing_signature(input, message)
+      failed_verification(input, nil, [HankoXml::SignatureMissing.new(message)])
+    end
+
+    # The <Signature> errors run against: the XML-DSig schema natively for
+    # `schema: :default`, or a caller's own Nokogiri::XML::Schema on the DOM.
+    def schema_errors(input, sig_node, index)
+      return Native.validate_schema(input.bytes, index, DEFAULT_SCHEMA_PATH) if @schema == :default
+
+      Dom.require!("Verifier schema: with a custom schema")
+      Dom.schema_errors(@schema, sig_node).map(&:message)
     end
 
     # One linear sequence of interdependent checks -- schema, policy,
@@ -227,53 +246,35 @@ module HankoXml
     # pending a deliberate refactor.
     # rubocop:disable Metrics/CyclomaticComplexity, Metrics/AbcSize
     # rubocop:disable Metrics/MethodLength, Metrics/PerceivedComplexity
-    def verify_single(doc, sig_node, index)
-      # Schema validation before any crypto
-      if @schema
-        xsd = if @schema == :default
-                self.class.default_schema
-              else
-                @schema
-              end
-        xsd_errors = Dom.schema_errors(xsd, sig_node)
-        if xsd_errors.any?
-          return HankoXml::Verification.new(
-            valid: false,
-            errors: [HankoXml::SchemaError.new("<Signature> does not validate against the XML-DSig schema",
-                                               xmlsec_errors: xsd_errors.map(&:message))],
-            signature_info: nil,
-            signature_node: sig_node,
-            document: doc,
-            namespaces: @namespaces,
-            id_attributes: @id_attributes,
-            resolver: @resolver
-          )
-        end
-      end
+    def verify_single(input, index)
+      sig_node = signature_nodes(input)[index]
 
-      # 1. Serialize document to bytes. max_document_size is checked before
-      # inspect_sig, which is itself a native parse (S-12).
-      xml_bytes = HankoXml.serialize(doc)
+      # 1. max_document_size is checked before any native parse (S-12). An
+      # unparsed input was already checked while it was read; this covers a
+      # caller's DOM, measured by its serialized bytes.
+      xml_bytes = input.bytes
       begin
         @policy.enforce_document_size!(xml_bytes.bytesize)
       rescue HankoXml::PolicyError => e
-        return failed_verification(doc, sig_node, [e], signature_info: nil)
+        return failed_verification(input, sig_node, [e], signature_info: nil)
+      end
+
+      # Schema validation before any crypto
+      if @schema
+        xsd_errors = schema_errors(input, sig_node, index)
+        if xsd_errors.any?
+          error = HankoXml::SchemaError.new("<Signature> does not validate against the XML-DSig schema",
+                                            xmlsec_errors: xsd_errors)
+          return failed_verification(input, sig_node, [error])
+        end
       end
 
       # 2. Call Native.inspect_sig
       begin
         inspect_result = Native.inspect_sig(xml_bytes, index)
       rescue StandardError => e
-        return HankoXml::Verification.new(
-          valid: false,
-          errors: [native_failure(e, "the native layer could not read <SignedInfo>")],
-          signature_info: nil,
-          signature_node: sig_node,
-          document: doc,
-          namespaces: @namespaces,
-          id_attributes: @id_attributes,
-          resolver: @resolver
-        )
+        return failed_verification(input, sig_node,
+                                   [native_failure(e, "the native layer could not read <SignedInfo>")])
       end
 
       sig_info = HankoXml::SignatureInfo.from_native(inspect_result)
@@ -285,10 +286,10 @@ module HankoXml
       # id_attributes:/xml_bytes: additionally enable require_signed_root,
       # reject_duplicate_ids, and max_document_size (S-06).
       begin
-        @policy.enforce!(sig_info, document: doc, sig_node: sig_node, id_attributes: @id_attributes,
+        @policy.enforce!(sig_info, id_attributes: @id_attributes,
                                    xml_bytes: xml_bytes, referenced_uris: @referenced_documents.keys)
       rescue HankoXml::PolicyError => e
-        return failed_verification(doc, sig_node, [e], signature_info: sig_info)
+        return failed_verification(input, sig_node, [e], signature_info: sig_info)
       end
 
       unresolved = unreferenced_external_uri(sig_info)
@@ -297,12 +298,12 @@ module HankoXml
           "reference URI #{unresolved.inspect} is not in referenced_documents:, and nothing is ever fetched",
           reference_uri: unresolved
         )
-        return failed_verification(doc, sig_node, [error], signature_info: sig_info)
+        return failed_verification(input, sig_node, [error], signature_info: sig_info)
       end
 
       # 3. Resolve trust material and call Native.verify
       trusted, untrusted, trust_error, store_leaf = collect_trust(sig_info)
-      return failed_verification(doc, sig_node, [trust_error], signature_info: sig_info) if trust_error
+      return failed_verification(input, sig_node, [trust_error], signature_info: sig_info) if trust_error
 
       # min_rsa_key_bits / min_ec_key_bits (S-06): only the actually
       # resolved trust material can be checked, so this runs after
@@ -311,7 +312,7 @@ module HankoXml
       begin
         @policy.enforce_key_size!(parsed_trust_keys(trusted))
       rescue HankoXml::PolicyError => e
-        return failed_verification(doc, sig_node, [e], signature_info: sig_info)
+        return failed_verification(input, sig_node, [e], signature_info: sig_info)
       end
 
       # Certificate expiration on the certificate:/certificates:/key: trust
@@ -335,7 +336,7 @@ module HankoXml
           cert = OpenSSL::X509::Certificate.new(pem)
           if verification_time < (cert.not_before - skew) || verification_time > (cert.not_after + skew)
             return failed_verification(
-              doc,
+              input,
               sig_node,
               [HankoXml::CertificateExpired.new("Certificate expired at #{verification_time}")],
               signature_info: sig_info
@@ -348,16 +349,9 @@ module HankoXml
         verify_result = Native.verify(xml_bytes, trusted, untrusted, native_id_attributes, index,
                                       @referenced_documents.to_a)
       rescue StandardError => e
-        return HankoXml::Verification.new(
-          valid: false,
-          errors: [native_failure(e, "the native layer failed unexpectedly while verifying")],
-          signature_info: sig_info,
-          signature_node: sig_node,
-          document: doc,
-          namespaces: @namespaces,
-          id_attributes: @id_attributes,
-          resolver: @resolver
-        )
+        return failed_verification(input, sig_node,
+                                   [native_failure(e, "the native layer failed unexpectedly while verifying")],
+                                   signature_info: sig_info)
       end
 
       valid = (verify_result[:status] == :succeeded)
@@ -375,12 +369,13 @@ module HankoXml
         errors: errors,
         signature_info: sig_info,
         signature_node: sig_node,
-        document: doc,
+        document: input.document,
         namespaces: @namespaces,
         id_attributes: @id_attributes,
         resolver: @resolver,
         reference_element_indexes: verify_result[:reference_element_indexes],
         reference_valid: verify_result[:reference_valid],
+        signature_element_index: input.scan(native_id_attributes)[:signature_element_indexes][index],
         certificate: valid ? verifying_certificate(trusted, verify_result[:trusted_index], store_leaf) : nil
       )
     end
@@ -410,13 +405,13 @@ module HankoXml
       sig_info.references.find { |ref| ref.external? && !@referenced_documents.key?(ref.document_uri) }&.uri
     end
 
-    def failed_verification(doc, sig_node, errors, signature_info: nil)
+    def failed_verification(input, sig_node, errors, signature_info: nil)
       HankoXml::Verification.new(
         valid: false,
         errors: errors,
         signature_info: signature_info,
         signature_node: sig_node,
-        document: doc,
+        document: input.document,
         namespaces: @namespaces,
         id_attributes: @id_attributes,
         resolver: @resolver

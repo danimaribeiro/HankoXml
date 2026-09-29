@@ -271,16 +271,21 @@ xml_bytes:, check_root_signed:)` now additionally checks:
 - `allow_hmac` -- rejects an HMAC `SignatureMethod` regardless of what a
   customized `signature_methods` allowlist permits.
 - `require_signed_root` -- a structural pre-crypto check: does any Reference
-  have `URI=""` or `URI="#" + <one of the root element's own id_attributes>`?
-  Mirrors the same "" == whole-document convention `dsig.rs` and
-  `Verification#resolve_reference` already use. **Verifier only** --
+  have `URI=""` or `URI="#" + <an ID xmlsec's ID table resolves to the root
+  element>`? Mirrors the same "" == whole-document convention `dsig.rs` and
+  `Verification#resolve_reference` already use. Since #102 the root's IDs
+  come from the native parse (`Native.scan`), so the check runs identically
+  with or without Nokogiri. **Verifier only** --
   `require_signed_root` is a verification-time XSW defence
   (API_CONTRACT.md §5.8.1), not a constraint on what is legitimate to sign,
   so `Signer#sign!` passes `check_root_signed: false` and still signs a
   caller-chosen fragment (R5) under `Policy.strict`.
 - `reject_duplicate_ids` -- a whole-document scan for more than one element
   sharing an id_attributes value, at both sign and verify time. As coarse as
-  `xmlSecAddIDs` itself (S-03): unqualified attribute name only, no
+  `xmlSecAddIDs` itself (S-03): it matches the attribute's local name,
+  whatever its namespace, because that is what xmlsec registers. Since #102
+  the scan runs in the native layer (`Native.scan`) on the bytes xmlsec
+  verifies; the earlier Nokogiri scan only saw attributes without a
   namespace.
 - `max_document_size` -- checked against the serialized byte size, at both
   sign and verify time, before `Native.verify`/`Native.sign`.

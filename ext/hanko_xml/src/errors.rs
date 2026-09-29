@@ -10,12 +10,15 @@
 //! native call (§7.1), so a thread-local `RefCell<Vec<String>>` is
 //! sufficient — no `Mutex` needed.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_int};
+use std::os::raw::{c_char, c_int, c_void};
 
 thread_local! {
     static ERROR_BUF: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+    /// How many error-level libxml2 diagnostics the structured handler has
+    /// seen on this thread. Callers compare it before and after a parse.
+    static LIBXML2_ERRORS: Cell<usize> = const { Cell::new(0) };
 }
 
 /// Clears the thread-local error buffer. Call at the start of each
@@ -93,4 +96,52 @@ pub unsafe fn install_error_callback() {
     unsafe {
         crate::sys::xmlSecErrorsSetCallback(Some(error_callback));
     }
+}
+
+/// libxml2's structured error handler, installed around each native parse
+/// and schema validation by `dsig::Libxml2Capture`. Keeps libxml2's
+/// diagnostics off stderr and in the same buffer as xmlsec's, so they reach
+/// `#xmlsec_errors` and never `#message`: they can quote the document.
+///
+/// Only error and fatal levels are kept. Warnings are dropped, matching
+/// what a strict Nokogiri parse rejects (§6.3).
+///
+/// # Safety
+///
+/// Called by libxml2 with a valid `xmlError` or null, and never retained.
+/// Declared with `*const` (libxml2 2.12+); 2.9 passes the same pointer as
+/// `*mut`, which has the same ABI.
+unsafe extern "C" fn libxml2_error_callback(_ctx: *mut c_void, error: *const crate::sys::xmlError) {
+    if error.is_null() {
+        return;
+    }
+    // SAFETY: libxml2 passes a valid xmlError for the duration of the call.
+    let err = unsafe { &*error };
+    if (err.level as i64) < (crate::sys::xmlErrorLevel_XML_ERR_ERROR as i64) {
+        return;
+    }
+    let message = if err.message.is_null() {
+        ""
+    } else {
+        // SAFETY: a non-null message is a NUL-terminated C string.
+        unsafe { CStr::from_ptr(err.message) }.to_str().unwrap_or("")
+    };
+    let entry = format!("{}:{}: ERROR: {}", err.line, err.int2, message.trim_end());
+
+    LIBXML2_ERRORS.with(|count| count.set(count.get() + 1));
+    ERROR_BUF.with(|buf| buf.borrow_mut().push(entry));
+}
+
+/// The handler above, typed as libxml2's `xmlStructuredErrorFunc`, whose
+/// pointer argument is `*mut` before libxml2 2.12 and `*const` after.
+pub fn libxml2_error_handler() -> crate::sys::xmlStructuredErrorFunc {
+    let handler: unsafe extern "C" fn(*mut c_void, *const crate::sys::xmlError) = libxml2_error_callback;
+    // SAFETY: both spellings of the callback type have the same ABI; only
+    // the constness of the xmlError pointer differs between libxml2 versions.
+    unsafe { std::mem::transmute(Some(handler)) }
+}
+
+/// Error-level libxml2 diagnostics seen on this thread so far.
+pub fn libxml2_error_count() -> usize {
+    LIBXML2_ERRORS.with(Cell::get)
 }

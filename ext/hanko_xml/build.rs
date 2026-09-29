@@ -214,6 +214,9 @@ fn generate_bindings(headers: &Headers) {
              #include <xmlsec/openssl/app.h>\n\
              #include <xmlsec/openssl/crypto.h>\n\
              #include <libxml/tree.h>\n\
+             #include <libxml/parser.h>\n\
+             #include <libxml/xmlerror.h>\n\
+             #include <libxml/xmlschemas.h>\n\
              #include <libxml/valid.h>\n\
              #include <libxml/xmlmemory.h>\n\
              #include <libxml/xmlversion.h>\n",
@@ -244,6 +247,26 @@ fn generate_bindings(headers: &Headers) {
         .allowlist_type("xmlAttr")
         .allowlist_type("xmlNs")
         .allowlist_type("xmlID")
+        // libxml2 error capture: keeps diagnostics off stderr, and lets the
+        // bytes path reject what a strict Nokogiri parse rejects (#102)
+        .allowlist_function("xmlSetStructuredErrorFunc")
+        .allowlist_type("xmlError")
+        .allowlist_type("xmlErrorLevel")
+        .allowlist_type("xmlParserOption")
+        // XSD validation of a <Signature>, for schema: :default without a
+        // DOM (#102). A copy of the element is validated, as Nokogiri did.
+        .allowlist_function("xmlNewDoc")
+        .allowlist_function("xmlDocCopyNode")
+        .allowlist_function("xmlDocSetRootElement")
+        .allowlist_function("xmlSchemaNewParserCtxt")
+        .allowlist_function("xmlSchemaSetParserStructuredErrors")
+        .allowlist_function("xmlSchemaParse")
+        .allowlist_function("xmlSchemaFreeParserCtxt")
+        .allowlist_function("xmlSchemaFree")
+        .allowlist_function("xmlSchemaNewValidCtxt")
+        .allowlist_function("xmlSchemaSetValidStructuredErrors")
+        .allowlist_function("xmlSchemaValidateDoc")
+        .allowlist_function("xmlSchemaFreeValidCtxt")
         .derive_default(true)
         .generate_comments(false)
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()));

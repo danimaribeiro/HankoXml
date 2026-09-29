@@ -44,6 +44,10 @@ gem "hanko_xml", git: "https://github.com/danimaribeiro/HankoXml"
 
 Then run `bundle install`.
 
+Nokogiri is optional. Add `gem "nokogiri"` for signing and the Nokogiri API; without it,
+verification still works on a String, a path or an IO, and signing raises
+`HankoXml::NokogiriRequired`.
+
 ## Your first signature
 
 ```ruby

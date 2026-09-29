@@ -103,7 +103,7 @@ Under `:adopt` (the default), `sign`/`sign!` look for `ds:Signature` elements fi
   still apply to the adopted skeleton.
 
 `:require` is the signing mode that could run without Nokogiri, since nothing has to be constructed.
-In 0.1.0 it still needs Nokogiri, like every other call.
+It still needs Nokogiri for now, like all signing; signing into a template on bytes is planned (#102).
 
 A template whose Reference URIs do not match `references` raises `HankoXml::ConfigurationError`.
 A template that violates `policy` raises `HankoXml::PolicyError` before any native signing call.

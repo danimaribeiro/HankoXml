@@ -52,7 +52,8 @@ module HankoXml
   def self.zero_copy_available?: () -> bool
   def self.parse: (String | IO | _ToPath source) -> Nokogiri::XML::Document
   def self.serialize: (Nokogiri::XML::Document | Nokogiri::XML::Node doc) -> String
-  def self.coerce_document: (untyped input) -> Nokogiri::XML::Document
+  def self.coerce_document: (untyped input, ?policy: Policy?) -> Nokogiri::XML::Document
+  def self.read_source: (untyped input, ?policy: Policy?) -> String
 end
 
 # Alias

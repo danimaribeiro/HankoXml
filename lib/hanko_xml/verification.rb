@@ -15,11 +15,15 @@ module HankoXml
     end
 
     attr_reader :valid, :errors, :signature_info, :signature_node, :document, :certificate, :id_attributes, :resolver,
-                :references, :reference_element_indexes, :reference_valid, :namespaces
+                :references, :reference_element_indexes, :reference_valid, :namespaces,
+                :signature_element_index
 
+    # +document+ is nil when the input was bytes and Nokogiri is not loaded
+    # (#102). Everything that needs no DOM still works then; #signed?,
+    # #signed_nodes, #at_signed and #signed raise NokogiriRequired.
     def initialize(valid:, errors:, signature_info:, signature_node:, document:, certificate: nil,
                    id_attributes: %w[Id ID id], resolver: nil, reference_element_indexes: nil,
-                   reference_valid: nil, namespaces: {})
+                   reference_valid: nil, namespaces: {}, signature_element_index: nil)
       @valid = valid
       @errors = errors.dup
       @signature_info = signature_info
@@ -37,6 +41,10 @@ module HankoXml
       # Native.verify's per-Reference digest status (S-09) -- authoritative
       # when present. See #reference_valid_for.
       @reference_valid = reference_valid&.dup&.freeze
+      # The <Signature>'s own document-order element index, in the same
+      # numbering, so #covers_root? can apply the enveloped exclusion without
+      # a DOM.
+      @signature_element_index = signature_element_index
       # Resolution must happen, and #errors/#valid must be able to react to it
       # (see detect_resolution_mismatches!), before we freeze below -- the object
       # is immutable from here on, so #references can't be computed lazily on
@@ -71,6 +79,7 @@ module HankoXml
     end
 
     def signed_nodes
+      require_document!("Verification#signed_nodes")
       # Same rule as #signed?: nothing is covered unless the signature held (#91).
       return [] unless valid?
 
@@ -87,6 +96,7 @@ module HankoXml
     end
 
     def signed?(node)
+      require_document!("Verification#signed?")
       return false unless valid?
 
       # True if the node is equal to or a descendant of any reference's target node,
@@ -104,8 +114,18 @@ module HankoXml
       end
     end
 
+    # Whether a Reference covers the root element. With a DOM this is
+    # #signed?(document.root); without one, the same rule over the native
+    # element indexes, where the root is index 0 (#102).
     def covers_root?
-      signed?(document.root)
+      return signed?(document.root) if document
+      return false unless valid? && reference_element_indexes
+
+      references.each_with_index.any? do |ref, index|
+        next false unless reference_element_indexes[index]&.zero?
+
+        !(ref.enveloped? && signature_element_index&.zero?)
+      end
     end
 
     def partial?
@@ -115,6 +135,7 @@ module HankoXml
     # +ns+ is merged over the Verifier's +namespaces:+, which is merged over
     # HankoXml::NS, so +ds:+ is always bound (#96).
     def at_signed(xpath, ns = {})
+      require_document!("Verification#at_signed")
       node = document.at_xpath(xpath, xpath_namespaces(ns))
       raise HankoXml::NotSignedError, "No node found" unless node
       raise HankoXml::NotSignedError, "Node is not signed" unless signed?(node)
@@ -123,6 +144,7 @@ module HankoXml
     end
 
     def signed(xpath, ns = {})
+      require_document!("Verification#signed")
       nodes = document.xpath(xpath, xpath_namespaces(ns)).to_a
       raise HankoXml::NotSignedError, "Some nodes are not signed" unless nodes.all? { |n| signed?(n) }
 
@@ -130,6 +152,16 @@ module HankoXml
     end
 
     private
+
+    # Coverage questions are answered on the caller's nodes, so they need
+    # the DOM. Without it they raise rather than guess (§6.1).
+    def require_document!(capability)
+      return if document
+
+      raise HankoXml::NokogiriRequired,
+            "#{capability} needs a DOM: verify a Nokogiri document, or load Nokogiri before verifying, " \
+            "to use it (#102)."
+    end
 
     def xpath_namespaces(ns)
       HankoXml::NS.merge(namespaces).merge((ns || {}).transform_keys(&:to_s))
@@ -185,6 +217,10 @@ module HankoXml
       return unless resolver
       return unless signature_info
 
+      # A resolver: is a check the caller asked for; without the DOM it
+      # cannot run, and it must never be skipped.
+      require_document!("resolver:")
+
       signature_info.references.each_with_index do |ref, index|
         next unless ref.uri&.start_with?("#")
 
@@ -221,6 +257,8 @@ module HankoXml
 
       # Fallback for Verification constructed without a Native.verify result
       # (specs / error paths that never reached crypto).
+      return nil unless document
+
       if ref.uri.nil? || ref.uri.empty?
         document.root
       elsif ref.uri.start_with?("#")
@@ -229,7 +267,7 @@ module HankoXml
     end
 
     def node_at_element_index(index)
-      return nil if index.nil?
+      return nil if index.nil? || document.nil?
 
       document.xpath("//*")[index]
     end
