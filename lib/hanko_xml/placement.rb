@@ -79,9 +79,7 @@ module HankoXml
       return target if HankoXml::Dom.node?(target)
 
       ns = HankoXml::NS.merge((namespaces || {}).transform_keys(&:to_s)).merge(self.namespaces.transform_keys(&:to_s))
-      matches = begin
-        doc.xpath(target, ns)
-      rescue Nokogiri::XML::XPath::SyntaxError
+      matches = HankoXml::Dom.xpath(doc, target, ns) do
         raise HankoXml::PlacementError,
               "placement XPath #{target.inspect} is not valid XPath; bind every prefix it uses in namespaces:"
       end

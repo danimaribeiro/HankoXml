@@ -162,10 +162,7 @@ module HankoXml
     # own path as the base URL so its relative import of exc-c14n.xsd
     # resolves (#61), and only once: a racing first call just parses it twice.
     def self.default_schema
-      @default_schema ||= begin
-        path = File.expand_path("xmldsig-core-schema.xsd", __dir__)
-        ::Nokogiri::XML::Schema.from_document(::Nokogiri::XML(File.read(path), path))
-      end
+      @default_schema ||= Dom.schema_from_file(File.expand_path("xmldsig-core-schema.xsd", __dir__))
     end
 
     private
@@ -238,9 +235,7 @@ module HankoXml
               else
                 @schema
               end
-        tmp_doc = Nokogiri::XML::Document.new
-        tmp_doc.add_child(sig_node.dup)
-        xsd_errors = xsd.validate(tmp_doc)
+        xsd_errors = Dom.schema_errors(xsd, sig_node)
         if xsd_errors.any?
           return HankoXml::Verification.new(
             valid: false,

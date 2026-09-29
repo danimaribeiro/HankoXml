@@ -106,9 +106,7 @@ module HankoXml
     private
 
     def serialize(declaration:)
-      options = ::Nokogiri::XML::Node::SaveOptions::AS_XML
-      options |= ::Nokogiri::XML::Node::SaveOptions::NO_DECLARATION unless declaration
-      @document.to_xml(save_with: options)
+      HankoXml::Dom.to_xml(@document, declaration: declaration)
     end
   end
 end

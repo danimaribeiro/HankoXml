@@ -21,13 +21,8 @@ module HankoXml
     def parse(source)
       Dom.require!("HankoXml.parse")
 
-      begin
-        doc = ::Nokogiri::XML(source) { |config| config.strict.nonet }
-      rescue ::Nokogiri::XML::SyntaxError => e
-        raise parse_error([e])
-      end
-
-      raise parse_error(doc.errors) if doc.errors.any?
+      doc, errors = Dom.parse(source)
+      raise parse_error(errors) if errors.any?
 
       doc
     end
@@ -45,7 +40,7 @@ module HankoXml
     def serialize(doc)
       Dom.require!("HankoXml.serialize")
 
-      doc.to_xml(save_with: ::Nokogiri::XML::Node::SaveOptions::AS_XML)
+      Dom.to_xml(doc)
     end
 
     # Coerces any of the accepted document input shapes (§6.2) into a

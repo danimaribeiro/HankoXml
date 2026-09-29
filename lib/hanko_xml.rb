@@ -119,43 +119,6 @@ module HankoXml
     def zero_copy_available?
       false
     end
-
-    private
-
-    def xml_bytes(xml)
-      if defined?(::Nokogiri::XML::Document) && (xml.is_a?(::Nokogiri::XML::Document) || xml.is_a?(::Nokogiri::XML::Node))
-        return HankoXml.serialize(xml).b
-      end
-
-      case xml
-      when String
-        xml.b
-      when ->(obj) { obj.respond_to?(:to_path) }
-        File.binread(xml.to_path)
-      else
-        raise ArgumentError,
-              "expected a Nokogiri::XML::Document, an XML String, or a path-like object " \
-              "(Pathname/File), got #{xml.class}"
-      end
-    end
-
-    def nokogiri_document?(obj)
-      defined?(Nokogiri::XML::Document) && obj.is_a?(Nokogiri::XML::Document)
-    end
-
-    def openssl_certificate?(obj)
-      defined?(OpenSSL::X509::Certificate) && obj.is_a?(OpenSSL::X509::Certificate)
-    end
-
-    def cert_pem_bytes(certificate)
-      return certificate.to_pem.b if openssl_certificate?(certificate)
-      return certificate.b if certificate.is_a?(String)
-      return File.binread(certificate.to_path) if certificate.respond_to?(:to_path)
-
-      raise ArgumentError,
-            "expected an OpenSSL::X509::Certificate, a PEM String, or a path-like object " \
-            "(Pathname/File), got #{certificate.class}"
-    end
   end
 
   ::Xmlsec = HankoXml unless defined?(::Xmlsec)
