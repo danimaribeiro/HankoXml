@@ -105,6 +105,12 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **#102:** `HankoXml::Verifier.default_schema` raises `NokogiriRequired`
+  without Nokogiri, instead of a `NameError`. Every Nokogiri call now goes
+  through `HankoXml::Dom`, the first step toward using HankoXml without
+  Nokogiri; a spec fails if any other file in `lib/` names the Nokogiri
+  constant or requires Nokogiri.
+
 - **#96:** `ParseError`, `SchemaError` and `NativeError` messages are fixed
   strings. libxml2's diagnostics, which quote the document, moved to
   `#xmlsec_errors`. A native error during verification keeps its class and

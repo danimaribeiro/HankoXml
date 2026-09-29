@@ -31,7 +31,4 @@ module HankoXml
   end
 end
 
-if defined?(::Nokogiri::XML::Document)
-  ::Nokogiri::XML::Document.include(HankoXml::NokogiriExt)
-  ::Nokogiri::XML::Node.include(HankoXml::NokogiriExt)
-end
+HankoXml::Dom.extend_nodes(HankoXml::NokogiriExt)

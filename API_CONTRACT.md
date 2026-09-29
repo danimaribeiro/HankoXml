@@ -1158,10 +1158,14 @@ Nokogiri is not a runtime dependency in the gemspec, and `hanko_xml` never
 loads first decides which libxml2 the other runs on (§3.1), so the load order
 stays the caller's.
 
-`lib/hanko_xml/dom.rb` is the single place that probes for Nokogiri and holds
-every `defined?(Nokogiri…)` check. Nothing else in the library references the
-constant directly, so a future DOM-free path is one seam rather than a
-condition scattered through twelve files.
+`lib/hanko_xml/dom.rb` is the single place that probes for or calls into
+Nokogiri. It holds every `defined?(Nokogiri…)` check and the few DOM
+operations the rest of the library needs: the strict parse, byte-faithful
+serialization, XPath with syntax-error handling, XSD loading and validation,
+and installing `nokogiri_ext`. Nothing else in the library references the
+constant, so a DOM-free path (#102) is one seam rather than a condition
+scattered through twelve files. `spec/hanko_xml/dom_spec.rb` enforces this,
+and that nothing in `lib/` ever `require`s Nokogiri.
 
 **Planned, not in 0.1.0:** verification without Nokogiri (the native layer
 already parses the document, and `Native.inspect_sig` returns `<SignedInfo>` as
