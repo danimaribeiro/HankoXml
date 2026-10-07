@@ -328,7 +328,8 @@ RSpec.describe HankoXml::Verifier do
 
           expect(result.valid?).to be false
           expect(result.errors.first).to be_a(HankoXml::UntrustedCertificate)
-          expect(result.errors.first.message).to match(/certificate_subject/)
+          expect(result.errors.first.message).to eq("signing certificate subject does not match certificate_subject:")
+          expect(result.errors.first.xmlsec_errors.join).to include("usage-leaf")
         end
       end
 
@@ -397,6 +398,9 @@ RSpec.describe HankoXml::Verifier do
 
       expect(result.valid?).to be false
       expect(result.errors.first).to be_a(HankoXml::UntrustedCertificate)
+      # The KeyName is document text: #xmlsec_errors, never #message (§5.10).
+      expect(result.errors.first.message).not_to include("idp-1")
+      expect(result.errors.first.xmlsec_errors.join).to include("idp-1")
     end
   end
 end

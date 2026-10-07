@@ -368,6 +368,16 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Changed
 
+- **#96:** Five verification errors no longer quote the document in `#message`,
+  as §5.10 requires. The detail moves to `#xmlsec_errors`, or to
+  `ReferenceError#reference_uri` for an external Reference URI missing from
+  `referenced_documents:`. Affected: the `UntrustedCertificate` for a `<KeyName>`
+  missing from `keys:` (the KeyName), for an invalid `<X509Certificate>`
+  (OpenSSL's text) and for a `certificate_subject:` mismatch (both subjects),
+  and `ResolutionMismatch` (the reference fragment). RBS for `SignatureInfo`,
+  `Verifier` and `Policy` matches the code again, and API_CONTRACT §5.6, §5.8
+  and §7 describe the native layer as #142 left it.
+
 - **#102:** Every check now runs on the document's bytes through the native
   layer, with or without Nokogiri, so there is one implementation.
   `schema: :default` validates on the extension's libxml2 rather than

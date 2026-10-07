@@ -682,7 +682,7 @@ Trust modes for verification, in decreasing order of strength:
 
 | Keyword | Behaviour |
 | --- | --- |
-| `store:` | Extract the `<X509Certificate>` from `KeyInfo` (Ruby/Nokogiri), validate the chain with `OpenSSL::X509::Store#verify` (Ruby/OpenSSL), then hand libxmlsec1 **only the validated leaf** as the trusted key. Chain policy — CRLs, purpose, time — is OpenSSL's, and fully configurable by the caller. |
+| `store:` | Extract the `<X509Certificate>` from `KeyInfo` (`Native.inspect_sig`, untrusted), validate the chain with `OpenSSL::X509::Store#verify` (Ruby/OpenSSL), then hand libxmlsec1 **only the validated leaf** as the trusted key. Chain policy — CRLs, purpose, time — is OpenSSL's, and fully configurable by the caller. |
 | `certificates:` | The signature must verify against one of these exact certificates. |
 | `certificate:` | Pinned to exactly one. |
 | `key:` | Bare public key; `KeyInfo` is ignored entirely. |
@@ -896,13 +896,15 @@ Notes on the non-obvious ones:
   `Native.sign` / `Native.verify` then fail closed.
 - **`require_signed_root: true`** is the structural half of the XSW defence —
   see §5.8.1, which is where the whole decision is argued.
-- **`reject_duplicate_ids: true`** is enforced by a Nokogiri scan before we
-  serialize. Duplicate IDs make `URI="#x"` resolution ambiguous, and "which `x`
+- **`reject_duplicate_ids: true`** is enforced on the native layer's parse of
+  the same bytes xmlsec verifies (`Native.scan`), matching ID attributes by
+  local name as `xmlSecAddIDs` registers them. Duplicate IDs make `URI="#x"` resolution ambiguous, and "which `x`
   did xmlsec pick" is the mechanism behind several XSW variants.
 - Both structural checks need the document. `Signer` and `Verifier` always pass
-  it; a direct `Policy#enforce!` / `#violations` call without `document:`,
-  `sig_node:` and `id_attributes:` reports each enabled check as a violation
-  instead of skipping it (#96).
+  it; a direct `Policy#enforce!` / `#violations` call without `xml_bytes:` (or
+  `document:`, which is serialized) and `id_attributes:` reports each enabled
+  check as a violation instead of skipping it (#96). `max_document_size` is
+  checked first, and an oversized document is never parsed (S-12).
 - **`allow_external_references: false`** blocks the SSRF/file-read surface of
   XML-DSig outright. Any reference whose URI is not `""` or `#fragment` is
   rejected in Ruby before xmlsec sees it, so libxmlsec1's own I/O callbacks are
@@ -1475,10 +1477,28 @@ HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signat
 #      trusted_index: Integer | nil }                  # which trusted_pems entry verified
 # raises only for conditions that are not a verification verdict
 #   (unparseable input, index out of range, unreadable key material)
+
+HankoXml::Native.scan(xml, id_attributes, strict)
+#   The document's structure, without cryptography, from the same libxml2
+#   parse xmlsec uses (#102). Policy's require_signed_root and
+#   reject_duplicate_ids read it, with or without Nokogiri.
+#   strict : true for input that arrived as bytes: any libxml2 error-level
+#            diagnostic raises ParseError, as a strict Nokogiri parse would.
+# => { signature_count:           2,
+#      signature_values:          [true, false],   # non-empty <SignatureValue>
+#      signature_element_indexes: [0, 7],          # document order, root = 0
+#      duplicate_ids:             false,           # by local name, as xmlSecAddIDs
+#      root_ids:                  ["doc-1"] }      # IDs xmlsec resolves to the root
+
+HankoXml::Native.validate_schema(xml, signature_index, xsd_path)
+#   Validates a copy of the nth <ds:Signature> against the XSD at xsd_path
+#   with the extension's libxml2 (schema: :default).
+# => Array<String> — libxml2's validation errors; empty means valid
 ```
 
-That is six functions (`check_version`, `abi_compatible?`, `versions`,
-`sign`, `inspect_sig`, `verify`). Everything else in this document is Ruby.
+That is eight functions (`check_version`, `abi_compatible?`, `versions`,
+`sign`, `inspect_sig`, `verify`, `scan`, `validate_schema`). Everything else
+in this document is Ruby.
 
 ### 7.1 Design notes for the native layer
 

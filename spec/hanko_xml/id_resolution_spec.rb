@@ -103,6 +103,9 @@ RSpec.describe "ID resolution (S-03 / #28)" do
 
     expect(result).not_to be_valid
     expect(result.errors).to include(an_instance_of(HankoXml::ResolutionMismatch))
+    mismatch = result.errors.grep(HankoXml::ResolutionMismatch).first
+    expect(mismatch.message).not_to include("#")
+    expect(mismatch.xmlsec_errors.join).to start_with("reference: #")
     # Native locator is still recorded on the reference; #signed? stays false
     # because the verification is invalid (API_CONTRACT §5.4).
     expect(result.references.first.node).to eq(signed.at_xpath("//Invoice"))

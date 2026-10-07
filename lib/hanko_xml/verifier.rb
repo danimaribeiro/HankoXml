@@ -294,8 +294,10 @@ module HankoXml
 
       unresolved = unreferenced_external_uri(sig_info)
       if unresolved
+        # The URI is document text, so it goes in #reference_uri, never the
+        # message (§5.10).
         error = HankoXml::ReferenceError.new(
-          "reference URI #{unresolved.inspect} is not in referenced_documents:, and nothing is ever fetched",
+          "an external reference URI is not in referenced_documents:, and nothing is ever fetched",
           reference_uri: unresolved
         )
         return failed_verification(input, sig_node, [error], signature_info: sig_info)
@@ -433,7 +435,8 @@ module HankoXml
       key_name = sig_info.key_names.first
       unless key_name && @keys.key?(key_name)
         return [nil, nil,
-                HankoXml::UntrustedCertificate.new("KeyName #{key_name.inspect} not found in keys: map")]
+                HankoXml::UntrustedCertificate.new("the document's <KeyName> is missing or not in the keys: map",
+                                                   xmlsec_errors: ["KeyName: #{key_name.inspect}"])]
       end
 
       [[HankoXml::Key.coerce(@keys[key_name]).to_pem], [], nil]
@@ -444,7 +447,7 @@ module HankoXml
         embedded = load_embedded_certificates(sig_info)
       rescue OpenSSL::X509::CertificateError => e
         return [nil, nil,
-                HankoXml::UntrustedCertificate.new("Invalid X509Certificate in KeyInfo: #{e.message}")]
+                HankoXml::UntrustedCertificate.new("Invalid X509Certificate in KeyInfo", xmlsec_errors: [e.message])]
       end
 
       if embedded.empty?
@@ -537,8 +540,10 @@ module HankoXml
       end
       return nil if @certificate_subject.nil? || certificate_subject_matches?(leaf)
 
+      # The subject comes from the document's certificate: detail, not message.
       HankoXml::UntrustedCertificate.new(
-        "signing certificate subject #{leaf.subject} does not match certificate_subject: #{@certificate_subject}"
+        "signing certificate subject does not match certificate_subject:",
+        xmlsec_errors: ["subject: #{leaf.subject}", "certificate_subject: #{@certificate_subject}"]
       )
     end
 

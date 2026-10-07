@@ -1,29 +1,44 @@
 module HankoXml
+  # What <SignedInfo> claims, from Native.inspect_sig: URIs as Strings.
   class SignatureInfo
-    attr_reader signature_method: Symbol
-    attr_reader canonicalization_method: Symbol
-    attr_reader references: Array[ReferenceInfo]
-    attr_reader key_names: Array[String]
+    class ReferenceInfo < Struct[untyped]
+      attr_accessor uri: String?
+      attr_accessor digest_method: String?
+      attr_accessor transforms: Array[String]
+      attr_accessor id: String?
+      attr_accessor type: String?
 
-    def self.from_native: (Hash[Symbol, untyped] result) -> instance
+      def initialize: (uri: String?, digest_method: String?, ?transforms: Array[String], ?id: String?, ?type: String?) -> void
+      def digest_method_name: () -> Symbol?
+      def transform_names: () -> Array[Symbol?]
+      def fragment?: () -> bool
+      def external?: () -> bool
+      def document_uri: () -> String
+      def same_document_xpointer?: () -> bool
+    end
+
+    attr_reader signature_method: String?
+    attr_reader canonicalization_method: String?
+    attr_reader signature_count: Integer
+    attr_reader key_names: Array[String]
+    attr_reader certificates: Array[String]
+    attr_reader references: Array[ReferenceInfo]
+
+    def self.from_native: (Hash[Symbol | String, untyped] hash) -> instance
 
     def initialize: (
-      signature_method: Symbol,
-      canonicalization_method: Symbol,
-      references: Array[ReferenceInfo],
-      key_names: Array[String]
+      signature_method: String?,
+      canonicalization_method: String?,
+      references: Array[ReferenceInfo | Hash[Symbol, untyped]],
+      ?signature_count: Integer,
+      ?key_names: Array[String],
+      ?certificates: Array[String],
+      ?has_retrieval_method: bool
     ) -> void
-  end
 
-  class ReferenceInfo
-    attr_reader uri: String
-    attr_reader digest_method: Symbol
-    attr_reader transforms: Array[Symbol]
-
-    def initialize: (uri: String, digest_method: Symbol, transforms: Array[Symbol]) -> void
-    def external?: () -> bool
-    def fragment?: () -> bool
-    def target_id: () -> String?
+    def retrieval_method?: () -> bool
+    def signature_method_name: () -> Symbol?
+    def canonicalization_method_name: () -> Symbol?
   end
 
   class Verification
