@@ -2,6 +2,11 @@ module HankoXml
   class Verifier
     DEFAULT_SCHEMA_PATH: String
 
+    # §6.2: a String, a path-like object, an IO, or a Nokogiri document or node.
+    type input = String | _ToPath | _Reader | Nokogiri::XML::Node | Nokogiri::XML::Document
+
+    def self.default_schema: () -> Nokogiri::XML::Schema
+
     attr_reader policy: Policy
     attr_reader id_attributes: Array[String | [String, String]]
     attr_reader namespaces: Hash[String, String]
@@ -28,13 +33,9 @@ module HankoXml
       ?certificate_subject: (String | OpenSSL::X509::Name)?
     ) -> void
 
-    def verify: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml) -> Verification
-    def verify!: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml) -> Verification
-    def valid?: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml) -> bool
-    def verify_all: (String | Nokogiri::XML::Node | Nokogiri::XML::Document xml) -> Array[Verification]
-
-    private
-    def resolve_signature_target: (Nokogiri::XML::NodeSet sigs, Symbol | Integer | String signature_option) -> [Nokogiri::XML::Node?, Integer]
-    def verify_single: (Nokogiri::XML::Document doc, Nokogiri::XML::Node sig_node, Integer index) -> Verification
+    def verify: (input xml) -> Verification
+    def verify!: (input xml) -> Verification
+    def valid?: (input xml) -> bool
+    def verify_all: (input xml) -> Array[Verification]
   end
 end

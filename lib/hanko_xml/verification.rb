@@ -240,7 +240,8 @@ module HankoXml
 
     def record_resolution_mismatch(id)
       @errors << HankoXml::ResolutionMismatch.new(
-        "resolver and xmlsec ID resolution disagree on the target of \"##{id}\""
+        "resolver and xmlsec ID resolution disagree on a reference's target",
+        xmlsec_errors: ["reference: ##{id}"]
       )
       @valid = false
     end

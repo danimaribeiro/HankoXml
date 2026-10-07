@@ -3,6 +3,11 @@
 require "English"
 require "hanko_xml"
 
+# Repo files (Rust sources, RBS, docs) are UTF-8. Read them that way under any
+# locale, as CI's C.UTF-8 runners do, rather than as US-ASCII in a bare
+# container.
+Encoding.default_external = Encoding::UTF_8
+
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
   config.example_status_persistence_file_path = ".rspec_status"

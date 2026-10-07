@@ -114,6 +114,8 @@ RSpec.describe "S-04 policy before crypto" do
 
       expect(HankoXml::Native).not_to have_received(:verify)
       expect(result.errors.first).to be_a(HankoXml::ReferenceError)
+      expect(result.errors.first.reference_uri).to eq("file://#{fifo}")
+      expect(result.errors.first.message).not_to include(fifo.to_s)
     end
   end
 
