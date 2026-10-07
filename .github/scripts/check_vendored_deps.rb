@@ -11,8 +11,8 @@
 #
 #   * a newer PATCH within the pinned minor series -- almost always the shape a
 #     security fix arrives in, and directly actionable
-#   * a newer minor/major -- a deliberate decision (we pin libxml2 2.14.x while
-#     2.15.x exists), so it is reported but not treated as urgent
+#   * a newer minor/major -- a deliberate decision (moving to a new libxml2
+#     minor line, as #65 did from 2.14 to 2.15), so it is reported but not treated as urgent
 #   * known advisories against the pinned version, via OSV
 #
 # Exits 1 when anything actionable is found, so the workflow can open an issue.

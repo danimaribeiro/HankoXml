@@ -25,9 +25,9 @@
 # `rake symbols:check` still reports no leaked xml*/xmlSec* exports.
 
 libxml2:
-  version: "2.14.6"
-  url: "https://download.gnome.org/sources/libxml2/2.14/libxml2-2.14.6.tar.xz"
-  sha256: "7ce458a0affeb83f0b55f1f4f9e0e55735dbfc1a9de124ee86fb4a66b597203a"
+  version: "2.15.4"
+  url: "https://download.gnome.org/sources/libxml2/2.15/libxml2-2.15.4.tar.xz"
+  sha256: "98087fd181d9070724f3fbc65c7377db03038eb92bd882374daff44940138821"
   license: "MIT"
 
 xmlsec1:
@@ -47,10 +47,10 @@ openssl:
   # long support and few forced bumps. Checksum cross-checked against both the
   # GitHub release and openssl.org's published .sha256 -- one source is not
   # enough for the crypto we ship.
-  version: "3.5.8"
-  url: "https://github.com/openssl/openssl/releases/download/openssl-3.5.8/openssl-3.5.8.tar.gz"
-  mirror: "https://www.openssl.org/source/openssl-3.5.8.tar.gz"
-  sha256: "a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2"
+  version: "3.5.9"
+  url: "https://github.com/openssl/openssl/releases/download/openssl-3.5.9/openssl-3.5.9.tar.gz"
+  mirror: "https://www.openssl.org/source/openssl-3.5.9.tar.gz"
+  sha256: "603f5602e2eef00d77fbd429d34dcd5822bb301757a1bc9cdb24c670f1eb859a"
   license: "Apache-2.0"
 
 # Why OpenSSL is vendored after all.

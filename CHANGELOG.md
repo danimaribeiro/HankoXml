@@ -446,6 +446,16 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 - `required_ruby_version` is now `>= 3.1.0`. Ruby 3.0 is end-of-life and was
   never in the CI matrix.
 
+### Security
+
+- **#65:** The platform gems vendor libxml2 2.15.4 (was 2.14.6) and OpenSSL
+  3.5.9 (was 3.5.8). The 2.14 line has ended, and libxml2 2.15.4 carries
+  security fixes the 2.14 line never got: bounds and overflow checks in
+  xmlregexp, dict.c, uri.c, valid.c, XPointer and xmlIO. OpenSSL 3.5.9 is a
+  security release; its CVEs are mostly in TLS, DTLS and QUIC, which HankoXml
+  does not use, plus EC and SM2 timing side channels. A source install still
+  links the system libraries.
+
 ## [0.1.0] - 2026-08-31
 
 - Initial release

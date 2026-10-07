@@ -65,7 +65,7 @@ module InteropVectors
       "signature-retrievalmethod-rawx509crt" => [[:store, "certs/ca.pem"], RETRIEVAL_METHOD],
       # An <Object> holds a no-namespace element. `schema: :default` runs on
       # the extension's libxml2 (#102): newer libxml2 (Nokogiri's, the
-      # vendored 2.14) rejects it under <Object>'s wildcard, while the 2.9
+      # vendored 2.15) rejects it under <Object>'s wildcard, while the 2.9
       # line CI's Ubuntu jobs link admits it, as the XSD's ##any allows. Then
       # Policy.interop refuses the <RetrievalMethod> instead.
       "signature" => [[:certificate, "certs/merlin.pem"],

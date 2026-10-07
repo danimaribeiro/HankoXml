@@ -46,7 +46,7 @@ Ruby-specific:
 | `ext/hanko_xml/src/dsig.rs` | ~1,500 | Parses, inspects, signs and verifies through xmlsec | No |
 | `ext/hanko_xml/src/errors.rs` | ~100 | Captures xmlsec's error log | No |
 | `ext/hanko_xml/src/sys.rs` | ~40 | bindgen output | No |
-| `ext/hanko_xml/build.rs`, `build/vendor.rs` | ~270 + ~820 | System or vendored libxml2 2.14.6, xmlsec1 1.3.12, OpenSSL 3.5.8, pinned by SHA-256 | Partly: `RUBY_TARGET` switches vendoring on (P7) |
+| `ext/hanko_xml/build.rs`, `build/vendor.rs` | ~270 + ~820 | System or vendored libxml2 2.15.4, xmlsec1 1.3.12, OpenSSL 3.5.9, pinned by SHA-256 | Partly: `RUBY_TARGET` switches vendoring on (P7) |
 | `ext/hanko_xml/src/lib.rs` | ~390 | Magnus glue: the six `HankoXml::Native` functions | **Yes** |
 
 The boundary is already the right shape for other languages. Every call is bytes
@@ -743,7 +743,7 @@ Still open:
     makes it predictable, but the system libxml2 2.9.14 keeps its XSD integer
     limits.
   - Chain verdicts for the new `trust_anchors:` keyword come from the core's
-    OpenSSL (3.5.8 in platform gems) instead of whichever libcrypto Ruby's
+    OpenSSL (3.5.9 in platform gems) instead of whichever libcrypto Ruby's
     openssl links. Under P1 option A or C the `store:` path keeps running
     Ruby's `StoreContext#verify`, so existing callers see no change; it
     becomes one only if `store:` is deprecated later.
