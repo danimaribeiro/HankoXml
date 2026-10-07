@@ -82,7 +82,8 @@ module HankoXml
       ?reference_valid: Array[bool?]?,
       ?namespaces: Hash[String | Symbol, String]?,
       ?signature_element_index: Integer?,
-      ?certificate_chain: Array[OpenSSL::X509::Certificate]?
+      ?certificate_chain: Array[OpenSSL::X509::Certificate]?,
+      ?trusted: bool
     ) -> void
 
     def valid?: () -> bool
@@ -91,6 +92,7 @@ module HankoXml
     def digest_methods: () -> Array[algorithm]
     def signed?: (Nokogiri::XML::Node node) -> bool
     def signed_nodes: () -> Array[Nokogiri::XML::Node]
+    def trusted?: () -> bool
     def signed_info: () -> SignatureInfo?
     def certificate_chain: () -> Array[OpenSSL::X509::Certificate]
     def key_info: () -> KeyInfo::Parsed?

@@ -534,9 +534,11 @@ v.signed_info             # => HankoXml::SignatureInfo (frozen) once valid?, els
 # --- Who signed -----------------------------------------------------------
 v.certificate        # => OpenSSL::X509::Certificate whose key verified (the pinned or listed
                      #    certificate, or the store: chain leaf), or nil (a bare key, or invalid)
+v.trusted?           # => valid? and the key came from trust you supplied (false for
+                     #    Verifier.without_trust_verification, §5.6)
 v.certificate_chain  # => Array<OpenSSL::X509::Certificate>, leaf first: the chain OpenSSL
                      #    validated for store:, [v.certificate] for certificate:/certificates:,
-                     #    [] for a bare key or unless valid?
+                     #    [] for a bare key, or unless trusted?
 
 # --- What the document claimed (untrusted) --------------------------------
 v.key_info           # => HankoXml::KeyInfo::Parsed: <KeyName> texts and <X509Certificate>s
@@ -698,9 +700,25 @@ Trust modes for verification, in decreasing order of strength:
 | `certificate:` | Pinned to exactly one. |
 | `key:` | Bare public key; `KeyInfo` is ignored entirely. |
 
-There is no way to verify against the certificate the document itself carries.
-An explicit, two-step integrity-only mode (`Verifier.without_trust_verification`,
-`Verification#trusted?`, `verify!(allow_untrusted: true)`) is planned (#103).
+`Verifier.new` has no way to verify against the certificate the document
+itself carries. That takes an explicit, separate constructor (#103):
+
+```ruby
+# Proves the document was not modified after signing by the key in its own
+# <X509Certificate>; proves NOTHING about who signed it.
+HankoXml::Verifier.without_trust_verification(policy: ...)
+```
+
+It takes every `Verifier` keyword except the trust sources (passing one is a
+`ConfigurationError`), and it is never a keyword on `Verifier.new`. The key is
+still pinned as `signKey` (S-01): the public key of the single end-entity
+certificate in `<KeyInfo>`; none, or more than one, is an
+`UntrustedCertificate`. Its `Verification#certificate` is that certificate,
+`#trusted?` is `false` and `#certificate_chain` is `[]`, while `#valid?` speaks
+for integrity only. `verify!` on such a verifier still raises
+`UntrustedCertificate` unless you also pass `allow_untrusted: true`: two
+explicit steps to the dangerous outcome. `Xades::Verifier` does not offer the
+mode. Every other `Verification#trusted?` equals `#valid?`.
 
 #### Key material handling
 

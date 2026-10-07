@@ -23,7 +23,8 @@ module HankoXml
     # #signed_nodes, #at_signed and #signed raise NokogiriRequired.
     def initialize(valid:, errors:, signature_info:, signature_node:, document:, certificate: nil,
                    id_attributes: %w[Id ID id], resolver: nil, reference_element_indexes: nil,
-                   reference_valid: nil, namespaces: {}, signature_element_index: nil, certificate_chain: nil)
+                   reference_valid: nil, namespaces: {}, signature_element_index: nil, certificate_chain: nil,
+                   trusted: true)
       @valid = valid
       @errors = errors.dup
       @signature_info = signature_info
@@ -32,6 +33,8 @@ module HankoXml
       @certificate = certificate
       # The chain store: validated, leaf first; nil for the pinned trust sources.
       @certificate_chain = certificate_chain&.dup&.freeze
+      # False only for Verifier.without_trust_verification (#103).
+      @trusted = trusted
       @id_attributes = (id_attributes || []).dup.freeze
       @resolver = resolver
       @namespaces = (namespaces || {}).transform_keys(&:to_s).freeze
@@ -119,6 +122,14 @@ module HankoXml
     # Whether a Reference covers the root element. With a DOM this is
     # #signed?(document.root); without one, the same rule over the native
     # element indexes, where the root is index 0 (#102).
+    # Whether the signature held AND the key came from trust material the
+    # caller supplied. False for every result of
+    # Verifier.without_trust_verification, which checks integrity only: its
+    # #valid? says the document was not changed, never who signed it (#103).
+    def trusted?
+      valid? && @trusted
+    end
+
     # The <SignedInfo> that was verified: #signature_info once the signature
     # held, nil otherwise, so it never stands for unauthenticated claims
     # (#104). #signature_info is the same data before verification.
@@ -127,11 +138,11 @@ module HankoXml
     end
 
     # The certificates that established trust, leaf first, or [] unless
-    # valid?. For store: it is the chain OpenSSL validated, up to the trust
+    # trusted?. For store: it is the chain OpenSSL validated, up to the trust
     # anchor; for certificate: / certificates: it is the pinned certificate;
     # key: and keys: with a bare public key have none (#104).
     def certificate_chain
-      return [] unless valid?
+      return [] unless trusted?
       return @certificate_chain if @certificate_chain
 
       certificate ? [certificate] : []

@@ -10,6 +10,15 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Added
 
+- **#103:** `Verifier.without_trust_verification` checks integrity only,
+  against the key in the document's own `<X509Certificate>`. It is a separate
+  constructor that takes no trust source, and still pins that key as
+  `signKey` (S-01). Its results have `#trusted?` false and an empty
+  `#certificate_chain`, and `#verify!` raises `UntrustedCertificate` unless
+  called with `allow_untrusted: true`. `Verification#trusted?` is new for every
+  verifier, and equals `#valid?` outside this mode. `Xades::Verifier` does not
+  offer it.
+
 - **#104:** `Verification#certificate_chain` is the chain that established
   trust, leaf first: what OpenSSL validated for `store:` (up to the anchor),
   the pinned certificate for `certificate:` / `certificates:`, and `[]` for a
