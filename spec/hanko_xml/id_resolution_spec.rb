@@ -131,7 +131,7 @@ RSpec.describe "ID resolution (S-03 / #28)" do
     end
 
     it "resolves the root Id natively to the root element" do
-      native = HankoXml::Native.verify(signed_xml, [signer_cert.read], [], %w[Id ID id], 0, [])
+      native = HankoXml::Native.verify(signed_xml, [signer_cert.read], [], %w[Id ID id], 0, [], false)
 
       expect(native[:status]).to eq(:succeeded)
       expect(native[:reference_element_indexes]).to eq([0])

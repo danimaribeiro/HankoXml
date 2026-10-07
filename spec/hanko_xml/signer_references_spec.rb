@@ -117,8 +117,10 @@ RSpec.describe "HankoXml::Signer references and transforms" do
         reference = HankoXml::Reference.new(uri: "", transforms: [transform])
 
         expect { signer(references: [reference]).sign(xml) }.to raise_error(HankoXml::PolicyError, /transform/)
+        # A Filter 2.0 transform outside the one shape #85 accepts never reaches
+        # the native layer, whose allowlist would refuse it there too.
         expect { signer(references: [reference], policy: HankoXml::Policy.permissive).sign(xml) }
-          .to raise_error(HankoXml::SigningError)
+          .to raise_error(name == :xpath_filter2 ? HankoXml::PolicyError : HankoXml::SigningError)
       end
     end
 

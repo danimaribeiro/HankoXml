@@ -37,8 +37,8 @@ c82ca6a4ac8268ac8bcdae9050684e96df15c88d	5556	no	valid-xades-structure.xml
 dcb9d752d3b05d61372325b8fec8ddddba4321b9	10326	no	validation/BaselineBWithCertificateValues.xml
 914123dc62d92e3e120837276c9607f39e58a11c	1902552	no	validation/OJ_C_2017_173_FULL.xml
 d079d928609cdd2d767982e7665b8daf96c0d99e	5071500	no	validation/OJ_L_2016_294_FULL.xml
-24b89edca342402c014255bf62a1bcb64cbcafb8	4821	no	validation/Signature-X-AT-1.xml
-c7e4f79f0b26565c0bb439a96ebb7768158cb688	33704	no	validation/Signature-X-BE_ECON-3.xml
+24b89edca342402c014255bf62a1bcb64cbcafb8	4821	yes	validation/Signature-X-AT-1.xml
+c7e4f79f0b26565c0bb439a96ebb7768158cb688	33704	yes	validation/Signature-X-BE_ECON-3.xml
 7c533c94794479f6d44ac1cda83af57fbc96622e	16397	no	validation/Signature-X-BG-1.xml
 4f7c100bedc741ef9a7884649873bd6c08162611	271962	no	validation/Signature-X-CY-1.xml
 df0e344921fae54fd8123814337dd43f6af16ae3	11357	no	validation/Signature-X-CZ_ICZ-1.xml
@@ -156,9 +156,9 @@ b191fc9ff27408c642dde3fbcb7149393feb5f72	5892	no	validation/evidence-record/evid
 dc7c964c555a70cadfff221c038a0efa4120430f	7058	no	validation/evidence-record/evidence-record-X-E-ERS-DETACHED-LT.xml
 e4d341a5963b5f48fdadc0f95d38bdac2c219a8e	8188	no	validation/evidence-record/evidence-record-detached-sig-only.xml
 8026d5417f261dfe72c5b11e67594dd7a73cacc1	8350	no	validation/evidence-record/evidence-record-detached.xml
-f8948dce91ab185b9fe17df5ffa295ee074dddab	5102	no	validation/evidence-record/incorporation/X-B-B.xml
+f8948dce91ab185b9fe17df5ffa295ee074dddab	5102	yes	validation/evidence-record/incorporation/X-B-B.xml
 7e63aafb7d850be3f7af37d65bd0b1fddf6e86e7	26542	no	validation/evidence-record/incorporation/X-B-LT-detached.xml
-9a1d83a3a5b99f312f55d349f404930ba3b8b3ad	62268	no	validation/evidence-record/incorporation/X-B-LT-two-sigs.xml
+9a1d83a3a5b99f312f55d349f404930ba3b8b3ad	62268	yes	validation/evidence-record/incorporation/X-B-LT-two-sigs.xml
 d2e8671ae5f15e75ea2dc33ce402ba10dc705d85	5944	no	validation/evidence-record/incorporation/XAdES-B.xml
 c5feefe449ef5a6f1f6f335c5550ed50ee046ff6	6589	no	validation/evidence-record/incorporation/evidence-record-X-B-B-no-hashtree.xml
 7a7e7e32f76a14025289bb13005f805b6c4ca271	6849	no	validation/evidence-record/incorporation/evidence-record-X-B-B-reduced-hashtree.xml

@@ -37,7 +37,14 @@ module XadesInteropVectors
     # Valid signatures around unsigned fake content; see "what stays unsigned".
     "dss/validation/xsw/XSW-enveloped-fake-content-misplaced.xml" => :valid,
     "dss/validation/xsw/XSW-enveloping-fake-object.xml" => :valid,
-    "dss/validation/xsw/XSW-enveloping-fake-manifest.xml" => :valid
+    "dss/validation/xsw/XSW-enveloping-fake-manifest.xml" => :valid,
+    # #85: XPath Filter 2.0 subtracting the signatures from the whole document.
+    "dss/validation/evidence-record/incorporation/X-B-B.xml" => :valid,
+    # Its first signature uses URI="#xpointer(/)", which Policy.interop leaves off.
+    "dss/validation/evidence-record/incorporation/X-B-LT-two-sigs.xml" => [:policy, /allow_same_document_xpointer/],
+    # Filters HankoXml can't model in #signed?: name() comparisons and intersect.
+    "dss/validation/Signature-X-BE_ECON-3.xml" => [:policy, /XPath Filter 2.0/],
+    "dss/validation/Signature-X-AT-1.xml" => [:policy, /XPath Filter 2.0/]
   }.freeze
 
   module_function

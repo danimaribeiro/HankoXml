@@ -60,6 +60,7 @@ RSpec.describe HankoXml::Policy do
       expect(xades.signature_methods).to include(:rsa_sha256, :rsa_pss_sha256, :rsa_pss_sha384,
                                                  :rsa_pss_sha512, :ecdsa_sha3_256)
       expect(xades.signature_methods).not_to include(:rsa_sha1)
+      expect(xades.transforms).to eq(described_class.strict.transforms + [:xpath_filter2])
       expect(xades.require_signed_root).to be true
     end
 
@@ -70,11 +71,12 @@ RSpec.describe HankoXml::Policy do
   end
 
   describe ".interop" do
-    it "differs from fragment only by SHA-1 with RSA or DSA and 1024-bit RSA and DSA keys" do
+    it "differs from fragment only by SHA-1 with RSA or DSA, 1024-bit RSA and DSA keys and XPath Filter 2.0" do
       interop = described_class.interop.to_h
       fragment = described_class.fragment.to_h
 
       expect(interop.reject { |field, value| fragment[field] == value }).to eq(
+        transforms: fragment[:transforms] + [:xpath_filter2],
         digest_methods: fragment[:digest_methods] + [:sha1],
         signature_methods: fragment[:signature_methods] + %i[rsa_sha1 dsa_sha1],
         min_rsa_key_bits: 1024,

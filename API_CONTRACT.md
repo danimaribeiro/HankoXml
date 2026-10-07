@@ -609,9 +609,11 @@ an extra line gets skipped, and one that saves a line gets adopted.
    (attributes and text nodes count via their owner element).
 4. `node` is **not** inside a subtree removed by that reference's transforms —
    concretely, not inside the `<ds:Signature>` element that an
-   `enveloped-signature` transform excised.
+   `enveloped-signature` transform excised, nor inside a `<ds:Signature>` an
+   XPath Filter 2.0 `subtract` removed (§5.8, #85).
 
-`URI=""` means "the whole document minus the enveloped signature", so with an
+`URI=""` (and `#xpointer(/)`, which keeps comments) means "the whole document
+minus the enveloped signature", so with an
 enveloped whole-document reference, `#signed?` is true for every node except
 those under `<ds:Signature>`.
 
@@ -840,8 +842,8 @@ HankoXml::Policy.strict        # default everywhere
 HankoXml::Policy.fragment      # strict, minus require_signed_root — for protocols
                                # that sign a fragment (SAML assertions). §5.8.1
 HankoXml::Policy.legacy_sha1   # strict + SHA-1 digest and RSA-SHA1 signature
-HankoXml::Policy.xades         # strict + RSA-PSS (MGF1) and SHA-3 / ECDSA-SHA3
-HankoXml::Policy.interop       # fragment + SHA-1 with RSA or DSA, 1024-bit RSA — for
+HankoXml::Policy.xades         # strict + RSA-PSS (MGF1), SHA-3 / ECDSA-SHA3 and XPath Filter 2.0 (§5.8)
+HankoXml::Policy.interop       # fragment + SHA-1 with RSA or DSA, 1024-bit RSA, XPath Filter 2.0 — for
                                # legacy foreign signatures (W3C interop vectors), never a default
 HankoXml::Policy.permissive    # allows everything Ruby checks. Documented as unsafe. The native
                                # layer still refuses XPath/XSLT transforms and never fetches a URI.
@@ -923,6 +925,19 @@ Notes on the non-obvious ones:
   to `Policy.strict`. libxmlsec1 1.3 implements these URIs without
   `<RSAPSSParams>` (salt length = hash length); xmlsec 1.2 does not, and
   `Native.sign` / `Native.verify` then fail closed.
+- **`:xpath_filter2`** (`Policy.xades`, `Policy.interop`) is XPath Filter 2.0
+  in the one shape EU DSS writes for enveloped XAdES (#85): a whole-document
+  reference (`URI=""`, or `#xpointer(/)` under `allow_same_document_xpointer`)
+  whose first transform is the only Filter 2.0 transform, holding a single
+  `subtract` of `/descendant::P:Signature` (every signature) or
+  `/*/P:Signature` (the root's signature children), with `P` bound to the
+  XML-DSig namespace where the expression sits. Any other filter, expression
+  or binding (`intersect`, `union`, `name()='ds:Signature'`, a second XPath)
+  is a `PolicyError`, because `#signed?` couldn't say what it signs. xmlsec
+  runs the transform, and `Native.verify` enables it only when the policy
+  allows `:xpath_filter2`. `#signed?` leaves out the subtracted signatures,
+  including any `<ds:Signature>` an attacker adds later: the digest never saw
+  its contents.
 - **`require_signed_root: true`** is the structural half of the XSW defence —
   see §5.8.1, which is where the whole decision is argued.
 - **`reject_duplicate_ids: true`** is enforced on the native layer's parse of
@@ -1482,10 +1497,15 @@ HankoXml::Native.inspect_sig(xml, signature_index)
 #      references: [ { uri: "#infNFe01",
 #                      digest_method: "http://…#sha256",
 #                      transforms: ["http://…#enveloped-signature", "http://…#exc-c14n"],
-#                      id: nil, type: nil } ] }
+#                      id: nil, type: nil,
+#                      # XPath Filter 2.0 children, with the prefixes in scope
+#                      # at each <XPath> (#85):
+#                      xpath_filters: [ { filter: "subtract",
+#                                         expression: "/descendant::ds:Signature",
+#                                         namespaces: { "ds" => "http://…#" } } ] } ] }
 
 HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signature_index,
-                        referenced_documents)
+                        referenced_documents, allow_xpath_filter2)
 #   trusted_pems    : Array<String> — certs/keys that establish trust.
 #                     Each PEM is pinned as signKey (certs via
 #                     xmlSecKeyDataFormatCertPem) so KeyInfo cannot supply
@@ -1499,6 +1519,10 @@ HankoXml::Native.verify(xml, trusted_pems, untrusted_pems, id_attributes, signat
 #                     external Reference may resolve to (#74). With it empty,
 #                     Reference URIs are limited to empty / same-document
 #                     (`URI=""` / `#id`). Nothing is ever fetched (S-04).
+#   allow_xpath_filter2 : bool — adds XPath Filter 2.0 to the native
+#                     transform allowlist (S-10). The Verifier passes
+#                     policy.allows?(:transform, :xpath_filter2); Policy has
+#                     already checked the filter's shape (#85).
 # => { status: :succeeded | :invalid | :unknown,
 #      errors: Array<String>,
 #      reference_element_indexes: Array<Integer|nil>,  # §5.9

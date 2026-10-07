@@ -238,6 +238,9 @@ fn generate_bindings(headers: &Headers) {
         // libxml2 node content and attribute extraction (for inspect)
         .allowlist_function("xmlNodeGetContent")
         .allowlist_function("xmlGetProp")
+        // In-scope namespaces of an XPath Filter 2.0 <XPath>, so Policy can
+        // check what its prefixes mean (#85)
+        .allowlist_function("xmlGetNsList")
         .allowlist_function("__xmlFree")
         .allowlist_function("xmlMemFree")
         // libxml2 node/child traversal
