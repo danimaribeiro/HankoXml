@@ -45,7 +45,8 @@ gem "hanko_xml", git: "https://github.com/danimaribeiro/HankoXml"
 Then run `bundle install`.
 
 Nokogiri is optional. Add `gem "nokogiri"` for signing and the Nokogiri API; without it,
-verification still works on a String, a path or an IO, and signing raises
+verification still works on a String, a path or an IO, and so does signing a document that
+already holds its `<Signature>` template. Building a template raises
 `HankoXml::NokogiriRequired`.
 
 ## Your first signature

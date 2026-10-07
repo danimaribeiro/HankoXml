@@ -149,6 +149,10 @@ module HankoXml
     # Signs a document without modifying the original.
     # Returns a {SignedDocument} safe for serialization.
     #
+    # Without Nokogiri it signs an existing <Signature> template in the
+    # bytes, through the native layer only, and the {SignedDocument} holds
+    # just the signed bytes (#102). Building a template needs a DOM.
+    #
     # @param doc_or_xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The document to sign.
     # @param force [Boolean] Whether to re-sign already signed signatures.
     # @param signature [Symbol, Integer, String, nil] The target signature to sign (defaults to all).
@@ -156,6 +160,7 @@ module HankoXml
     def sign(doc_or_xml, force: false, signature: nil)
       node_signer = signer_for_node(doc_or_xml)
       return node_signer.sign(doc_or_xml.document, force: force, signature: signature) if node_signer
+      return sign_bytes(doc_or_xml, force: force, signature: signature) unless Dom.available?
 
       doc = HankoXml.coerce_document(doc_or_xml, policy: policy)
       # Deep clone the document to avoid mutating the input if it's already a document.
@@ -205,10 +210,7 @@ module HankoXml
       signatures_to_sign.each do |sig_node|
         index = all_sigs_in_order.index(sig_node)
 
-        cert_pems = @certificates.map(&:to_pem)
-        cert_pems.unshift(@certificate.to_pem) if @certificate
-
-        xml_bytes = Native.sign(xml_bytes, @key.to_pem, cert_pems, native_id_attributes, index)
+        xml_bytes = Native.sign(xml_bytes, @key.to_pem, certificate_pems, native_id_attributes, index)
 
         write_back_signature(doc, xml_bytes, index, sig_node)
       end
@@ -377,9 +379,10 @@ module HankoXml
     # algorithms, external URIs, or XSLT (S-05). On :adopt/:require, the
     # template's Reference URIs must also match this Signer's references
     # (empty references means whole-document URI=""); that is the
-    # chosen-message opt-in.
+    # chosen-message opt-in. Returns inspect_sig's output.
     def enforce_before_native_sign!(doc, xml_bytes, index, sig_node:, adopted:)
-      sig_info = HankoXml::SignatureInfo.from_native(Native.inspect_sig(xml_bytes, index))
+      inspected = Native.inspect_sig(xml_bytes, index)
+      sig_info = HankoXml::SignatureInfo.from_native(inspected)
       # require_signed_root is a verification-time XSW defence, not a
       # constraint on what is legitimate to sign (see Policy#violations) --
       # Signer deliberately does not check it, so a caller-chosen fragment
@@ -388,6 +391,71 @@ module HankoXml
                                  xml_bytes: xml_bytes, check_root_signed: false)
       ensure_adopted_references_match!(sig_info) if adopted
       check_key_fits_signature_method!(sig_info)
+      inspected
+    end
+
+    # #sign without Nokogiri (#102): the same checks as #sign! on the same
+    # bytes, then Native.sign. Only an existing template can be signed, one
+    # per call, and only when its KeyInfo needs no DOM edits first.
+    def sign_bytes(source, force:, signature:)
+      input = HankoXml::Input.read(source, policy: policy)
+      bytes = input.bytes
+      index = bytes_target_index(input.scan(native_id_attributes), signature, force)
+      return HankoXml::SignedDocument.from_bytes(bytes) unless index
+
+      enforce_document_and_key_size!(bytes)
+      inspected = enforce_before_native_sign!(nil, bytes, index, sig_node: nil, adopted: true)
+      check_key_info_without_dom!(inspected)
+
+      HankoXml::SignedDocument.from_bytes(
+        Native.sign(bytes, @key.to_pem, certificate_pems, native_id_attributes, index)
+      )
+    end
+
+    # The document-order index of the template to sign, or nil when it is
+    # already signed and force: is false. Mirrors find_or_build_signatures
+    # and target_signatures, from Native.scan instead of a DOM.
+    def bytes_target_index(scan, signature, force)
+      signed = scan[:signature_values]
+      if signed.empty?
+        raise HankoXml::ConfigurationError, "template: :require but no <Signature> found" if @template_mode == :require
+
+        Dom.require!("Building a <Signature> template (template: #{@template_mode.inspect})")
+      end
+      raise HankoXml::ConfigurationError, "template: :build but <Signature> already exists" if @template_mode == :build
+
+      candidates = signature.nil? ? signed.each_index.to_a : [bytes_signature_index(signed.size, signature)]
+      candidates.reject! { |i| signed[i] } unless force
+      if candidates.size > 1
+        Dom.require!("Signing several <Signature> templates in one call (pass signature: to sign one at a time)")
+      end
+
+      candidates.first
+    end
+
+    def bytes_signature_index(count, signature)
+      unless signature.is_a?(Integer) && signature.between?(-count, count - 1)
+        raise HankoXml::ConfigurationError, "signature: #{signature.inspect} not found"
+      end
+
+      signature % count
+    end
+
+    # prepare_key_infos! edits KeyInfo in the DOM: it names an empty
+    # <KeyName> (#67) and empties stale key-derived leaves (#72). Without a
+    # DOM neither can happen, so such a template is refused rather than
+    # signed with an empty name or a stale certificate.
+    def check_key_info_without_dom!(inspected)
+      Dom.require!("Signing a template with an empty <KeyName>") if inspected[:empty_key_names]
+      return unless inspected[:key_derived_values]
+
+      Dom.require!("Signing a template whose <KeyInfo> already holds certificate or key values (#72)")
+    end
+
+    def certificate_pems
+      pems = @certificates.map(&:to_pem)
+      pems.unshift(@certificate.to_pem) if @certificate
+      pems
     end
 
     # Same mapping as Verifier#native_id_attributes: xmlSecAddIDs matches by

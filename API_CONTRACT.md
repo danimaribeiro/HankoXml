@@ -1214,6 +1214,15 @@ Without it, verification runs on bytes: `Verifier#verify`, `#verify!`,
 `Policy`, `schema: :default`, `require_signed_root`, `reject_duplicate_ids`,
 `max_document_size` and signature selection by index all run.
 
+`Signer#sign` and `HankoXml.sign` also run on bytes when the document already
+holds the `<Signature>` template: the template is chosen from `Native.scan`, the
+S-05 policy and reference checks run on `Native.inspect_sig`, and `Native.sign`
+signs. The result is a bytes-backed `SignedDocument` (§6.7). One template is
+signed per call (pass `signature:` when there are several), and a template
+whose `<KeyInfo>` the DOM path would edit first, an empty `<KeyName>` (#67) or
+key-derived leaves that already hold values (#72, which includes re-signing
+with `force:`), raises `NokogiriRequired` rather than being signed as it is.
+
 What needs a DOM raises `HankoXml::NokogiriRequired` (a `ConfigurationError`)
 naming the capability and the fix, never a `NoMethodError` on a missing
 constant. `HankoXml.nokogiri?` reports whether Nokogiri is loaded, and
@@ -1222,7 +1231,8 @@ constant. `HankoXml.nokogiri?` reports whether Nokogiri is loaded, and
 | Capability | Without Nokogiri | `capabilities` key |
 |---|---|---|
 | Verification, `signature_present?` | runs | `:verify` (always `true`) |
-| Signing: `Signer`, `HankoXml.sign` / `sign!` | raises | `:sign` |
+| Signing a template the document already holds: `Signer#sign`, `HankoXml.sign` | runs, one template per call | `:sign_existing_template` (always `true`) |
+| Signing that builds a template, and `sign!` | raises | `:sign` |
 | `Verification#signed?`, `#signed_nodes`, `#at_signed`, `#signed` | raises; `#covers_root?` and `#partial?` still answer | `:coverage_checks` |
 | A caller's own `Nokogiri::XML::Schema` as `schema:` | raises; `schema: :default` runs | `:schema` |
 | `HankoXml.parse` / `.serialize` | raises | `:parse` |
@@ -1436,6 +1446,13 @@ document no longer serializes to those bytes, whether it was changed through a
 reader's node or through `#document`. To write out an intentionally modified
 document, use `HankoXml.serialize(signed.document)`.
 
+Signed without Nokogiri (§6.1, #102), a `SignedDocument` holds only the
+signed bytes. `#to_xml`, `#to_s`, `#bytes`, `#write_to`, `#valid?` and
+`#inspect` work. `#to_xml` returns the bytes tagged with the encoding their
+declaration names, and `declaration: false` drops the declaration. `#document`
+is `nil`, and the delegated readers and `#signatures` raise
+`NokogiriRequired`. `SignedDocument.from_bytes` builds one.
+
 `sign!` still returns the caller's own `Nokogiri::XML::Document`, unwrapped,
 because the caller already holds that object and wrapping it would be a lie
 about what they have. The `sign` / `sign!` asymmetry is therefore: `sign` is
@@ -1505,6 +1522,9 @@ HankoXml::Native.inspect_sig(xml, signature_index)
 #      signature_count:   2,
 #      key_names:         ["idp-1"],
 #      certificates:      ["-----BEGIN CERTIFICATE-----…"],   # from KeyInfo, untrusted
+#      empty_key_names:    false,  # a <KeyName> with no text (#67)
+#      key_derived_values: false,  # X509Certificate/SubjectName/IssuerSerial/SKI or
+#                                  # KeyValue already holding content (#72, #102)
 #      references: [ { uri: "#infNFe01",
 #                      digest_method: "http://…#sha256",
 #                      transforms: ["http://…#enveloped-signature", "http://…#exc-c14n"],

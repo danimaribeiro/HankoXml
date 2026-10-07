@@ -83,13 +83,16 @@ the setup that fits:
   `require "nokogiri"`. Everything is available, including signing, the
   Nokogiri API below, and node-level `signed?` checks.
 - **Bytes only**: leave Nokogiri out. Verification works on a String, a path
-  or an IO, with the same policy, schema and structural checks. Signing and the
-  DOM features raise `HankoXml::NokogiriRequired`, naming what needs Nokogiri.
+  or an IO, with the same policy, schema and structural checks. Signing works
+  when the document already holds the `<Signature>` template. Building one, and
+  the DOM features, raise `HankoXml::NokogiriRequired`, naming what needs
+  Nokogiri.
 
 | Capability | With Nokogiri | Bytes only |
 |---|---|---|
 | `valid?`, `verify!`, `Verifier`, `signature_present?` | yes | yes |
-| `sign`, `sign!`, `Signer` | yes | raises `NokogiriRequired` |
+| `sign` into a template the document already holds | yes | yes, one template per call |
+| `sign` that builds the template, `sign!`, `Signer#template` | yes | raises `NokogiriRequired` |
 | `Verification#signed?`, `#at_signed`, `#signed_nodes` | yes | raises; `#covers_root?` still answers |
 | Custom `Nokogiri::XML::Schema`, `signature:` XPath, `resolver:`, XAdES | yes | raises `NokogiriRequired` |
 

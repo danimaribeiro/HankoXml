@@ -424,6 +424,13 @@ fn native_inspect(
                 result.has_retrieval_method.into_value_with(ruby),
             )
             .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
+            for (key, value) in [
+                ("empty_key_names", result.empty_key_names),
+                ("key_derived_values", result.key_derived_values),
+            ] {
+                hash.aset(ruby.to_symbol(key), value.into_value_with(ruby))
+                    .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
+            }
 
             Ok(hash)
         }

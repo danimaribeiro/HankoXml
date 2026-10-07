@@ -33,6 +33,21 @@ RSpec.describe "HankoXml::Native" do
   end
 
   describe ".inspect_sig" do
+    it "reports the KeyInfo a Signer without a DOM can't prepare (#67, #72, #102)" do
+      template = fixtures.join("template.xml").read
+      flags = lambda do |xml|
+        HankoXml::Native.inspect_sig(xml, 0).slice(:empty_key_names, :key_derived_values)
+      end
+
+      expect(flags.call(template)).to eq(empty_key_names: false, key_derived_values: false)
+      expect(flags.call(template.sub("<X509Data/>", "<KeyName> </KeyName><X509Data/>")))
+        .to eq(empty_key_names: true, key_derived_values: false)
+      %w[<X509Data><X509SKI>AA==</X509SKI></X509Data> <KeyValue><x/></KeyValue>].each do |leaf|
+        expect(flags.call(template.sub("<X509Data/>", leaf))).to eq(empty_key_names: false, key_derived_values: true)
+      end
+      expect(flags.call(fixtures.join("signed.xml").read)[:key_derived_values]).to be true
+    end
+
     it "extracts metadata from a signed document without verifying" do
       xml = fixtures.join("signed_exc_c14n.xml").read
       info = HankoXml::Native.inspect_sig(xml, 0)

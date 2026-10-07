@@ -1,7 +1,8 @@
 module HankoXml
   class SignedDocument
-    attr_reader document: Nokogiri::XML::Document
+    attr_reader document: Nokogiri::XML::Document?
 
+    def self.from_bytes: (String bytes) -> instance
     def initialize: (Nokogiri::XML::Document document) -> void
     def to_xml: (?declaration: bool) -> String
     def to_s: () -> String
