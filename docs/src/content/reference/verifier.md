@@ -69,8 +69,25 @@ YARD `@return` both carry the "always truthy" warning. Prefer `#valid?` in condi
 `#verify!` in flows that should abort. See [`Verification`](/reference/verification) for the object
 `#verify`/`#verify!` return.
 
-## No trust-free verification
+## Integrity-only verification
 
-There is no way to verify against the certificate the document itself carries: every `Verifier`
-needs `certificate:`, `certificates:`, `store:`, `key:` or `keys:`. An explicit integrity-only mode
-is planned ([#103](https://github.com/danimaribeiro/HankoXml/issues/103)).
+`Verifier.new` needs exactly one of `certificate:`, `certificates:`, `store:`, `key:` or `keys:`.
+To check only that a document was not changed since the key in its own `<X509Certificate>` signed
+it, ask for that explicitly:
+
+```ruby
+verifier = HankoXml::Verifier.without_trust_verification(policy: HankoXml::Policy.strict)
+
+v = verifier.verify(xml)
+v.valid?       # => true: not modified since signing
+v.trusted?     # => false, always: this proves NOTHING about who signed it
+v.certificate  # => the document's own certificate, untrusted
+
+verifier.verify!(xml)                         # raises UntrustedCertificate
+verifier.verify!(xml, allow_untrusted: true)  # => Verification
+```
+
+It takes every `Verifier` keyword except the trust sources, and the policy still applies. The key is
+still pinned rather than chosen by xmlsec: it is the public key of the single end-entity
+certificate in `<KeyInfo>`, and a document without one, or with two, fails. `Xades::Verifier` does
+not offer this mode, since XAdES signed properties commit to a certificate you must trust.

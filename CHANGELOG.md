@@ -10,6 +10,24 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Added
 
+- **#103:** `Verifier.without_trust_verification` checks integrity only,
+  against the key in the document's own `<X509Certificate>`. It is a separate
+  constructor that takes no trust source, and still pins that key as
+  `signKey` (S-01). Its results have `#trusted?` false and an empty
+  `#certificate_chain`, and `#verify!` raises `UntrustedCertificate` unless
+  called with `allow_untrusted: true`. `Verification#trusted?` is new for every
+  verifier, and equals `#valid?` outside this mode. `Xades::Verifier` does not
+  offer it.
+
+- **#104:** `Verification#certificate_chain` is the chain that established
+  trust, leaf first: what OpenSSL validated for `store:` (up to the anchor),
+  the pinned certificate for `certificate:` / `certificates:`, and `[]` for a
+  bare key or a failed verification. `Verification#signed_info` is the
+  verified `<SignedInfo>` (`SignatureInfo`), nil unless `valid?`.
+  `Verification#key_info` is a `KeyInfo::Parsed` with what the document's
+  `<KeyInfo>` claimed (KeyNames and PEM certificates), whether or not it
+  verified; it never selects the key (S-01).
+
 - **#102:** Verification works without Nokogiri. `Verifier` (`#verify`,
   `#verify!`, `#valid?`, `#verify_all`), `HankoXml.valid?`, `HankoXml.verify!`
   and `HankoXml.signature_present?` take a String, a path or an IO and run on

@@ -51,9 +51,9 @@ module HankoXml
       end
     end
 
-    # What a document's <ds:KeyInfo> actually contained, read out (but not
-    # yet authenticated -- see Verification#key_info in API_CONTRACT.md
-    # §5.4). Populated starting Phase 3.
+    # What a document's <ds:KeyInfo> actually contained, read out but never
+    # authenticated (Verification#key_info, API_CONTRACT.md §5.4): its
+    # <KeyName> texts and <X509Certificate>s as PEM Strings.
     class Parsed
       attr_reader :key_names, :certificates
 

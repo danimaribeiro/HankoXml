@@ -31,9 +31,17 @@ v.signed(xpath, ns = {})      # => Array<Node>, all of which are covered;
 v.signature_method        # => :rsa_sha256
 v.canonicalization_method # => :exc_c14n
 v.digest_methods          # => [:sha256]
+v.signed_info             # => SignatureInfo once valid?, else nil
 
 # --- Who signed -----------------------------------------------------------
 v.certificate        # => OpenSSL::X509::Certificate that trust resolved to, or nil
+v.certificate_chain  # => [leaf, ..., anchor] for store:, [certificate] when pinned,
+                     #    [] for a bare key, an untrusted result, or unless valid?
+v.trusted?           # => valid? and the key came from trust you supplied; false for
+                     #    Verifier.without_trust_verification
+
+# --- What the document claimed (untrusted) --------------------------------
+v.key_info           # => KeyInfo::Parsed: #key_names, #certificates (PEM). Never picks the key.
 
 # --- Provenance -----------------------------------------------------------
 v.signature_node     # => Nokogiri::XML::Element, the <ds:Signature> verified
@@ -42,7 +50,10 @@ v.document           # => the Nokogiri document these nodes belong to
 
 Metadata accessors (`signature_method`, `references`, …) are populated on both valid and invalid
 verifications, because "what did it claim" is exactly what you want when debugging a failure.
-Everything on a `Verification` whose `valid?` is `false` is **unauthenticated**.
+Everything on a `Verification` whose `valid?` is `false` is **unauthenticated**. `#signed_info`
+is the exception that proves the rule: it is nil until the signature holds, so code that reads it
+can't act on a claim by mistake. `#key_info` is the opposite: always the document's claim, never
+authenticated, useful for logging who the document *says* signed it.
 
 ## `#signed?` semantics — normative
 

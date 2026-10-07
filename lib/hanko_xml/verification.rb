@@ -23,13 +23,18 @@ module HankoXml
     # #signed_nodes, #at_signed and #signed raise NokogiriRequired.
     def initialize(valid:, errors:, signature_info:, signature_node:, document:, certificate: nil,
                    id_attributes: %w[Id ID id], resolver: nil, reference_element_indexes: nil,
-                   reference_valid: nil, namespaces: {}, signature_element_index: nil)
+                   reference_valid: nil, namespaces: {}, signature_element_index: nil, certificate_chain: nil,
+                   trusted: true)
       @valid = valid
       @errors = errors.dup
       @signature_info = signature_info
       @signature_node = signature_node
       @document = document
       @certificate = certificate
+      # The chain store: validated, leaf first; nil for the pinned trust sources.
+      @certificate_chain = certificate_chain&.dup&.freeze
+      # False only for Verifier.without_trust_verification (#103).
+      @trusted = trusted
       @id_attributes = (id_attributes || []).dup.freeze
       @resolver = resolver
       @namespaces = (namespaces || {}).transform_keys(&:to_s).freeze
@@ -112,6 +117,42 @@ module HankoXml
           is_covered
         end
       end
+    end
+
+    # Whether the signature held AND the key came from trust material the
+    # caller supplied. False for every result of
+    # Verifier.without_trust_verification, which checks integrity only: its
+    # #valid? says the document was not changed, never who signed it (#103).
+    def trusted?
+      valid? && @trusted
+    end
+
+    # The <SignedInfo> that was verified: #signature_info once the signature
+    # held, nil otherwise, so it never stands for unauthenticated claims
+    # (#104). #signature_info is the same data before verification.
+    def signed_info
+      valid? ? signature_info : nil
+    end
+
+    # The certificates that established trust, leaf first, or [] unless
+    # trusted?. For store: it is the chain OpenSSL validated, up to the trust
+    # anchor; for certificate: / certificates: it is the pinned certificate;
+    # key: and keys: with a bare public key have none (#104).
+    def certificate_chain
+      return [] unless trusted?
+      return @certificate_chain if @certificate_chain
+
+      certificate ? [certificate] : []
+    end
+
+    # What the document's <KeyInfo> claimed, read out but never trusted: the
+    # Verifier pins its key from trust material and ignores <KeyInfo> (S-01).
+    # Available whether or not the signature held; nil when <SignedInfo> was
+    # never read (#104).
+    def key_info
+      return nil unless signature_info
+
+      KeyInfo::Parsed.new(key_names: signature_info.key_names, certificates: signature_info.certificates)
     end
 
     # Whether a Reference covers the root element. With a DOM this is

@@ -50,6 +50,14 @@ module HankoXml
         super(**options)
       end
 
+      # The signed properties commit to a certificate, so XAdES needs trust in
+      # it; there is no integrity-only XAdES verification (#103).
+      def self.without_trust_verification(**)
+        raise HankoXml::ConfigurationError,
+              "XAdES verification needs certificate:, certificates: or store:; " \
+              "without_trust_verification is not available for it"
+      end
+
       def verify(xml)
         xades(super)
       end
@@ -78,6 +86,8 @@ module HankoXml
           document: verification.document,
           namespaces: verification.namespaces,
           certificate: verification.certificate,
+          certificate_chain: verification.certificate_chain,
+          trusted: verification.trusted?,
           id_attributes: verification.id_attributes,
           resolver: verification.resolver,
           reference_element_indexes: verification.reference_element_indexes,

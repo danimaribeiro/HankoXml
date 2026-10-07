@@ -50,7 +50,7 @@ module HankoXml
                    namespaces: {}, signature: nil, verification_time: nil,
                    schema: UNSET_SCHEMA, referenced_documents: {}, certificate_subject: nil)
       supplied_trusts = [certificate, certificates, store, key, keys].compact
-      if supplied_trusts.size != 1
+      if !@without_trust && supplied_trusts.size != 1
         raise HankoXml::ConfigurationError,
               "Specify exactly one trust source: certificate, certificates, store, key, or keys"
       end
@@ -77,6 +77,38 @@ module HankoXml
       freeze
     end
 
+    # The keywords that name a trust source.
+    TRUST_KEYWORDS = %i[certificate certificates store key keys certificate_subject].freeze
+
+    # An integrity-only Verifier (#103): it checks that the document was not
+    # changed since it was signed by the key in its own <X509Certificate>,
+    # and proves NOTHING about who signed it. Never sufficient on its own.
+    #
+    # The key is still pinned, never chosen by xmlsec from <KeyInfo> (S-01):
+    # it is the public key of the one end-entity certificate <KeyInfo>
+    # carries. Its Verification has #certificate set, #trusted? false and
+    # #certificate_chain empty, and #verify! raises UntrustedCertificate
+    # unless called with allow_untrusted: true -- two explicit steps to the
+    # dangerous outcome. Takes every Verifier keyword except the trust
+    # sources.
+    #
+    # @return [Verifier]
+    def self.without_trust_verification(**options)
+      conflicting = options.keys & TRUST_KEYWORDS
+      unless conflicting.empty?
+        raise HankoXml::ConfigurationError,
+              "without_trust_verification takes no trust source (got #{conflicting.join(", ")}): " \
+              "use Verifier.new with one to verify who signed"
+      end
+
+      allocate.tap { |verifier| verifier.send(:initialize_without_trust, **options) }
+    end
+
+    # Whether this Verifier checks integrity only (.without_trust_verification).
+    def without_trust?
+      @without_trust == true
+    end
+
     # Verifies the target signature(s). Returns a single {Verification} object.
     # Does not raise cryptographic errors; instead, captures them in the returned object.
     #
@@ -100,14 +132,23 @@ module HankoXml
     # Verifies the target signature(s) and raises an error if verification fails.
     #
     # @param xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The signed XML.
+    # @param allow_untrusted [Boolean] Accept an integrity-only result from a
+    #   {.without_trust_verification} Verifier instead of raising (#103).
     # @raise [HankoXml::VerificationError] If the signature is invalid or violates policy.
+    # @raise [HankoXml::UntrustedCertificate] If it is valid but untrusted, without allow_untrusted: true.
     # @return [HankoXml::Verification] The valid verification result.
-    def verify!(xml)
+    def verify!(xml, allow_untrusted: false)
       result = verify(xml)
       unless result.valid?
         # Raise the first error, or a generic VerificationError
         error = result.errors.first || HankoXml::VerificationError.new("Signature verification failed")
         raise error
+      end
+      # The second explicit step for an integrity-only Verifier (#103).
+      if !result.trusted? && !allow_untrusted
+        raise HankoXml::UntrustedCertificate,
+              "the document was not modified, but nothing established trust in its signer " \
+              "(without_trust_verification); pass allow_untrusted: true to accept that"
       end
       result
     end
@@ -144,6 +185,13 @@ module HankoXml
     end
 
     private
+
+    # .without_trust_verification's entry point: the flag is set before
+    # #initialize, which then accepts no trust source.
+    def initialize_without_trust(**options)
+      @without_trust = true
+      initialize(**options)
+    end
 
     # A HankoXml::Error from the native layer already has its fixed message,
     # the class Rust chose, and #xmlsec_errors: keep it. Anything else gets a
@@ -304,7 +352,7 @@ module HankoXml
       end
 
       # 3. Resolve trust material and call Native.verify
-      trusted, untrusted, trust_error, store_leaf = collect_trust(sig_info)
+      trusted, untrusted, trust_error, store_chain = collect_trust(sig_info)
       return failed_verification(input, sig_node, [trust_error], signature_info: sig_info) if trust_error
 
       # min_rsa_key_bits / min_ec_key_bits (S-06): only the actually
@@ -378,7 +426,9 @@ module HankoXml
         reference_element_indexes: verify_result[:reference_element_indexes],
         reference_valid: verify_result[:reference_valid],
         signature_element_index: input.scan(native_id_attributes)[:signature_element_indexes][index],
-        certificate: valid ? verifying_certificate(trusted, verify_result[:trusted_index], store_leaf) : nil
+        certificate: valid ? verifying_certificate(trusted, verify_result[:trusted_index], store_chain&.first) : nil,
+        certificate_chain: valid ? store_chain : nil,
+        trusted: !without_trust?
       )
     end
     # rubocop:enable Metrics/CyclomaticComplexity, Metrics/AbcSize
@@ -409,6 +459,7 @@ module HankoXml
 
     def failed_verification(input, sig_node, errors, signature_info: nil)
       HankoXml::Verification.new(
+        trusted: !without_trust?,
         valid: false,
         errors: errors,
         signature_info: signature_info,
@@ -421,6 +472,7 @@ module HankoXml
     end
 
     def collect_trust(sig_info)
+      return embedded_trust(sig_info) if without_trust?
       return keys_trust(sig_info) if @keys
       return store_trust(sig_info) if @store
 
@@ -455,23 +507,48 @@ module HankoXml
                 HankoXml::UntrustedCertificate.new("No X509Certificate found in KeyInfo for store verification")]
       end
 
-      leaf, error = verified_leaf_from_store(embedded)
+      chain, error = verified_chain_from_store(embedded)
+      leaf = chain&.first
       error ||= signing_certificate_violation(leaf)
       return [nil, nil, error] if error
 
       # xmlsec treats trusted cert PEMs as CA anchors and still X509-verifies
       # every KeyInfo cert. A CA:FALSE leaf therefore cannot be "pinned" that
       # way. After Ruby has enforced chain policy, pin the leaf public key as
-      # signKey (same path as `key:`) so KeyInfo is ignored. The leaf itself is
-      # what trust resolved to, for Verification#certificate.
-      [[leaf.public_key.to_pem], [], nil, leaf]
+      # signKey (same path as `key:`) so KeyInfo is ignored. The chain OpenSSL
+      # validated, leaf first, is what trust resolved to, for
+      # Verification#certificate and #certificate_chain (#104).
+      [[leaf.public_key.to_pem], [], nil, chain]
+    end
+
+    # .without_trust_verification: pin the public key of the single
+    # end-entity certificate <KeyInfo> carries, as store: pins its validated
+    # leaf, so xmlsec still never picks the key itself (S-01). Nothing about
+    # it is trusted.
+    def embedded_trust(sig_info)
+      begin
+        embedded = load_embedded_certificates(sig_info)
+      rescue OpenSSL::X509::CertificateError => e
+        return [nil, nil,
+                HankoXml::UntrustedCertificate.new("Invalid X509Certificate in KeyInfo", xmlsec_errors: [e.message])]
+      end
+      leaves = end_entity_certificates(embedded)
+      unless leaves.size == 1
+        return [nil, nil, HankoXml::UntrustedCertificate.new(
+          "without_trust_verification needs exactly one end-entity X509Certificate in KeyInfo"
+        )]
+      end
+
+      [[leaves.first.public_key.to_pem], [], nil, [leaves.first]]
     end
 
     def load_embedded_certificates(sig_info)
       sig_info.certificates.map { |pem| OpenSSL::X509::Certificate.new(pem) }
     end
 
-    def verified_leaf_from_store(certificates)
+    # The chain OpenSSL built and verified for the one end-entity certificate
+    # that chains to the store, leaf first, or an error.
+    def verified_chain_from_store(certificates)
       candidates = end_entity_certificates(certificates)
       candidates = certificates if candidates.empty?
 
@@ -488,7 +565,7 @@ module HankoXml
         end
 
         if ctx.verify
-          verified << leaf
+          verified << ctx.chain
         else
           message = ctx.error_string.to_s
           last_error = message.empty? ? last_error : "Certificate chain validation failed: #{message}"

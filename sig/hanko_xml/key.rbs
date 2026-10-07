@@ -39,9 +39,10 @@ module HankoXml
 
     class Parsed
       attr_reader key_names: Array[String]
-      attr_reader certificates: Array[OpenSSL::X509::Certificate]
+      # PEM Strings, as <KeyInfo> carried them: untrusted, and never parsed here.
+      attr_reader certificates: Array[String]
 
-      def initialize: (key_names: Array[String], certificates: Array[OpenSSL::X509::Certificate]) -> void
+      def initialize: (?key_names: Array[String], ?certificates: Array[String]) -> void
     end
   end
 end

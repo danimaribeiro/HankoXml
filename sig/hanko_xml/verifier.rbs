@@ -7,6 +7,12 @@ module HankoXml
 
     def self.default_schema: () -> Nokogiri::XML::Schema
 
+    TRUST_KEYWORDS: Array[Symbol]
+
+    # #103: integrity only; takes every keyword of #initialize but the trust sources.
+    def self.without_trust_verification: (**untyped options) -> Verifier
+    def without_trust?: () -> bool
+
     attr_reader policy: Policy
     attr_reader id_attributes: Array[String | [String, String]]
     attr_reader namespaces: Hash[String, String]
@@ -34,7 +40,7 @@ module HankoXml
     ) -> void
 
     def verify: (input xml) -> Verification
-    def verify!: (input xml) -> Verification
+    def verify!: (input xml, ?allow_untrusted: bool) -> Verification
     def valid?: (input xml) -> bool
     def verify_all: (input xml) -> Array[Verification]
   end
