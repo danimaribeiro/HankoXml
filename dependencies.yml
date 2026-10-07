@@ -22,7 +22,8 @@
 #
 # To bump: change version + sha256 together, run
 # `HANKO_XML_VENDOR=1 bundle exec rake compile spec`, and confirm
-# `rake symbols:check` still reports no leaked xml*/xmlSec* exports.
+# `spec/symbols_spec.rb` (part of the suite) still finds no leaked
+# xml*/xmlSec* exports.
 
 libxml2:
   version: "2.15.4"
