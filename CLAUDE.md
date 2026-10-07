@@ -78,7 +78,7 @@ Nokogiri is the optional DOM layer.
 
 - `bundle exec rake compile` links the system libxml2/xmlsec1.
   `HANKO_XML_VENDOR=1 bundle exec rake compile` builds the pinned vendored copies
-  (libxml2 2.14.6, xmlsec1 1.3.12, OpenSSL 3.5.8), as the platform gems do.
+  (libxml2 2.15.4, xmlsec1 1.3.12, OpenSSL 3.5.9), as the platform gems do.
 - CI's Ubuntu jobs use the system libraries (libxml2 2.9.14, xmlsec1 1.2.39),
   which behave differently from the vendored ones: XSD integer limits, the text
   node size limit, ECKeyValue support. Anything that depends on libxml2 or xmlsec

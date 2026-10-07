@@ -29,10 +29,12 @@ documented at length in `ext/hanko_xml/build.rs`.
 
 ## Decisions already made
 
-1. **Vendor libxml2 2.14.6 + xmlsec1 1.3.12**, statically, pinned by SHA256:
+1. **Vendor libxml2 2.15.4 + xmlsec1 1.3.12**, statically, pinned by SHA256:
    - `xmlsec1-1.3.12.tar.gz` — `24045199af12d93fe5fdbbbf7e386e823e4842071e9432e2b90ac108b889a923`
-   - `libxml2-2.14.6.tar.xz` — `7ce458a0affeb83f0b55f1f4f9e0e55735dbfc1a9de124ee86fb4a66b597203a`
-2. **Vendor OpenSSL 3.5.8 (LTS) statically too.** This started as the
+   - `libxml2-2.15.4.tar.xz` — `98087fd181d9070724f3fbc65c7377db03038eb92bd882374daff44940138821`
+     (2.14.6 until #65: the 2.14 line ended with security fixes released only
+     in 2.15.4)
+2. **Vendor OpenSSL 3.5.9 (LTS) statically too.** This started as the
    opposite decision — link the system libcrypto — on the reasoning that
    libxml2 *must* be vendored (`xmlDoc`/`xmlNode`/`xmlAttr` are public structs
    we dereference by field offset, and the same `xmlDocPtr` is shared with
@@ -59,7 +61,8 @@ documented at length in `ext/hanko_xml/build.rs`.
 total: `xmlNode.{type_, children, next, name, ns}` (`dsig.rs:159-194`) and
 `xmlNs.href` (`dsig.rs:198`). `xmlDoc` is never dereferenced at all; it is only
 ever passed to functions. That is a narrow surface to keep stable, and it makes
-pinning libxml2 2.14.6 low-risk.
+pinning libxml2 low-risk, and moving from 2.14.6 to 2.15.4 (#65) needed no
+code change.
 
 **The most ABI-fragile lines in the codebase are the direct field writes
 into `xmlSecDSigCtx`** — `signKey`, and (S-04) `enabledReferenceUris` /
@@ -181,7 +184,7 @@ the same root cause: no OpenSSL for the target in the build environment.
 
 | Platform | Result |
 |---|---|
-| `x86_64-linux` | **builds and smoke-tests** — vendored libxml2 2.14.6 + xmlsec1 1.3.12, four Ruby ABIs |
+| `x86_64-linux` | **builds and smoke-tests** — vendored libxml2 2.15.4 + xmlsec1 1.3.12, four Ruby ABIs |
 | `aarch64-linux` | **builds and smoke-tests** — on a real `ubuntu-24.04-arm` runner, not emulation |
 | `arm64-darwin` | **builds and smoke-tests** — on a real `macos-latest` runner |
 | `x64-mingw-ucrt` | **builds and smoke-tests** — on a real `windows-latest` runner; see Phase 5 |
@@ -292,7 +295,7 @@ Still outstanding before a real (non-dry-run) release:
 
 - `spec/packaging_spec.rb:57-59` — `expect(files.grep(/\.(bundle|so|dylib|o|a)\z/)).to be_empty`. Correct for the source gem, false for every native gem.
 - `spec/packaging_spec.rb:41-43` — `gemspec.extensions == ["ext/hanko_xml/Cargo.toml"]`. rb_sys clears `extensions` for native gems.
-- `spec/hanko_xml/native_spec.rb:23-31` — `.versions` asserts a `\A\d+\.\d+\.\d+` regex. Under vendoring this should assert the *exact* pinned versions (xmlsec 1.3.12 / libxml2 2.14.6), which turns it into a real check that the vendored headers won over any system copy.
+- `spec/hanko_xml/native_spec.rb:23-31` — `.versions` asserts a `\A\d+\.\d+\.\d+` regex. Under vendoring this should assert the *exact* pinned versions (xmlsec 1.3.12 / libxml2 2.15.4), which turns it into a real check that the vendored headers won over any system copy.
 
 Restructure as two contexts — source-gem shape and native-gem shape — driven off
 the same gemspec, so both are asserted rather than one being loosened away.

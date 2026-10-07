@@ -47,7 +47,7 @@ ruby -e '
   versions = HankoXml::NativeVersion.build_versions
   puts "loaded hanko_xml #{HankoXml::VERSION} on #{RUBY_PLATFORM}"
   puts "vendored: #{versions.inspect}"
-  raise "libxml2 is #{versions[:libxml2]}, expected the pinned 2.14.6" unless versions[:libxml2] == "2.14.6"
+  raise "libxml2 is #{versions[:libxml2]}, expected the pinned 2.15.4" unless versions[:libxml2] == "2.15.4"
   raise "xmlsec1 is #{versions[:xmlsec]}, expected the pinned 1.3.12"  unless versions[:xmlsec]  == "1.3.12"
   raise "version guard did not pass" unless HankoXml::NativeVersion.check! == :ok
 '

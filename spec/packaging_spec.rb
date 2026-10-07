@@ -83,7 +83,7 @@ RSpec.describe "gem packaging" do
   it "records the vendored libraries' bundled license texts" do
     notices = root.join("THIRD_PARTY_LICENSES.md").read
 
-    expect(notices).to include("libxml2 2.14.6", "xmlsec1 1.3.12", "OpenSSL 3.5.8")
+    expect(notices).to include("libxml2 2.15.4", "xmlsec1 1.3.12", "OpenSSL 3.5.9")
     expect(notices).to include("Permission is hereby granted, free of charge, to any person obtaining a copy")
     expect(notices).to include("Apache License", "Acknowledgements")
   end

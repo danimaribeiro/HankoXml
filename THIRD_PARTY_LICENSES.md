@@ -3,17 +3,17 @@
 The precompiled platform gems for `hanko_xml` statically vendor these upstream
 libraries from `dependencies.yml`:
 
-- libxml2 2.14.6 — MIT
+- libxml2 2.15.4 — MIT
 - xmlsec1 1.3.12 — MIT
-- OpenSSL 3.5.8 — Apache-2.0
+- OpenSSL 3.5.9 — Apache-2.0
 
 The source gem normally links system libraries instead of redistributing these
 copies, but the platform gems ship the vendored code and therefore ship the
 corresponding license and notice text here as well.
 
-## libxml2 2.14.6
+## libxml2 2.15.4
 
-Source: `GNOME/libxml2`, tag `v2.14.6`, file `Copyright`
+Source: `GNOME/libxml2`, tag `v2.15.4`, file `Copyright`
 
 ```text
 Except where otherwise noted in the source code (e.g. the files dict.c and
@@ -195,9 +195,9 @@ The `1.3.12` release also includes a top-level `COPYING` file containing:
 See Copyright file for information about the copyright
 ```
 
-## OpenSSL 3.5.8
+## OpenSSL 3.5.9
 
-Source: `openssl/openssl`, tag `openssl-3.5.8`, file `LICENSE.txt`
+Source: `openssl/openssl`, tag `openssl-3.5.9`, file `LICENSE.txt`
 
 ```text
                                  Apache License
@@ -378,7 +378,7 @@ Source: `openssl/openssl`, tag `openssl-3.5.8`, file `LICENSE.txt`
    END OF TERMS AND CONDITIONS
 ```
 
-At the pinned `openssl-3.5.8` ref, the upstream repository does not include a
+At the pinned `openssl-3.5.9` ref, the upstream repository does not include a
 top-level `NOTICE` file. It does include `ACKNOWLEDGEMENTS.md`; the block
 below reproduces that upstream Markdown file verbatim as shipped:
 
