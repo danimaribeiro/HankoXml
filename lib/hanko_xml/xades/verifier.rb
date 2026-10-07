@@ -78,6 +78,7 @@ module HankoXml
           document: verification.document,
           namespaces: verification.namespaces,
           certificate: verification.certificate,
+          certificate_chain: verification.certificate_chain,
           id_attributes: verification.id_attributes,
           resolver: verification.resolver,
           reference_element_indexes: verification.reference_element_indexes,

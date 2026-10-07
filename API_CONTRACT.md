@@ -528,10 +528,19 @@ v.signed(xpath, ns = {})      # => Array<Node>, all of which are covered;
 v.signature_method        # => :rsa_sha256
 v.canonicalization_method # => :exc_c14n
 v.digest_methods          # => [:sha256]
+v.signed_info             # => HankoXml::SignatureInfo (frozen) once valid?, else nil.
+                          #    #signature_info is the same data, unauthenticated.
 
 # --- Who signed -----------------------------------------------------------
 v.certificate        # => OpenSSL::X509::Certificate whose key verified (the pinned or listed
                      #    certificate, or the store: chain leaf), or nil (a bare key, or invalid)
+v.certificate_chain  # => Array<OpenSSL::X509::Certificate>, leaf first: the chain OpenSSL
+                     #    validated for store:, [v.certificate] for certificate:/certificates:,
+                     #    [] for a bare key or unless valid?
+
+# --- What the document claimed (untrusted) --------------------------------
+v.key_info           # => HankoXml::KeyInfo::Parsed: <KeyName> texts and <X509Certificate>s
+                     #    (PEM), whether or not valid?. Never used to pick the key (S-01).
 
 # --- Provenance -----------------------------------------------------------
 v.signature_node     # => Nokogiri::XML::Element, the <ds:Signature> verified
@@ -561,8 +570,10 @@ we carry the same distinction as typed errors. Per-reference status comes from
 digest as wrong; when verification stopped before xmlsec reached a reference,
 `ref.errors` is empty and the failure appears only at `v.errors` (#96).
 
-Not in 0.1.0: `v.signed_info` (a `SignedInfo` value object), `v.certificate_chain`
-and `v.key_info` (#104).
+`v.signed_info`, `v.certificate_chain` and `v.key_info` arrived with #104.
+`signed_info` is the existing `SignatureInfo` rather than a separate type, and
+is nil until the signature holds, so it can't be mistaken for the document's
+unauthenticated claims. `key_info` is exactly those claims.
 
 #### `#at_signed` — making the safe read shorter than the unsafe one
 

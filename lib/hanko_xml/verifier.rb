@@ -304,7 +304,7 @@ module HankoXml
       end
 
       # 3. Resolve trust material and call Native.verify
-      trusted, untrusted, trust_error, store_leaf = collect_trust(sig_info)
+      trusted, untrusted, trust_error, store_chain = collect_trust(sig_info)
       return failed_verification(input, sig_node, [trust_error], signature_info: sig_info) if trust_error
 
       # min_rsa_key_bits / min_ec_key_bits (S-06): only the actually
@@ -378,7 +378,8 @@ module HankoXml
         reference_element_indexes: verify_result[:reference_element_indexes],
         reference_valid: verify_result[:reference_valid],
         signature_element_index: input.scan(native_id_attributes)[:signature_element_indexes][index],
-        certificate: valid ? verifying_certificate(trusted, verify_result[:trusted_index], store_leaf) : nil
+        certificate: valid ? verifying_certificate(trusted, verify_result[:trusted_index], store_chain&.first) : nil,
+        certificate_chain: valid ? store_chain : nil
       )
     end
     # rubocop:enable Metrics/CyclomaticComplexity, Metrics/AbcSize
@@ -455,23 +456,27 @@ module HankoXml
                 HankoXml::UntrustedCertificate.new("No X509Certificate found in KeyInfo for store verification")]
       end
 
-      leaf, error = verified_leaf_from_store(embedded)
+      chain, error = verified_chain_from_store(embedded)
+      leaf = chain&.first
       error ||= signing_certificate_violation(leaf)
       return [nil, nil, error] if error
 
       # xmlsec treats trusted cert PEMs as CA anchors and still X509-verifies
       # every KeyInfo cert. A CA:FALSE leaf therefore cannot be "pinned" that
       # way. After Ruby has enforced chain policy, pin the leaf public key as
-      # signKey (same path as `key:`) so KeyInfo is ignored. The leaf itself is
-      # what trust resolved to, for Verification#certificate.
-      [[leaf.public_key.to_pem], [], nil, leaf]
+      # signKey (same path as `key:`) so KeyInfo is ignored. The chain OpenSSL
+      # validated, leaf first, is what trust resolved to, for
+      # Verification#certificate and #certificate_chain (#104).
+      [[leaf.public_key.to_pem], [], nil, chain]
     end
 
     def load_embedded_certificates(sig_info)
       sig_info.certificates.map { |pem| OpenSSL::X509::Certificate.new(pem) }
     end
 
-    def verified_leaf_from_store(certificates)
+    # The chain OpenSSL built and verified for the one end-entity certificate
+    # that chains to the store, leaf first, or an error.
+    def verified_chain_from_store(certificates)
       candidates = end_entity_certificates(certificates)
       candidates = certificates if candidates.empty?
 
@@ -488,7 +493,7 @@ module HankoXml
         end
 
         if ctx.verify
-          verified << leaf
+          verified << ctx.chain
         else
           message = ctx.error_string.to_s
           last_error = message.empty? ? last_error : "Certificate chain validation failed: #{message}"
