@@ -1,7 +1,10 @@
 module HankoXml
   module Xades
     NS: String
+    LEGACY_NAMESPACES: Array[String]
+    NAMESPACES: Array[String]
     SIGNED_PROPERTIES_TYPE: String
+    VERSIONED_SIGNED_PROPERTIES_TYPES: Hash[String, String]
 
     class SignaturePolicy
       attr_reader identifier: String

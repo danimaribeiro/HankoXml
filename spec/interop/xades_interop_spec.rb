@@ -44,7 +44,12 @@ module XadesInteropVectors
     "dss/validation/evidence-record/incorporation/X-B-LT-two-sigs.xml" => [:policy, /allow_same_document_xpointer/],
     # Filters HankoXml can't model in #signed?: name() comparisons and intersect.
     "dss/validation/Signature-X-BE_ECON-3.xml" => [:policy, /XPath Filter 2.0/],
-    "dss/validation/Signature-X-AT-1.xml" => [:policy, /XPath Filter 2.0/]
+    "dss/validation/Signature-X-AT-1.xml" => [:policy, /XPath Filter 2.0/], # also XAdES 1.1.1
+    "dss/validation/qes-xades111-filter2.xml" => [:policy, /XPath Filter 2.0/], # also XAdES 1.1.1
+    # #86: XAdES 1.2.2. CZ_ICZ-1 has an untyped SignedProperties Reference and
+    # Target="Signature". FR_NOT-3 repeats id values in its content; see below.
+    "dss/validation/Signature-X-CZ_ICZ-1.xml" => :valid,
+    "dss/validation/Signature-X-FR_NOT-3.xml" => [:policy, /reject_duplicate_ids/]
   }.freeze
 
   module_function
@@ -88,6 +93,14 @@ RSpec.describe "XAdES interop vectors (#58)" do
       expect(error).to be_a(kind == :policy ? HankoXml::PolicyError : HankoXml::VerificationError)
       expect(kind == :native ? Array(error.xmlsec_errors).join("\n") : error.message).to match(pattern)
     end
+  end
+
+  it "reads XAdES 1.2.2 signed properties under a versioned Reference Type once duplicate ids are allowed (#86)" do
+    path = "dss/validation/Signature-X-FR_NOT-3.xml"
+    result = XadesInteropVectors.verify(path, policy: HankoXml::Policy.interop.with(reject_duplicate_ids: false))
+
+    expect(result.errors).to be_empty
+    expect(result.signed_properties.signing_time).to eq(Time.utc(2014, 11, 7, 8, 48, 27.803r))
   end
 
   it "reads the signed properties of a legacy SigningCertificate (v1) signature" do

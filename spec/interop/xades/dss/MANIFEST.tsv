@@ -41,12 +41,12 @@ d079d928609cdd2d767982e7665b8daf96c0d99e	5071500	no	validation/OJ_L_2016_294_FUL
 c7e4f79f0b26565c0bb439a96ebb7768158cb688	33704	yes	validation/Signature-X-BE_ECON-3.xml
 7c533c94794479f6d44ac1cda83af57fbc96622e	16397	no	validation/Signature-X-BG-1.xml
 4f7c100bedc741ef9a7884649873bd6c08162611	271962	no	validation/Signature-X-CY-1.xml
-df0e344921fae54fd8123814337dd43f6af16ae3	11357	no	validation/Signature-X-CZ_ICZ-1.xml
+df0e344921fae54fd8123814337dd43f6af16ae3	11357	yes	validation/Signature-X-CZ_ICZ-1.xml
 59a15403ce197386cfec5259a750d001262a29fd	16108	no	validation/Signature-X-CZ_SEF-4.xml
 4cb5adfff6691041f41079f0bc6949930ea6a5b4	159609	no	validation/Signature-X-CZ_SEF-5.xml
 79bcf772700d0a0234ef5da32fab35f81fec77f1	47721	no	validation/Signature-X-ES-100.xml
 24608c5468c5cc53ed803e35f88804c6678f8838	47715	no	validation/Signature-X-ES-103.xml
-35dcf38283bb5dad94d04614b236d7a696504af7	16308	no	validation/Signature-X-FR_NOT-3.xml
+35dcf38283bb5dad94d04614b236d7a696504af7	16308	yes	validation/Signature-X-FR_NOT-3.xml
 db4eab899c2888f82677aa854ba204273674d935	3670038	no	validation/Signature-X-HR_FIN-1.xml
 b1b4e4d48452d8ec30045eecdb94e0d9ba9822d6	9542	no	validation/Signature-X-HU_MIC-1.xml
 5f0ee60d9b3edeca46ee9ab87bf5c4a69bdefd13	30980	no	validation/Signature-X-HU_POL-3.xml
@@ -174,7 +174,7 @@ b02b89a2c86fbd95c696298f739bb8a78e974ebc	18979	no	validation/evidence-record/inc
 40eec878ab0e5363cc7ecb697794114238d4e309	5925	no	validation/evidence-record/incorporation/evidence-record-second-X-B-B.xml
 c1a798a47b72e4f2607fa24cf2c4ae8a4e72a5b5	5925	no	validation/evidence-record/incorporation/evidence-record-second-on-asn1-X-B-B.xml
 3b5f5f534852bc7f9bfb1f74a83b229d888fa989	10492	no	validation/malformed-xades.xml
-db3bd1fb639d8bca7a49b29cd9dd906545dd870f	7569	no	validation/qes-xades111-filter2.xml
+db3bd1fb639d8bca7a49b29cd9dd906545dd870f	7569	yes	validation/qes-xades111-filter2.xml
 54171ee8b782813368e9189158201a53c7e712b6	25564	no	validation/sig-with-orphan-ocsp-ref.xml
 0bfc7167e5c2f06180b1de351b54ff8090a112f0	28821	no	validation/sig_bundle.signed_detached.xml
 d6c017c9dba178fd542f198e7fd83ac8a764592f	6337	no	validation/signature_property_signed.xml

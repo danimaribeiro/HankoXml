@@ -1096,12 +1096,19 @@ certificate), plus an optional `signature_policy:` the signed
 
 After the XML-DSig signature verifies (#58):
 
-1. `<SignedInfo>` has exactly one Reference of `Type` SignedProperties, and it
-   verified.
+1. `<SignedInfo>` has exactly one SignedProperties Reference, and it verified.
+   That is a Reference of `Type` `http://uri.etsi.org/01903#SignedProperties`
+   or the versioned form older signatures write
+   (`http://uri.etsi.org/01903/v1.2.2#SignedProperties`), which must name the
+   QualifyingProperties' own version. A Reference with no `Type` counts when
+   the element xmlsec resolved and digested for it is a SignedProperties in
+   a XAdES namespace, never by its URI text (#86).
 2. The element xmlsec resolved and digested for it is the `<xades:SignedProperties>`
    inside the signature's single `<xades:QualifyingProperties>`, whose `Target`
-   is `#` + the `<Signature>` Id. A decoy SignedProperties where an XPath
-   lookup would find it is never read (XAdES signature wrapping).
+   is `#` + the `<Signature>` Id. In the 1.2.2 and 1.1.1 namespaces the bare
+   Id (`Target="Signature"`) is accepted too, as older signers wrote it. A
+   decoy SignedProperties where an XPath lookup would find it is never read
+   (XAdES signature wrapping).
 3. `SigningCertificateV2` or legacy `SigningCertificate` lists a `CertDigest` of
    `v.certificate`, the certificate that verified, with a digest method the
    policy allows. `IssuerSerialV2` must decode to its issuer and serial;
@@ -1109,7 +1116,11 @@ After the XML-DSig signature verifies (#58):
 4. `SigningTime`, when present, is an `xs:dateTime`.
 
 A failure is a `HankoXml::XadesError < VerificationError` in `#errors`. Unsigned
-properties are never read. Only the XAdES 1.3.2 namespace is recognised.
+properties are never read. The verifier reads XAdES 1.3.2
+(`http://uri.etsi.org/01903/v1.3.2#`) and the TS 101 903 v1.2.2 and v1.1.1
+namespaces (`Xades::NAMESPACES`, #86), whose signed properties have the same
+shape. One signature uses one namespace: QualifyingProperties in two of them is
+refused like any second QualifyingProperties. `Xades::Signer` writes only 1.3.2.
 
 SignXML 5.1.0's `XAdESSigner` output verifies under `Policy.strict` (#59): it
 carries a third Reference over `<KeyInfo>`, `SigningCertificateV2` without
