@@ -7,14 +7,18 @@ module HankoXml
       attr_accessor transforms: Array[String]
       attr_accessor id: String?
       attr_accessor type: String?
+      attr_accessor xpath_filters: Array[Hash[Symbol, untyped]]
 
-      def initialize: (uri: String?, digest_method: String?, ?transforms: Array[String], ?id: String?, ?type: String?) -> void
+      def initialize: (uri: String?, digest_method: String?, ?transforms: Array[String], ?id: String?, ?type: String?,
+                       ?xpath_filters: Array[Hash[Symbol, untyped]]) -> void
       def digest_method_name: () -> Symbol?
       def transform_names: () -> Array[Symbol?]
       def fragment?: () -> bool
       def external?: () -> bool
       def document_uri: () -> String
       def same_document_xpointer?: () -> bool
+      def xpath_filter2?: () -> bool
+      def signature_exclusion: () -> (:all | :root_children)?
     end
 
     attr_reader signature_method: String?
@@ -48,8 +52,10 @@ module HankoXml
       attr_reader digest_method: Symbol?
       attr_reader transforms: Array[Symbol?]
       attr_reader errors: Array[DigestMismatch]
+      attr_reader signature_exclusion: (:all | :root_children)?
       def valid?: () -> bool
       def enveloped?: () -> bool
+      def signature_exclusions: () -> Array[:this | :all | :root_children]
       def to_h: () -> Hash[Symbol, untyped]
     end
 
@@ -83,6 +89,7 @@ module HankoXml
       ?namespaces: Hash[String | Symbol, String]?,
       ?signature_element_index: Integer?,
       ?certificate_chain: Array[OpenSSL::X509::Certificate]?,
+      ?root_signature: bool?,
       ?trusted: bool
     ) -> void
 

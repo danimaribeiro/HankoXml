@@ -40,7 +40,7 @@ RSpec.describe "referenced_documents: (#74)" do
   # the key against it before it processes any Reference.
   def native_reference_valid(xml, referenced)
     rsa_cert = Pathname.new(__dir__).join("../fixtures/signer.crt").read
-    HankoXml::Native.verify(xml, [rsa_cert], [], [], 0, referenced)[:reference_valid]
+    HankoXml::Native.verify(xml, [rsa_cert], [], [], 0, referenced, false)[:reference_valid]
   end
 
   it "verifies an external reference from the map, with allow_external_references still false" do

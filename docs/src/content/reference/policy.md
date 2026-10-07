@@ -14,8 +14,8 @@ HankoXml::Policy.strict        # default everywhere
 HankoXml::Policy.fragment      # strict, minus require_signed_root — for protocols
                                # that sign a fragment (SAML assertions)
 HankoXml::Policy.legacy_sha1   # strict + SHA-1 digest and RSA-SHA1 signature
-HankoXml::Policy.xades         # strict + RSA-PSS (MGF1) and SHA-3 / ECDSA-SHA3
-HankoXml::Policy.interop       # fragment + SHA-1 with RSA or DSA, 1024-bit RSA — for
+HankoXml::Policy.xades         # strict + RSA-PSS (MGF1), SHA-3 / ECDSA-SHA3 and XPath Filter 2.0
+HankoXml::Policy.interop       # fragment + SHA-1 with RSA or DSA, 1024-bit RSA, XPath Filter 2.0 — for
                                # legacy foreign signatures (W3C interop vectors), never a default
 HankoXml::Policy.permissive    # allows everything Ruby checks. Documented as unsafe. The native
                                # layer still refuses XPath/XSLT transforms and never fetches a URI.
@@ -87,6 +87,16 @@ HankoXml::Policy.new(
   / ECDSA-SHA3 methods. It does not change XAdES structure or make `Xades::Signer` default to it.
   libxmlsec1 1.3 (vendored / platform gems) implements these URIs; xmlsec 1.2 (Ubuntu) does not,
   and `Native.sign` / `Native.verify` then fail closed.
+- **`:xpath_filter2`** (`Policy.xades`, `Policy.interop`) is XPath Filter 2.0 in the one shape EU
+  DSS writes for enveloped XAdES (#85): a whole-document reference (`URI=""`, or `#xpointer(/)` under
+  `allow_same_document_xpointer`) whose first transform is the only Filter 2.0 transform, holding a
+  single `subtract` of `/descendant::P:Signature` (every signature) or `/*/P:Signature` (the root's
+  signature children), with `P` bound to the XML-DSig namespace where the expression sits. Any other
+  filter, expression or binding (`intersect`, `union`, `name()='ds:Signature'`, a second XPath) is a
+  `PolicyError`, because `#signed?` couldn't say what it signs. xmlsec runs the transform, and
+  `Native.verify` enables it only when the policy allows `:xpath_filter2`. `#signed?` leaves out the
+  subtracted signatures, including any `<ds:Signature>` an attacker adds later: the digest never saw
+  its contents.
 - **`require_signed_root: true`** is the structural half of the XSW defence — see
   [XSW Defense](/guide/xsw-defense).
 - **`reject_duplicate_ids: true`** is enforced by a Nokogiri scan before serialization. Duplicate IDs

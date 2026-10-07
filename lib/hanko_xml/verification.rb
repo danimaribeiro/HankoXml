@@ -7,10 +7,19 @@ module HankoXml
   # See API_CONTRACT.md §5.4.
   class Verification # rubocop:disable Metrics/ClassLength
     # Details about a specific `<Reference>` inside the verified signature.
-    Reference = Struct.new(:uri, :node, :digest_method, :transforms, :valid?, :errors, keyword_init: true) do
+    Reference = Struct.new(:uri, :node, :digest_method, :transforms, :valid?, :errors, :signature_exclusion,
+                           keyword_init: true) do
       # @return [Boolean] True if the reference uses the enveloped-signature transform.
       def enveloped?
         transforms.include?(:enveloped_signature)
+      end
+
+      # Which <ds:Signature> subtrees this Reference leaves out: :this (the
+      # enveloped-signature transform), and for the accepted XPath Filter 2.0
+      # form (#85) :all (every signature) or :root_children (signatures that
+      # are children of the root).
+      def signature_exclusions
+        [(:this if enveloped?), signature_exclusion].compact
       end
     end
 
@@ -24,7 +33,7 @@ module HankoXml
     def initialize(valid:, errors:, signature_info:, signature_node:, document:, certificate: nil,
                    id_attributes: %w[Id ID id], resolver: nil, reference_element_indexes: nil,
                    reference_valid: nil, namespaces: {}, signature_element_index: nil, certificate_chain: nil,
-                   trusted: true)
+                   trusted: true, root_signature: nil)
       @valid = valid
       @errors = errors.dup
       @signature_info = signature_info
@@ -35,6 +44,9 @@ module HankoXml
       @certificate_chain = certificate_chain&.dup&.freeze
       # False only for Verifier.without_trust_verification (#103).
       @trusted = trusted
+      # Whether the root element is a <ds:Signature>, for #covers_root?
+      # without a DOM; nil falls back to this signature being the root.
+      @root_signature = root_signature
       @id_attributes = (id_attributes || []).dup.freeze
       @resolver = resolver
       @namespaces = (namespaces || {}).transform_keys(&:to_s).freeze
@@ -104,18 +116,15 @@ module HankoXml
       require_document!("Verification#signed?")
       return false unless valid?
 
-      # True if the node is equal to or a descendant of any reference's target node,
-      # EXCEPT if it is equal to or a descendant of the signature_node (and the reference is enveloped).
+      # True if the node is equal to or a descendant of any reference's target
+      # node, EXCEPT inside a <ds:Signature> the reference leaves out: this
+      # one (enveloped-signature), or the ones an XPath Filter 2.0 subtract
+      # removes (#85).
       references.any? do |ref|
         next false unless ref.node
+        next false unless node.ancestors.include?(ref.node) || node == ref.node
 
-        is_covered = node.ancestors.include?(ref.node) || node == ref.node
-        if is_covered && ref.enveloped?
-          is_excluded = node.ancestors.include?(signature_node) || node == signature_node
-          !is_excluded
-        else
-          is_covered
-        end
+        ref.signature_exclusions.none? { |exclusion| excluded_by?(node, exclusion) }
       end
     end
 
@@ -165,9 +174,18 @@ module HankoXml
       references.each_with_index.any? do |ref, index|
         next false unless reference_element_indexes[index]&.zero?
 
-        !(ref.enveloped? && signature_element_index&.zero?)
+        # Only a <Signature> that is itself the root can take the root out:
+        # :this when it is this one, :all when it is any (#85).
+        exclusions = ref.signature_exclusions
+        !((exclusions.include?(:this) && signature_element_index&.zero?) ||
+          (exclusions.include?(:all) && root_signature))
       end
     end
+
+    def root_signature
+      @root_signature.nil? ? signature_element_index&.zero? : @root_signature
+    end
+    private :root_signature
 
     def partial?
       !covers_root?
@@ -193,6 +211,19 @@ module HankoXml
     end
 
     private
+
+    def excluded_by?(node, exclusion)
+      chain = [node, *node.ancestors]
+      case exclusion
+      when :this then chain.include?(signature_node)
+      when :all then chain.any? { |n| dsig_signature?(n) }
+      when :root_children then chain.any? { |n| dsig_signature?(n) && n.parent == document.root }
+      end
+    end
+
+    def dsig_signature?(node)
+      node.respond_to?(:namespace) && node.name == "Signature" && node.namespace&.href == HankoXml::NS["ds"]
+    end
 
     # Coverage questions are answered on the caller's nodes, so they need
     # the DOM. Without it they raise rather than guess (§6.1).
@@ -220,7 +251,8 @@ module HankoXml
           digest_method: ref.digest_method_name,
           transforms: ref.transform_names,
           valid?: reference_valid_for(index),
-          errors: reference_errors_for(ref, index)
+          errors: reference_errors_for(ref, index),
+          signature_exclusion: ref.signature_exclusion
         ).freeze
       end
     end
@@ -301,7 +333,7 @@ module HankoXml
       # (specs / error paths that never reached crypto).
       return nil unless document
 
-      if ref.uri.nil? || ref.uri.empty?
+      if ref.uri.nil? || SignatureInfo::WHOLE_DOCUMENT_URIS.include?(ref.uri)
         document.root
       elsif ref.uri.start_with?("#")
         resolve_fragment_reference(ref.uri[1..])

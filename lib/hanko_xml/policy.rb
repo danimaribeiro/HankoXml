@@ -92,6 +92,8 @@ module HankoXml
       # Native.sign/verify then fails closed.
       def xades
         @xades ||= strict.with(
+          # EU DSS's enveloped form, in the one shape Policy accepts (#85).
+          transforms: strict.transforms + [:xpath_filter2],
           digest_methods: strict.digest_methods + %i[sha3_256 sha3_384 sha3_512],
           signature_methods: strict.signature_methods + %i[
             rsa_pss_sha256 rsa_pss_sha384 rsa_pss_sha512
@@ -108,6 +110,7 @@ module HankoXml
       # XPath/XSLT stay off, as in strict.
       def interop
         @interop ||= fragment.with(
+          transforms: fragment.transforms + [:xpath_filter2],
           digest_methods: fragment.digest_methods + [:sha1],
           signature_methods: fragment.signature_methods + %i[rsa_sha1 dsa_sha1],
           min_rsa_key_bits: 1024,
@@ -116,8 +119,10 @@ module HankoXml
       end
 
       # Allows everything the Ruby checks cover. Documented as unsafe. The
-      # native layer still refuses XPath/XSLT transforms (S-10) and reads an
-      # external URI only from referenced_documents: (#74), whatever this says.
+      # native layer still refuses XPath and XSLT transforms (S-10) and reads
+      # an external URI only from referenced_documents: (#74), whatever this
+      # says. XPath Filter 2.0 still passes only in the subtract-the-signatures
+      # shape (#85).
       def permissive
         @permissive ||= new(
           signature_methods: Algorithms.signature.names,
@@ -244,6 +249,11 @@ module HankoXml
     # allowlist for +slot+ (:signature, :digest, :canonicalization,
     # :transform). For algorithms named outside <SignedInfo>, such as a XAdES
     # certificate digest.
+    # Whether +uri_or_name+ is in this policy's allowlist for +slot+.
+    def allows?(slot, uri_or_name)
+      algorithm_violation(slot, uri_or_name).nil?
+    end
+
     def enforce_algorithm!(slot, uri_or_name)
       error = algorithm_violation(slot, uri_or_name)
       raise error if error
@@ -286,6 +296,7 @@ module HankoXml
         ref.transforms.each do |transform_uri|
           errors << algorithm_violation(:transform, transform_uri, reference_uri: ref.uri)
         end
+        errors << xpath_filter2_violation(ref)
 
         if !allow_external_references && ref.external? && !referenced_uris.include?(ref.document_uri)
           errors << HankoXml::PolicyError.new(
@@ -302,6 +313,23 @@ module HankoXml
 
         errors
       end
+    end
+
+    # An allowed XPath Filter 2.0 transform must be the standard enveloped
+    # form, "the whole document minus the signatures" (#85): arbitrary
+    # filters can select a node set #signed? does not model (signature
+    # wrapping), and are a denial-of-service vector (S-10). xmlsec evaluates
+    # the accepted shape; nothing here evaluates XPath.
+    def xpath_filter2_violation(ref)
+      return nil unless ref.xpath_filter2? && allows?(:transform, :xpath_filter2)
+      return nil if ref.signature_exclusion
+
+      expressions = ref.xpath_filters.map { |f| f.transform_keys(&:to_sym).values_at(:filter, :expression).join(" ") }
+      found = expressions.empty? ? "no filter <XPath>" : expressions.join("; ").inspect
+      HankoXml::PolicyError.new(
+        "reference #{ref.uri.inspect} has an XPath Filter 2.0 transform other than a single subtract of " \
+        "/descendant::ds:Signature or /*/ds:Signature on the whole document (#{found})"
+      )
     end
 
     def hmac_violation(signature_info)
@@ -360,7 +388,7 @@ module HankoXml
     end
 
     # Structural check: does any Reference cover the document root? An empty
-    # URI is the whole document; a bare `#id` covers the root when xmlsec's
+    # URI or `#xpointer(/)` is the whole document (#85); a bare `#id` covers the root when xmlsec's
     # ID table resolves it to the root element (Native.scan's root_ids).
     # Runs before any cryptography, and does not wait for a real
     # Verification#covers_root? (S-06).
@@ -370,7 +398,7 @@ module HankoXml
       # structural rule must fail closed, not pass (#96).
       return missing_context_violation(:require_signed_root) unless structure.available?
 
-      return nil if signature_info.references.any? { |ref| ref.uri.to_s.empty? }
+      return nil if signature_info.references.any? { |ref| SignatureInfo::WHOLE_DOCUMENT_URIS.include?(ref.uri.to_s) }
 
       root_ids = structure.id_attributes? ? structure.scan[:root_ids] : []
       return nil if signature_info.references.any? { |ref| ref.fragment? && root_ids.include?(ref.uri[1..]) }

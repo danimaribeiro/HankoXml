@@ -397,7 +397,7 @@ module HankoXml
 
       begin
         verify_result = Native.verify(xml_bytes, trusted, untrusted, native_id_attributes, index,
-                                      @referenced_documents.to_a)
+                                      @referenced_documents.to_a, @policy.allows?(:transform, :xpath_filter2))
       rescue StandardError => e
         return failed_verification(input, sig_node,
                                    [native_failure(e, "the native layer failed unexpectedly while verifying")],
@@ -428,7 +428,8 @@ module HankoXml
         signature_element_index: input.scan(native_id_attributes)[:signature_element_indexes][index],
         certificate: valid ? verifying_certificate(trusted, verify_result[:trusted_index], store_chain&.first) : nil,
         certificate_chain: valid ? store_chain : nil,
-        trusted: !without_trust?
+        trusted: !without_trust?,
+        root_signature: input.scan(native_id_attributes)[:signature_element_indexes].include?(0)
       )
     end
     # rubocop:enable Metrics/CyclomaticComplexity, Metrics/AbcSize

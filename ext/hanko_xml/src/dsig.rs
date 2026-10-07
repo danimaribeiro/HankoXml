@@ -322,6 +322,36 @@ unsafe fn get_attribute(node: sys::xmlNodePtr, attr_name: &[u8]) -> Option<Strin
     Some(result)
 }
 
+/// The namespace bindings in scope on an element, as (prefix, href) pairs;
+/// the default namespace has an empty prefix.
+///
+/// # Safety
+/// `node` must be a non-null, valid element.
+unsafe fn in_scope_namespaces(node: sys::xmlNodePtr) -> Vec<(String, String)> {
+    let list = sys::xmlGetNsList((*node).doc, node);
+    if list.is_null() {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    let mut entry = list;
+    // The list is NULL-terminated and owned by us; its xmlNs entries belong
+    // to the document.
+    while !(*entry).is_null() {
+        let ns = &**entry;
+        let text = |ptr: *const sys::xmlChar| {
+            if ptr.is_null() {
+                String::new()
+            } else {
+                std::ffi::CStr::from_ptr(ptr.cast()).to_str().unwrap_or("").to_string()
+            }
+        };
+        out.push((text(ns.prefix), text(ns.href)));
+        entry = entry.add(1);
+    }
+    unsafe { xml_free(list.cast()) };
+    out
+}
+
 /// Returns the text content of a node (all child text concatenated).
 ///
 /// # Safety
@@ -714,6 +744,23 @@ impl<'mngr> DsigCtx<'mngr> {
         self.enable_sha3_digest_transforms()
     }
 
+    /// Enables xmlsec's XPath Filter 2.0 transform, which `restrict_transforms`
+    /// leaves out (S-10). Called only when the caller's Policy allows
+    /// `:xpath_filter2`, and Ruby Policy has already limited every such
+    /// transform to a single `subtract` of the document's signatures (#85).
+    /// xmlsec evaluates it; this crate never evaluates XPath itself.
+    fn enable_xpath_filter2(&mut self) -> Result<(), &'static str> {
+        // SAFETY: self.ptr is a live xmlSecDSigCtx we exclusively own, its
+        // enabled list already initialized by restrict_transforms.
+        let rc = unsafe {
+            sys::xmlSecDSigCtxEnableReferenceTransform(self.ptr, sys::xmlSecTransformXPath2GetKlass())
+        };
+        if rc < 0 {
+            return Err("failed to enable the XPath Filter 2.0 transform");
+        }
+        Ok(())
+    }
+
     /// Enables SHA-3 `DigestMethod` klasses when the linked xmlsec registered
     /// them. Looked up by href rather than `xmlSecOpenSSLTransformSha3_*GetKlass`
     /// so Ubuntu's xmlsec 1.2 (no SHA-3 symbols) still compiles (S-10, #60).
@@ -936,6 +983,19 @@ pub struct InspectReference {
     pub transforms: Vec<String>,
     pub id: Option<String>,
     pub r#type: Option<String>,
+    /// The `<XPath>` children of every XPath Filter 2.0 transform, in order,
+    /// for Policy's shape check (#85).
+    pub xpath_filters: Vec<XPathFilter>,
+}
+
+/// One XPath Filter 2.0 `<XPath>`: its `Filter` type, its expression, and
+/// the namespace bindings in scope on it, which give the expression's
+/// prefixes their meaning.
+#[derive(Debug)]
+pub struct XPathFilter {
+    pub filter: String,
+    pub expression: String,
+    pub namespaces: Vec<(String, String)>,
 }
 
 /// Result of `verify_document`.
@@ -961,6 +1021,7 @@ pub struct VerifyResult {
 }
 
 const DSIG_NS: &str = "http://www.w3.org/2000/09/xmldsig#";
+const XPATH_FILTER2_NS: &str = "http://www.w3.org/2002/06/xmldsig-filter2";
 
 /// Inspects the nth `<ds:Signature>` without performing any cryptography.
 /// Returns metadata about the signature for policy enforcement.
@@ -1009,10 +1070,20 @@ pub fn inspect_document(
 
         // Transforms
         let mut transforms = Vec::new();
+        let mut xpath_filters = Vec::new();
         if let Some(transforms_node) = unsafe { find_child(ref_node, "Transforms", DSIG_NS) } {
             let transform_nodes = unsafe { find_children(transforms_node, "Transform", DSIG_NS) };
             for t_node in transform_nodes {
                 if let Some(alg) = unsafe { get_attribute(t_node, b"Algorithm\0") } {
+                    if alg == XPATH_FILTER2_NS {
+                        for xpath in unsafe { find_children(t_node, "XPath", XPATH_FILTER2_NS) } {
+                            xpath_filters.push(XPathFilter {
+                                filter: unsafe { get_attribute(xpath, b"Filter\0") }.unwrap_or_default(),
+                                expression: unsafe { get_text_content(xpath) },
+                                namespaces: unsafe { in_scope_namespaces(xpath) },
+                            });
+                        }
+                    }
                     transforms.push(alg);
                 }
             }
@@ -1024,6 +1095,7 @@ pub fn inspect_document(
             transforms,
             id,
             r#type: type_attr,
+            xpath_filters,
         });
     }
 
@@ -1336,6 +1408,7 @@ pub fn verify_document(
     id_attrs: &[String],
     signature_index: usize,
     referenced_documents: HashMap<Vec<u8>, Vec<u8>>,
+    allow_xpath_filter2: bool,
 ) -> Result<VerifyResult, DsigError> {
     errors::clear_errors();
     let serves_external = !referenced_documents.is_empty();
@@ -1402,6 +1475,9 @@ pub fn verify_document(
         if serves_external {
             ctx.allow_referenced_documents();
         }
+        if allow_xpath_filter2 {
+            ctx.enable_xpath_filter2().map_err(DsigError::native)?;
+        }
         status = ctx.verify(sig_node);
         captured_errors = errors::drain_errors();
         reference_valid = ctx.reference_statuses();
@@ -1439,7 +1515,7 @@ fn load_pinned_keys(
 /// For each SignedInfo `<Reference>`, report the document-order element index
 /// of the node the libxml2 ID table resolves — the same table xmlsec used for
 /// `#id` fragment verification. Empty URI → root index. Non-fragment / missing
-/// ID → `None`.
+/// ID → `None`. `#xpointer(/)` is the whole document too, with comments (#85).
 fn collect_reference_element_indexes(
     doc: &OwnedXmlDoc,
     root: sys::xmlNodePtr,
@@ -1466,12 +1542,12 @@ fn resolve_reference_element(
     root: sys::xmlNodePtr,
     uri: &str,
 ) -> Option<sys::xmlNodePtr> {
-    if uri.is_empty() {
+    if uri.is_empty() || uri == "#xpointer(/)" {
         return Some(root);
     }
     if let Some(id) = uri.strip_prefix('#') {
-        // Bare fragment only — xpointer(...) / other same-document forms are
-        // left unresolved here (Ruby already treats them as node: nil).
+        // Bare fragment only — other xpointer(...) forms are left unresolved
+        // here (Ruby already treats them as node: nil).
         if id.is_empty() || id.contains('(') {
             return None;
         }

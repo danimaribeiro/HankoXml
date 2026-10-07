@@ -10,6 +10,15 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Added
 
+- **#85:** XPath Filter 2.0, in the shape EU DSS uses for enveloped XAdES: a
+  whole-document reference whose single filter subtracts
+  `/descendant::ds:Signature` or `/*/ds:Signature`. `Policy.xades` and
+  `Policy.interop` allow `:xpath_filter2`, and any other filter is a
+  `PolicyError`. xmlsec runs the transform, enabled natively only when the
+  policy allows it, and `Verification#signed?` leaves out the subtracted
+  signatures. `Policy#allows?` is public. `URI="#xpointer(/)"` now resolves to
+  the root for `#signed?` and `require_signed_root`, like `URI=""`.
+
 - **#103:** `Verifier.without_trust_verification` checks integrity only,
   against the key in the document's own `<X509Certificate>`. It is a separate
   constructor that takes no trust source, and still pins that key as

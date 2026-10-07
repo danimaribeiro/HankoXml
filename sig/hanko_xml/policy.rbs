@@ -82,6 +82,7 @@ module HankoXml
     ) -> void
 
     def enforce_document_size!: (Integer bytesize) -> void
+    def allows?: (Symbol slot, String | Symbol uri_or_name) -> bool
     def enforce_algorithm!: (Symbol slot, String | Symbol uri_or_name) -> void
     def enforce_key_size!: (Array[OpenSSL::PKey::PKey | OpenSSL::X509::Certificate] | OpenSSL::PKey::PKey | OpenSSL::X509::Certificate keys) -> void
   end

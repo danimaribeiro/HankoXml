@@ -88,6 +88,7 @@ module HankoXml
           certificate: verification.certificate,
           certificate_chain: verification.certificate_chain,
           trusted: verification.trusted?,
+          root_signature: verification.send(:root_signature),
           id_attributes: verification.id_attributes,
           resolver: verification.resolver,
           reference_element_indexes: verification.reference_element_indexes,

@@ -171,6 +171,10 @@ fn native_sign(
 /// (verification aborted before reaching it).
 ///
 /// Only raises for conditions that are not a verification verdict.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one positional argument per Native.verify parameter (API_CONTRACT §7)"
+)]
 fn native_verify(
     ruby: &Ruby,
     xml: RString,
@@ -179,6 +183,7 @@ fn native_verify(
     id_attributes: RArray,
     signature_index: usize,
     referenced_documents: RArray,
+    allow_xpath_filter2: bool,
 ) -> Result<RHash, Error> {
     ensure_initialized().map_err(|msg| native_error(ruby, msg.into()))?;
 
@@ -188,7 +193,15 @@ fn native_verify(
     let id_attrs = rarray_to_strings(ruby, id_attributes)?;
     let referenced = rarray_to_byte_pairs(ruby, referenced_documents)?;
 
-    match dsig::verify_document(&xml_bytes, &trusted, &untrusted, &id_attrs, signature_index, referenced) {
+    match dsig::verify_document(
+        &xml_bytes,
+        &trusted,
+        &untrusted,
+        &id_attrs,
+        signature_index,
+        referenced,
+        allow_xpath_filter2,
+    ) {
         Ok(result) => {
             let hash = ruby.hash_new();
             let status_sym = ruby.to_symbol(result.status.as_str());
@@ -376,6 +389,30 @@ fn native_inspect(
                     )
                     .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
 
+                let filters = ruby.ary_new();
+                for f in &r.xpath_filters {
+                    let filter = ruby.hash_new();
+                    let namespaces = ruby.hash_new();
+                    for (prefix, href) in &f.namespaces {
+                        namespaces
+                            .aset(ruby.str_new(prefix), ruby.str_new(href))
+                            .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
+                    }
+                    for (key, value) in [
+                        ("filter", ruby.str_new(&f.filter).as_value()),
+                        ("expression", ruby.str_new(&f.expression).as_value()),
+                        ("namespaces", namespaces.as_value()),
+                    ] {
+                        filter
+                            .aset(ruby.to_symbol(key), value)
+                            .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
+                    }
+                    filters.push(filter).map_err(|e| native_error(ruby, format!("array error: {e}")))?;
+                }
+                ref_hash
+                    .aset(ruby.to_symbol("xpath_filters"), filters)
+                    .map_err(|e| native_error(ruby, format!("hash error: {e}")))?;
+
                 refs.push(ref_hash)
                     .map_err(|e| native_error(ruby, format!("array error: {e}")))?;
             }
@@ -437,7 +474,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     native.define_singleton_method("abi_compatible?", function!(native_abi_compatible, 0))?;
     native.define_singleton_method("versions", function!(native_versions, 0))?;
     native.define_singleton_method("sign", function!(native_sign, 5))?;
-    native.define_singleton_method("verify", function!(native_verify, 6))?;
+    native.define_singleton_method("verify", function!(native_verify, 7))?;
     native.define_singleton_method("inspect_sig", function!(native_inspect, 2))?;
     native.define_singleton_method("scan", function!(native_scan, 3))?;
     native.define_singleton_method("validate_schema", function!(native_validate_schema, 3))?;
