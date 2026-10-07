@@ -119,9 +119,6 @@ module HankoXml
       end
     end
 
-    # Whether a Reference covers the root element. With a DOM this is
-    # #signed?(document.root); without one, the same rule over the native
-    # element indexes, where the root is index 0 (#102).
     # Whether the signature held AND the key came from trust material the
     # caller supplied. False for every result of
     # Verifier.without_trust_verification, which checks integrity only: its
@@ -158,6 +155,9 @@ module HankoXml
       KeyInfo::Parsed.new(key_names: signature_info.key_names, certificates: signature_info.certificates)
     end
 
+    # Whether a Reference covers the root element. With a DOM this is
+    # #signed?(document.root); without one, the same rule over the native
+    # element indexes, where the root is index 0 (#102).
     def covers_root?
       return signed?(document.root) if document
       return false unless valid? && reference_element_indexes
