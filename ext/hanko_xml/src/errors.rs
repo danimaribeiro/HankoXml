@@ -134,6 +134,10 @@ unsafe extern "C" fn libxml2_error_callback(_ctx: *mut c_void, error: *const cra
 
 /// The handler above, typed as libxml2's `xmlStructuredErrorFunc`, whose
 /// pointer argument is `*mut` before libxml2 2.12 and `*const` after.
+#[allow(
+    clippy::useless_transmute,
+    reason = "a no-op on libxml2 2.12+, where the types already match; needed on 2.9"
+)]
 pub fn libxml2_error_handler() -> crate::sys::xmlStructuredErrorFunc {
     let handler: unsafe extern "C" fn(*mut c_void, *const crate::sys::xmlError) = libxml2_error_callback;
     // SAFETY: both spellings of the callback type have the same ABI; only

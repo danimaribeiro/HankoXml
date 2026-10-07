@@ -206,10 +206,19 @@ module HankoXml
       end
 
       errors.concat(reference_violations(signature_info.references, referenced_uris))
-      structure = DocumentStructure.new(xml_bytes, document, id_attributes)
-      errors << root_signed_violation(structure, signature_info) if check_root_signed
-      errors << duplicate_id_violation(structure)
-      errors << document_size_violation(xml_bytes&.bytesize)
+
+      # The structural checks parse the document natively, so an oversized
+      # one is reported and never parsed (S-12). A DOM is measured by its
+      # serialized bytes, as Signer and Verifier measure it.
+      xml_bytes ||= HankoXml.serialize(document) if document
+      size_error = document_size_violation(xml_bytes&.bytesize)
+      if size_error
+        errors << size_error
+      else
+        structure = DocumentStructure.new(xml_bytes, id_attributes)
+        errors << root_signed_violation(structure, signature_info) if check_root_signed
+        errors << duplicate_id_violation(structure)
+      end
 
       errors.compact
     end
@@ -320,14 +329,13 @@ module HankoXml
     # need, from the native layer's parse of the same bytes xmlsec verifies
     # (Native.scan). Scanned at most once, and only when a check asks.
     class DocumentStructure
-      def initialize(xml_bytes, document, id_attributes)
+      def initialize(xml_bytes, id_attributes)
         @xml_bytes = xml_bytes
-        @document = document
         @id_attributes = id_attributes
       end
 
       def available?
-        !(@xml_bytes.nil? && @document.nil?)
+        !@xml_bytes.nil?
       end
 
       def id_attributes?
@@ -339,7 +347,7 @@ module HankoXml
       end
 
       def scan
-        @scan ||= Native.scan((@xml_bytes || HankoXml.serialize(@document)).b, id_names, false)
+        @scan ||= Native.scan(@xml_bytes.b, id_names, false)
       end
     end
     private_constant :DocumentStructure

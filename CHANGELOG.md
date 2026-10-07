@@ -381,7 +381,9 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   counts. A String input is handed to the native layer as given rather than
   re-serialized through Nokogiri. `Policy#violations` / `#enforce!` check both
   from `xml_bytes:` alone; `document:` still works and is serialized, and
-  `sig_node:` is accepted but unused.
+  `sig_node:` is accepted but unused. They check `max_document_size` first, on
+  `document:`'s serialized form too, and skip the structural checks for an
+  oversized document so it is never parsed natively (S-12).
 
 - **#109:** Nokogiri stays an optional dependency. The gemspec's description
   and comment, README's new installation section and `NokogiriRequired`'s

@@ -245,6 +245,9 @@ fn generate_bindings(headers: &Headers) {
         .allowlist_type("xmlNode")
         .allowlist_type("xmlDoc")
         .allowlist_type("xmlAttr")
+        // Named directly: libxml2 2.15's prototypes (xmlGetID) stopped using
+        // the typedef, so no allowlisted function pulls it in there (#102)
+        .allowlist_type("xmlAttrPtr")
         .allowlist_type("xmlNs")
         .allowlist_type("xmlID")
         // libxml2 error capture: keeps diagnostics off stderr, and lets the
