@@ -30,8 +30,9 @@ HankoXml.signature_present?(xml)               # => true / false
 ```
 
 `valid?`, `verify!` and `signature_present?` work without Nokogiri, on a String, a path or an
-IO. `sign` and `sign!` need Nokogiri loaded (`require "nokogiri"`); without it they raise
-`HankoXml::NokogiriRequired`.
+IO. Without Nokogiri, `sign` signs a document that already holds its `<Signature>` template, and
+returns a bytes-backed `SignedDocument`. Building a template, and `sign!`, need Nokogiri
+(`require "nokogiri"`); without it they raise `HankoXml::NokogiriRequired`.
 
 ## Verification
 

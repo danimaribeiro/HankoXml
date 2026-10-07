@@ -145,12 +145,13 @@ RSpec.describe HankoXml::Dom do
       expect(caps[:schema]).to be true
     end
 
-    it "reports verify available without Nokogiri, and every DOM capability unavailable (#102)" do
+    it "reports verify and signing an existing template available without Nokogiri, and every DOM " \
+       "capability unavailable (#102)" do
       allow(described_class).to receive(:available?).and_return(false)
 
       caps = described_class.capabilities
-      expect(caps[:verify]).to be true
-      expect(caps.except(:verify).values).to all(be false)
+      expect(caps.slice(:verify, :sign_existing_template).values).to all(be true)
+      expect(caps.except(:verify, :sign_existing_template).values).to all(be false)
       expect { described_class.require!("HankoXml.parse") }
         .to raise_error(HankoXml::NokogiriRequired, /HankoXml.parse needs a DOM.*require "nokogiri"/)
     end

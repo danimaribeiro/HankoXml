@@ -18,8 +18,8 @@ RSpec.describe "HankoXml without Nokogiri" do
 
   it "reports verification available and DOM capabilities unavailable" do
     caps = HankoXml.capabilities
-    expect(caps[:verify]).to be true
-    expect(caps.except(:verify).values).to all(be false)
+    expect(caps.slice(:verify, :sign_existing_template).values).to all(be true)
+    expect(caps.except(:verify, :sign_existing_template).values).to all(be false)
   end
 
   describe "verification" do
@@ -141,8 +141,8 @@ RSpec.describe "HankoXml without Nokogiri" do
     let(:key) { WithoutNokogiri::FIXTURES.join("signer.key").read }
 
     it "raises NokogiriRequired, naming the capability" do
-      expect { HankoXml.sign(body, key: key, certificate: certificate) }
-        .to raise_error(HankoXml::NokogiriRequired, /needs a DOM/)
+      expect { HankoXml.sign("<doc/>", key: key, certificate: certificate) }
+        .to raise_error(HankoXml::NokogiriRequired, /Building a <Signature> template.*needs a DOM/)
       expect { HankoXml.parse(signed) }.to raise_error(HankoXml::NokogiriRequired, /HankoXml.parse/)
       expect { HankoXml::Xades::Verifier.new(certificate: certificate) }
         .to raise_error(HankoXml::NokogiriRequired, /Xades/)

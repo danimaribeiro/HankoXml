@@ -46,8 +46,8 @@ module HankoXml
 
         raise HankoXml::NokogiriRequired,
               "#{capability} needs a DOM, and Nokogiri is not loaded. Add `gem \"nokogiri\"` to your " \
-              "Gemfile and `require \"nokogiri\"` before using it. Verification and signature_present? " \
-              "work without it (API_CONTRACT.md §6.1)."
+              "Gemfile and `require \"nokogiri\"` before using it. Verification, signature_present? and " \
+              "signing an existing <Signature> template work without it (API_CONTRACT.md §6.1)."
       end
 
       # Parses +source+ strict (no RECOVER) and nonet: the one way that does
@@ -105,13 +105,16 @@ module HankoXml
         true
       end
 
-      # What works in this process (API_CONTRACT.md §6.1). Verification runs
-      # on bytes through the native layer, so it never needs Nokogiri; the
-      # rest need a DOM for now (#102).
+      # What works in this process (API_CONTRACT.md §6.1). Verification, and
+      # signing a template the document already holds, run on bytes through
+      # the native layer, so they never need Nokogiri; the rest need a DOM.
+      # #102.
       #
       # - verify: Verifier / HankoXml.valid? / verify! / signature_present?,
       #   including `schema: :default`.
       # - sign: Signer, HankoXml.sign / sign!.
+      # - sign_existing_template: Signer#sign / HankoXml.sign of a document
+      #   that already holds the <Signature> template, on bytes (#102).
       # - coverage_checks: Verification#signed?, #signed_nodes, #at_signed.
       # - schema: a caller's own Nokogiri::XML::Schema as `schema:`.
       # - parse: HankoXml.parse / serialize.
@@ -120,6 +123,7 @@ module HankoXml
         {
           verify: true,
           sign: available?,
+          sign_existing_template: true,
           coverage_checks: available?,
           schema: available?,
           parse: available?,

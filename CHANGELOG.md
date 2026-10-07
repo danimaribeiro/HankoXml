@@ -10,6 +10,16 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Added
 
+- **#102:** Without Nokogiri, `Signer#sign` and `HankoXml.sign` sign a
+  `<Signature>` template the document already holds, on bytes. The template
+  is chosen from `Native.scan`, the policy and reference checks (S-05) run on
+  `Native.inspect_sig`, and the result is a bytes-backed `SignedDocument`
+  (`SignedDocument.from_bytes`), whose DOM readers raise `NokogiriRequired`.
+  One template is signed per call. A template with an empty `<KeyName>` or
+  key-derived `<KeyInfo>` values (#67, #72) raises `NokogiriRequired`.
+  `HankoXml.capabilities` gains `:sign_existing_template`, and
+  `Native.inspect_sig` reports `empty_key_names` and `key_derived_values`.
+
 - **#86:** `Xades::Verifier` reads XAdES 1.2.2 and 1.1.1 signed properties
   (`Xades::NAMESPACES`), with every check from #58. It accepts the versioned
   Reference Type (`http://uri.etsi.org/01903/v1.2.2#SignedProperties`) when it

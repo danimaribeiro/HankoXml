@@ -974,6 +974,15 @@ pub struct InspectResult {
     /// `allow_retrieval_method`) -- checked structurally, before any
     /// dereferencing, the same way S-04 checks Reference URIs.
     pub has_retrieval_method: bool,
+    /// Whether `<KeyInfo>` has a `<KeyName>` with no text, which the Signer
+    /// must fill before xmlsec signs (#67).
+    pub empty_key_names: bool,
+    /// Whether a key-derived `<KeyInfo>` leaf (`X509Certificate`,
+    /// `X509SubjectName`, `X509IssuerSerial`, `X509SKI`, `KeyValue`) has any
+    /// content. xmlsec fills only empty ones, so an adopted template's stale
+    /// values would be signed (#72). Lets a Signer without a DOM refuse such
+    /// a template (#102).
+    pub key_derived_values: bool,
 }
 
 #[derive(Debug)]
@@ -1103,15 +1112,31 @@ pub fn inspect_document(
     let mut key_names = Vec::new();
     let mut certificates = Vec::new();
     let mut has_retrieval_method = false;
+    let mut empty_key_names = false;
+    let mut key_derived_values = false;
     if let Some(key_info) = unsafe { find_child(sig_node, "KeyInfo", DSIG_NS) } {
         // KeyName elements
         let key_name_nodes = unsafe { find_children(key_info, "KeyName", DSIG_NS) };
         for kn in key_name_nodes {
             let text = unsafe { get_text_content(kn) };
+            if text.trim().is_empty() {
+                empty_key_names = true;
+            }
             if !text.is_empty() {
                 key_names.push(text);
             }
         }
+
+        // Key-derived leaves with any child node, as the Ruby DOM path
+        // checks them (Signer#empty_key_derived_leaves!).
+        let mut leaves = unsafe { find_children(key_info, "KeyValue", DSIG_NS) };
+        for x509_data in unsafe { find_children(key_info, "X509Data", DSIG_NS) } {
+            for name in ["X509Certificate", "X509SubjectName", "X509IssuerSerial", "X509SKI"] {
+                leaves.extend(unsafe { find_children(x509_data, name, DSIG_NS) });
+            }
+        }
+        // SAFETY: each leaf is a live element of this document.
+        key_derived_values = leaves.iter().any(|&leaf| unsafe { !(*leaf).children.is_null() });
 
         // X509Data/X509Certificate elements
         let x509_data_nodes = unsafe { find_children(key_info, "X509Data", DSIG_NS) };
@@ -1139,6 +1164,8 @@ pub fn inspect_document(
         certificates,
         references,
         has_retrieval_method,
+        empty_key_names,
+        key_derived_values,
     })
 }
 
