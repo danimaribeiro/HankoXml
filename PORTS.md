@@ -556,6 +556,14 @@ a copy on purpose (P1, P5):
    switches to them in the same PR so only one copy of the rules remains.
 6. XAdES-B verification.
 
+Already in the native layer, ahead of this phase: #102 (verification without
+Nokogiri) moved the facts step 2 needs into `Native.scan` (root IDs, duplicate
+IDs, signature count and element indexes), deleting the Ruby DOM walk, and
+XSD validation for `schema: :default` into `Native.validate_schema` on the
+extension's libxml2 (the CHANGELOG entry step 3 called for). Step 2 still folds
+the scan into inspect so there is one parse, and step 3 still folds validation
+into the verify call.
+
 API_CONTRACT.md, SECURITY_REVIEW.md citations and the RBS signatures are updated
 in the same PR as each step. Nothing is removed from the public Ruby API. New
 keywords, such as `trust_anchors:` and `crls:` under P1 option A, may be added.

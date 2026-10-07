@@ -5,6 +5,16 @@ require "rspec/core/rake_task"
 
 RSpec::Core::RakeTask.new(:spec)
 
+namespace :spec do
+  # The Nokogiri-free suite alone, in a process where Nokogiri is hidden
+  # (#102). The regular `spec` task runs it too, through
+  # spec/hanko_xml/without_nokogiri_spec.rb.
+  RSpec::Core::RakeTask.new(:without_nokogiri) do |t|
+    t.pattern = "spec/without_nokogiri/*_nokogiri_free.rb"
+    t.rspec_opts = "--options #{File::NULL}"
+  end
+end
+
 require "rubocop/rake_task"
 
 RuboCop::RakeTask.new

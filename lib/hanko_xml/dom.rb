@@ -45,9 +45,9 @@ module HankoXml
         return if available?
 
         raise HankoXml::NokogiriRequired,
-              "#{capability} needs a DOM to run, and Nokogiri is not loaded. " \
-              "Add `gem \"nokogiri\"` to your Gemfile and `require \"nokogiri\"`: " \
-              "every signing and verification call needs it for now (#96)."
+              "#{capability} needs a DOM, and Nokogiri is not loaded. Add `gem \"nokogiri\"` to your " \
+              "Gemfile and `require \"nokogiri\"` before using it. Verification and signature_present? " \
+              "work without it (API_CONTRACT.md §6.1)."
       end
 
       # Parses +source+ strict (no RECOVER) and nonet: the one way that does
@@ -105,11 +105,20 @@ module HankoXml
         true
       end
 
-      # Every capability needs Nokogiri until the DOM-free path exists
-      # (API_CONTRACT.md §6.1, #96), so each one is exactly available?.
+      # What works in this process (API_CONTRACT.md §6.1). Verification runs
+      # on bytes through the native layer, so it never needs Nokogiri; the
+      # rest need a DOM for now (#102).
+      #
+      # - verify: Verifier / HankoXml.valid? / verify! / signature_present?,
+      #   including `schema: :default`.
+      # - sign: Signer, HankoXml.sign / sign!.
+      # - coverage_checks: Verification#signed?, #signed_nodes, #at_signed.
+      # - schema: a caller's own Nokogiri::XML::Schema as `schema:`.
+      # - parse: HankoXml.parse / serialize.
+      # - template_build: Template, Signer#template.
       def capabilities
         {
-          verify: available?,
+          verify: true,
           sign: available?,
           coverage_checks: available?,
           schema: available?,

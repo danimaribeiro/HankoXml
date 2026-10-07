@@ -265,6 +265,22 @@ RSpec.describe HankoXml::Policy do
     end
   end
 
+  describe "#violations over max_document_size (S-12)" do
+    let(:small) { described_class.strict.with(max_document_size: 32) }
+
+    it "reports the size and never parses the bytes natively" do
+      expect(HankoXml::Native).not_to receive(:scan)
+      messages = small.violations(compliant_info, xml_bytes: dom_doc.to_xml, id_attributes: %w[Id]).map(&:message)
+      expect(messages).to contain_exactly(/max_document_size/)
+    end
+
+    it "measures a DOM given without bytes by its serialized form" do
+      expect(HankoXml::Native).not_to receive(:scan)
+      messages = small.violations(compliant_info, document: dom_doc, id_attributes: %w[Id]).map(&:message)
+      expect(messages).to contain_exactly(/max_document_size/)
+    end
+  end
+
   describe "#enforce!" do
     it "does not raise for a compliant SignatureInfo" do
       expect { described_class.strict.enforce!(compliant_info, **dom) }.not_to raise_error

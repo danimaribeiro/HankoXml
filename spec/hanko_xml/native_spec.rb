@@ -191,7 +191,7 @@ RSpec.describe "HankoXml::Native" do
 
       unsafe_counts = {}
       rust_files.each do |file|
-        content = File.read(file)
+        content = File.read(file, encoding: "UTF-8")
         lines = content.lines.reject do |l|
           s = l.strip
           s.start_with?("//") || s.start_with?("/*") || s.start_with?("*")

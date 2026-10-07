@@ -238,6 +238,63 @@ fn native_verify(
     }
 }
 
+/// `HankoXml::Native.scan(xml, id_attributes, strict)`
+///
+/// Returns the document's structure as a Hash, without cryptography:
+/// `{ signature_count:, signature_values: Array<bool>,
+///   signature_element_indexes: Array<Integer|nil>, duplicate_ids: bool,
+///   root_ids: Array<String> }`. `strict` rejects any libxml2 error with a
+/// `ParseError`, as a strict Nokogiri parse would (#102).
+fn native_scan(ruby: &Ruby, xml: RString, id_attributes: RArray, strict: bool) -> Result<RHash, Error> {
+    ensure_initialized().map_err(|msg| native_error(ruby, msg.into()))?;
+
+    let xml_bytes = rstring_to_bytes(xml);
+    let id_attrs = rarray_to_strings(ruby, id_attributes)?;
+
+    let result = dsig::scan_document(&xml_bytes, &id_attrs, strict).map_err(|err| dsig_error(ruby, err))?;
+    let hash = ruby.hash_new();
+    let set = |key: &str, value: Value| {
+        hash.aset(ruby.to_symbol(key), value)
+            .map_err(|e| native_error(ruby, format!("hash error: {e}")))
+    };
+    set("signature_count", ruby.integer_from_i64(result.signature_count as i64).as_value())?;
+    let values = ruby.ary_new();
+    for present in result.signature_values {
+        values.push(present).map_err(|e| native_error(ruby, format!("array error: {e}")))?;
+    }
+    set("signature_values", values.as_value())?;
+    let indexes = ruby.ary_new();
+    for entry in result.signature_element_indexes {
+        let value = match entry {
+            Some(i) => ruby.integer_from_i64(i as i64).as_value(),
+            None => ruby.qnil().as_value(),
+        };
+        indexes.push(value).map_err(|e| native_error(ruby, format!("array error: {e}")))?;
+    }
+    set("signature_element_indexes", indexes.as_value())?;
+    set("duplicate_ids", result.duplicate_ids.into_value_with(ruby))?;
+    set("root_ids", string_slice_to_rarray(ruby, &result.root_ids)?.as_value())?;
+    Ok(hash)
+}
+
+/// `HankoXml::Native.validate_schema(xml, signature_index, xsd_path)`
+///
+/// Validates a copy of the nth `<ds:Signature>` against the XSD at
+/// `xsd_path`. Returns libxml2's validation errors; empty means valid.
+fn native_validate_schema(
+    ruby: &Ruby,
+    xml: RString,
+    signature_index: usize,
+    xsd_path: String,
+) -> Result<RArray, Error> {
+    ensure_initialized().map_err(|msg| native_error(ruby, msg.into()))?;
+
+    let xml_bytes = rstring_to_bytes(xml);
+    let messages = dsig::validate_signature_schema(&xml_bytes, signature_index, &xsd_path)
+        .map_err(|err| dsig_error(ruby, err))?;
+    string_slice_to_rarray(ruby, &messages)
+}
+
 /// `HankoXml::Native.inspect_sig(xml, signature_index)`
 ///
 /// Returns metadata about the nth `<ds:Signature>` without performing
@@ -382,6 +439,8 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     native.define_singleton_method("sign", function!(native_sign, 5))?;
     native.define_singleton_method("verify", function!(native_verify, 6))?;
     native.define_singleton_method("inspect_sig", function!(native_inspect, 2))?;
+    native.define_singleton_method("scan", function!(native_scan, 3))?;
+    native.define_singleton_method("validate_schema", function!(native_validate_schema, 3))?;
 
     Ok(())
 }

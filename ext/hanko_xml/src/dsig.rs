@@ -105,19 +105,39 @@ impl OwnedXmlDoc {
     ///
     /// Documents longer than `c_int::MAX` bytes (about 2 GiB) are rejected
     /// rather than truncated (S-12).
+    ///
+    /// libxml2's diagnostics go to the error buffer, never stderr. A
+    /// recoverable error (an undefined namespace prefix, an invalid
+    /// `xml:id`) still yields a document; see [`Self::parse_strict`].
     pub fn parse(xml: &[u8]) -> Result<Self, &'static str> {
         let len: std::os::raw::c_int = ffi_len(xml.len())
             .ok_or("failed to parse XML document: larger than the 2 GiB libxml2 limit")?;
+        let _capture = Libxml2Capture::start();
+        // Never NOENT, DTDLOAD or HUGE; NONET so nothing is fetched (§6.3).
+        let options = sys::xmlParserOption_XML_PARSE_NONET as std::os::raw::c_int;
         // SAFETY: xmlReadMemory reads exactly len (== xml.len()) bytes
         // starting at xml.as_ptr() and copies them into buffers it manages
         // itself, so xml doesn't need to outlive this call.
         let ptr = unsafe {
-            sys::xmlReadMemory(xml.as_ptr().cast(), len, ptr::null(), ptr::null(), 0)
+            sys::xmlReadMemory(xml.as_ptr().cast(), len, ptr::null(), ptr::null(), options)
         };
         if ptr.is_null() {
             return Err("failed to parse XML document");
         }
         Ok(Self(ptr))
+    }
+
+    /// Like [`Self::parse`], but any error-level libxml2 diagnostic fails
+    /// the parse: the rule `HankoXml.parse` applies with Nokogiri (strict,
+    /// `doc.errors` empty), so input given as bytes is held to the same
+    /// standard without a DOM (#102).
+    pub fn parse_strict(xml: &[u8]) -> Result<Self, &'static str> {
+        let before = errors::libxml2_error_count();
+        let doc = Self::parse(xml)?;
+        if errors::libxml2_error_count() != before {
+            return Err("the document is not well-formed XML");
+        }
+        Ok(doc)
     }
 
     /// Returns the root element, or None if the document is empty.
@@ -197,6 +217,32 @@ impl Drop for OwnedXmlDoc {
     fn drop(&mut self) {
         // SAFETY: we're the exclusive owner of this doc.
         unsafe { sys::xmlFreeDoc(self.0) }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Libxml2Capture — libxml2 diagnostics into the error buffer
+// ---------------------------------------------------------------------------
+
+/// Routes libxml2's structured errors on this thread to
+/// [`errors::libxml2_error_handler`] until dropped, then removes the handler.
+/// Nokogiri installs its own handler around each of its calls the same way,
+/// so the two never see each other's errors even on one libxml2 (§3.1).
+struct Libxml2Capture;
+
+impl Libxml2Capture {
+    fn start() -> Self {
+        // SAFETY: sets a thread-local libxml2 global to a valid handler
+        // with a null context; the handler never dereferences the context.
+        unsafe { sys::xmlSetStructuredErrorFunc(ptr::null_mut(), errors::libxml2_error_handler()) };
+        Self
+    }
+}
+
+impl Drop for Libxml2Capture {
+    fn drop(&mut self) {
+        // SAFETY: restores libxml2's default (no structured handler).
+        unsafe { sys::xmlSetStructuredErrorFunc(ptr::null_mut(), None) };
     }
 }
 
@@ -1022,6 +1068,209 @@ pub fn inspect_document(
         references,
         has_retrieval_method,
     })
+}
+
+/// Result of `scan_document`: the structural facts the Ruby layer used to
+/// read from a Nokogiri DOM, taken from the same parse xmlsec works on.
+#[derive(Debug)]
+pub struct ScanResult {
+    pub signature_count: usize,
+    /// Per `<ds:Signature>` in document order, whether its
+    /// `<SignatureValue>` has non-whitespace content.
+    pub signature_values: Vec<bool>,
+    /// Per `<ds:Signature>`, its document-order element index (root = 0),
+    /// the numbering `Native.verify`'s `reference_element_indexes` use.
+    pub signature_element_indexes: Vec<Option<usize>>,
+    /// Whether two ID attributes (any of `id_attrs`, matched by local name
+    /// the way `xmlSecAddIDs` matches them) carry the same value (S-06).
+    pub duplicate_ids: bool,
+    /// Values `#value` resolves to the root element through the ID table
+    /// xmlsec uses, for `require_signed_root` (S-06).
+    pub root_ids: Vec<String>,
+}
+
+/// Scans the document's structure without cryptography: signature count
+/// and presence, duplicate IDs, and the root's IDs. `strict` rejects any
+/// libxml2 error, the way a strict Nokogiri parse does; it is set for input
+/// that arrived as bytes, and unset for a DOM the caller already holds.
+pub fn scan_document(xml: &[u8], id_attrs: &[String], strict: bool) -> Result<ScanResult, DsigError> {
+    errors::clear_errors();
+
+    let doc = if strict { OwnedXmlDoc::parse_strict(xml) } else { OwnedXmlDoc::parse(xml) }
+        .map_err(DsigError::parse)?;
+    let root = doc
+        .root_element()
+        .ok_or(DsigError::parse("XML document has no root element"))?;
+
+    let mut signatures = Vec::new();
+    collect_signature_nodes(root, &mut signatures);
+    let signature_values = signatures
+        .iter()
+        .map(|&sig| {
+            unsafe { find_child(sig, "SignatureValue", DSIG_NS) }
+                .map(|value| !ruby_strip(&unsafe { get_text_content(value) }).is_empty())
+                .unwrap_or(false)
+        })
+        .collect();
+    let signature_element_indexes = signatures
+        .iter()
+        .map(|&sig| element_document_index(root, sig))
+        .collect();
+
+    let mut id_values: Vec<(sys::xmlAttrPtr, String)> = Vec::new();
+    collect_id_attributes(root, id_attrs, &mut id_values);
+    let mut seen = std::collections::HashSet::new();
+    let duplicate_ids = id_values.iter().any(|(_, value)| !seen.insert(value.as_str()));
+
+    doc.register_id_attributes(root, id_attrs);
+    let root_ids = id_values
+        .iter()
+        .filter(|(attr, _)| unsafe { (**attr).parent } == root)
+        .filter(|(_, value)| element_for_id(&doc, value) == Some(root))
+        .map(|(_, value)| value.clone())
+        .collect();
+
+    errors::clear_errors();
+    Ok(ScanResult {
+        signature_count: signatures.len(),
+        signature_values,
+        signature_element_indexes,
+        duplicate_ids,
+        root_ids,
+    })
+}
+
+/// Ruby's `String#strip`: ASCII whitespace and NUL, nothing else, so a
+/// `<SignatureValue>` holding only U+00A0 counts as present in both layers.
+fn ruby_strip(text: &str) -> &str {
+    text.trim_matches(|c: char| c.is_ascii_whitespace() || c == '\x0b' || c == '\0')
+}
+
+/// Every attribute, in document order, whose local name is one of
+/// `id_attrs`, whatever its namespace: the attributes `xmlSecAddIDs`
+/// registers.
+fn collect_id_attributes(node: sys::xmlNodePtr, id_attrs: &[String], out: &mut Vec<(sys::xmlAttrPtr, String)>) {
+    if node.is_null() || id_attrs.is_empty() {
+        return;
+    }
+    // SAFETY: node is non-null and valid within the document's lifetime.
+    let node_ref = unsafe { &*node };
+    if node_ref.type_ == sys::xmlElementType_XML_ELEMENT_NODE {
+        let mut attr = node_ref.properties;
+        while !attr.is_null() {
+            // SAFETY: attr is a valid attribute of this element.
+            let attr_ref = unsafe { &*attr };
+            let name = if attr_ref.name.is_null() {
+                ""
+            } else {
+                // SAFETY: attribute names are NUL-terminated.
+                unsafe { CStr::from_ptr(attr_ref.name.cast()) }.to_str().unwrap_or("")
+            };
+            if id_attrs.iter().any(|id| id == name) {
+                // SAFETY: attr's children are its value's text nodes.
+                let value = unsafe { sys::xmlNodeListGetString(node_ref.doc, attr_ref.children, 1) };
+                let text = if value.is_null() {
+                    String::new()
+                } else {
+                    // SAFETY: non-null, NUL-terminated, freed right after.
+                    let text = unsafe { CStr::from_ptr(value.cast()) }.to_str().unwrap_or("").to_string();
+                    unsafe { xml_free(value.cast()) };
+                    text
+                };
+                out.push((attr, text));
+            }
+            attr = attr_ref.next;
+        }
+    }
+    let mut child = node_ref.children;
+    while !child.is_null() {
+        collect_id_attributes(child, id_attrs, out);
+        // SAFETY: child is a valid sibling in this document.
+        child = unsafe { (*child).next };
+    }
+}
+
+/// Validates a copy of the nth `<ds:Signature>`, as the root of a fresh
+/// document, against the XSD at `xsd_path` (relative imports resolve
+/// against it). Returns libxml2's validation errors; empty means valid.
+/// Nokogiri's `schema: :default` path validated the same copy (#102).
+pub fn validate_signature_schema(
+    xml: &[u8],
+    signature_index: usize,
+    xsd_path: &str,
+) -> Result<Vec<String>, DsigError> {
+    errors::clear_errors();
+
+    let doc = OwnedXmlDoc::parse(xml).map_err(DsigError::parse)?;
+    let root = doc
+        .root_element()
+        .ok_or(DsigError::parse("XML document has no root element"))?;
+    let sig_node = doc
+        .find_nth_signature(root, signature_index)
+        .ok_or(DsigError::native("signature index out of range"))?;
+
+    let mut path = xsd_path.as_bytes().to_vec();
+    path.push(0);
+    errors::clear_errors();
+    let _capture = Libxml2Capture::start();
+
+    // SAFETY: path is NUL-terminated for the call; the parser context is
+    // freed below on every path.
+    let parser = unsafe { sys::xmlSchemaNewParserCtxt(path.as_ptr().cast()) };
+    if parser.is_null() {
+        return Err(DsigError::native("failed to load the XML-DSig schema"));
+    }
+    // SAFETY: parser is valid; the handler takes a null context.
+    unsafe { sys::xmlSchemaSetParserStructuredErrors(parser, errors::libxml2_error_handler(), ptr::null_mut()) };
+    // SAFETY: parser is valid. The parsed schema outlives its parser.
+    let schema = unsafe { sys::xmlSchemaParse(parser) };
+    // SAFETY: freed exactly once, after xmlSchemaParse.
+    unsafe { sys::xmlSchemaFreeParserCtxt(parser) };
+    if schema.is_null() {
+        return Err(DsigError::native("failed to load the XML-DSig schema"));
+    }
+
+    // SAFETY: "1.0" is NUL-terminated; the new document is owned below.
+    let copy = unsafe { sys::xmlNewDoc(c"1.0".as_ptr().cast()) };
+    if copy.is_null() {
+        // SAFETY: schema is valid and freed once.
+        unsafe { sys::xmlSchemaFree(schema) };
+        return Err(DsigError::native("failed to copy <Signature> for schema validation"));
+    }
+    let copy = OwnedXmlDoc(copy);
+    // SAFETY: sig_node is valid in doc; the recursive copy belongs to copy.0
+    // once set as its root, and is freed with it.
+    let copied = unsafe { sys::xmlDocCopyNode(sig_node, copy.0, 1) };
+    if !copied.is_null() {
+        // SAFETY: copy.0 has no root yet, so nothing is unlinked or leaked.
+        unsafe { sys::xmlDocSetRootElement(copy.0, copied) };
+    }
+
+    errors::clear_errors();
+    // SAFETY: schema is valid; the context is freed below.
+    let valid_ctxt = unsafe { sys::xmlSchemaNewValidCtxt(schema) };
+    let result = if valid_ctxt.is_null() || copied.is_null() {
+        Err(DsigError::native("failed to set up schema validation"))
+    } else {
+        // SAFETY: valid_ctxt and copy.0 are valid for the call.
+        let status = unsafe {
+            sys::xmlSchemaSetValidStructuredErrors(valid_ctxt, errors::libxml2_error_handler(), ptr::null_mut());
+            sys::xmlSchemaValidateDoc(valid_ctxt, copy.0)
+        };
+        let mut messages = errors::drain_errors();
+        if status != 0 && messages.is_empty() {
+            messages.push("<Signature> does not validate against the XML-DSig schema".into());
+        }
+        Ok(messages)
+    };
+    // SAFETY: each freed once; a null context is skipped.
+    unsafe {
+        if !valid_ctxt.is_null() {
+            sys::xmlSchemaFreeValidCtxt(valid_ctxt);
+        }
+        sys::xmlSchemaFree(schema);
+    }
+    result
 }
 
 /// Signs the document's nth `<ds:Signature>` template.

@@ -35,6 +35,8 @@ module SignxmlProducedXades
   def signxml_available?
     _out, status = Open3.capture2e("python3", "-c", "import signxml")
     status.success?
+  rescue Errno::ENOENT # no python3 at all
+    false
   end
 end
 

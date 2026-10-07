@@ -12,11 +12,11 @@
 
 HankoXml is backed by a native Rust extension that binds directly to [libxmlsec1](https://www.aleksey.com/xmlsec/) using [Magnus](https://github.com/matsadler/magnus). It is designed to be completely byte-faithful, blazingly fast, and natively immune to XML Signature Wrapping (XSW) attacks.
 
-It tightly integrates with Nokogiri, allowing you to sign and verify documents directly in memory without fragile re-serialization.
+It works nicely with Nokogiri, signing and verifying the documents you already hold without fragile re-serialization, and it works without Nokogiri too: verification runs on plain bytes.
 
 ## Features
 - **Full XML-DSig Support:** Sign and verify Enveloped, Enveloping, and Detached signatures.
-- **Nokogiri Native:** Directly patches `Nokogiri::XML::Document` for seamless `.sign!` and `.verify!` calls.
+- **Nokogiri Native, Nokogiri Optional:** Directly patches `Nokogiri::XML::Document` for seamless `.sign!` and `.verify!` calls when Nokogiri is loaded, and verifies Strings, files and IOs without it.
 - **XSW Defense:** Provides a robust `Policy` engine and structural `signed?(node)` checks to defeat XML Signature Wrapping (XSW) attacks.
 - **Rust-Backed:** Memory-safe FFI boundaries, zero shell-outs to CLI binaries, and massive performance gains over pure-Ruby cryptography.
 
@@ -76,6 +76,27 @@ Add this line to your application's Gemfile:
 gem "hanko_xml"
 ```
 
+Nokogiri is optional, and `hanko_xml` does not depend on it or load it. Pick
+the setup that fits:
+
+- **With Nokogiri** (most projects already have it): add `gem "nokogiri"` and
+  `require "nokogiri"`. Everything is available, including signing, the
+  Nokogiri API below, and node-level `signed?` checks.
+- **Bytes only**: leave Nokogiri out. Verification works on a String, a path
+  or an IO, with the same policy, schema and structural checks. Signing and the
+  DOM features raise `HankoXml::NokogiriRequired`, naming what needs Nokogiri.
+
+| Capability | With Nokogiri | Bytes only |
+|---|---|---|
+| `valid?`, `verify!`, `Verifier`, `signature_present?` | yes | yes |
+| `sign`, `sign!`, `Signer` | yes | raises `NokogiriRequired` |
+| `Verification#signed?`, `#at_signed`, `#signed_nodes` | yes | raises; `#covers_root?` still answers |
+| Custom `Nokogiri::XML::Schema`, `signature:` XPath, `resolver:`, XAdES | yes | raises `NokogiriRequired` |
+
+`HankoXml.capabilities` reports the same thing at runtime. On Linux with
+system libraries, whichever of hanko_xml and Nokogiri loads first decides which
+libxml2 the other runs on, so HankoXml leaves the load order to you.
+
 ## Usage
 
 ### 1. The Nokogiri API (Recommended)
@@ -108,6 +129,9 @@ end
 If you prefer not to use the Nokogiri monkey-patches, you can use the top-level module:
 
 #### Verification
+
+This works with or without Nokogiri:
+
 ```ruby
 require "hanko_xml"
 require "pathname"

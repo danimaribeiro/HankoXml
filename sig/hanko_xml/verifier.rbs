@@ -1,5 +1,7 @@
 module HankoXml
   class Verifier
+    DEFAULT_SCHEMA_PATH: String
+
     attr_reader policy: Policy
     attr_reader id_attributes: Array[String | [String, String]]
     attr_reader namespaces: Hash[String, String]

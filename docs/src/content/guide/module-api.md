@@ -29,7 +29,8 @@ HankoXml.verify!(xml, certificate: cert)       # => Verification, or raises
 HankoXml.signature_present?(xml)               # => true / false
 ```
 
-Every one of these needs Nokogiri loaded (`require "nokogiri"`) in 0.1.0; without it they raise
+`valid?`, `verify!` and `signature_present?` work without Nokogiri, on a String, a path or an
+IO. `sign` and `sign!` need Nokogiri loaded (`require "nokogiri"`); without it they raise
 `HankoXml::NokogiriRequired`.
 
 ## Verification

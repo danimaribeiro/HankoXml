@@ -44,7 +44,8 @@ module HankoXml
     attr_reader errors: Array[Error]
     attr_reader signature_info: SignatureInfo?
     attr_reader signature_node: Nokogiri::XML::Node?
-    attr_reader document: Nokogiri::XML::Document
+    attr_reader document: Nokogiri::XML::Document?
+    attr_reader signature_element_index: Integer?
     attr_reader certificate: OpenSSL::X509::Certificate?
     attr_reader id_attributes: Array[String | [String, String]]
     attr_reader namespaces: Hash[String, String]
@@ -58,13 +59,14 @@ module HankoXml
       errors: Array[Error],
       signature_info: SignatureInfo?,
       signature_node: Nokogiri::XML::Node?,
-      document: Nokogiri::XML::Document,
+      document: Nokogiri::XML::Document?,
       ?certificate: OpenSSL::X509::Certificate?,
       ?id_attributes: Array[String | [String, String]]?,
       ?resolver: untyped,
       ?reference_element_indexes: Array[Integer?]?,
       ?reference_valid: Array[bool?]?,
-      ?namespaces: Hash[String | Symbol, String]?
+      ?namespaces: Hash[String | Symbol, String]?,
+      ?signature_element_index: Integer?
     ) -> void
 
     def valid?: () -> bool

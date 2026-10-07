@@ -155,16 +155,18 @@ module HankoXml
     # always have a DOM and trust material -- can supply, for the handful
     # of fields that genuinely need it (S-06):
     #
-    # @param document [Nokogiri::XML::Document, nil] needed by
-    #   +require_signed_root+ / +reject_duplicate_ids+. Without it (or
-    #   +sig_node+ / +id_attributes+) an enabled check reports a violation
-    #   rather than being skipped (#96).
-    # @param sig_node [Nokogiri::XML::Node, nil] the `<Signature>` being
-    #   checked, alongside +document+.
+    # @param document [Nokogiri::XML::Document, nil] the document, when the
+    #   caller has only a DOM: it is serialized for the checks below.
+    # @param sig_node [Nokogiri::XML::Node, nil] accepted for compatibility;
+    #   no check needs it any more (#102).
     # @param id_attributes [Array<String>, nil] the caller's `id_attributes:`,
-    #   alongside +document+.
-    # @param xml_bytes [String, nil] the serialized document, for
-    #   +max_document_size+.
+    #   needed by +reject_duplicate_ids+ and +require_signed_root+.
+    # @param xml_bytes [String, nil] the document's bytes, for
+    #   +max_document_size+, +require_signed_root+ and +reject_duplicate_ids+.
+    #   Both structural checks read the native layer's parse of these bytes
+    #   (Native.scan), so they run identically with or without Nokogiri
+    #   (#102). Without +xml_bytes+ or +document+ an enabled check reports a
+    #   violation rather than being skipped (#96).
     # @param check_root_signed [Boolean] whether to apply
     #   +require_signed_root+ here. `require_signed_root` (API_CONTRACT.md
     #   §5.8.1) is a *verification*-time XSW defence -- it says nothing
@@ -179,7 +181,8 @@ module HankoXml
     # +min_rsa_key_bits+ / +min_ec_key_bits+ are not checked here -- they
     # need the actual signing/trust key material, which is only available
     # once Signer/Verifier have resolved it. See #enforce_key_size!.
-    def violations(signature_info, document: nil, sig_node: nil, id_attributes: nil, xml_bytes: nil,
+    # sig_node: stays in the signature for callers that pass it (#102).
+    def violations(signature_info, document: nil, sig_node: nil, id_attributes: nil, xml_bytes: nil, # rubocop:disable Lint/UnusedMethodArgument
                    check_root_signed: true, referenced_uris: [])
       errors = []
 
@@ -203,9 +206,19 @@ module HankoXml
       end
 
       errors.concat(reference_violations(signature_info.references, referenced_uris))
-      errors << root_signed_violation(document, sig_node, signature_info, id_attributes) if check_root_signed
-      errors << duplicate_id_violation(document, id_attributes)
-      errors << document_size_violation(xml_bytes&.bytesize)
+
+      # The structural checks parse the document natively, so an oversized
+      # one is reported and never parsed (S-12). A DOM is measured by its
+      # serialized bytes, as Signer and Verifier measure it.
+      xml_bytes ||= HankoXml.serialize(document) if document
+      size_error = document_size_violation(xml_bytes&.bytesize)
+      if size_error
+        errors << size_error
+      else
+        structure = DocumentStructure.new(xml_bytes, id_attributes)
+        errors << root_signed_violation(structure, signature_info) if check_root_signed
+        errors << duplicate_id_violation(structure)
+      end
 
       errors.compact
     end
@@ -312,28 +325,54 @@ module HankoXml
       )
     end
 
-    # Structural check: does any Reference cover the document root? Mirrors
-    # the same "" == whole document convention `dsig.rs` and
-    # `Verification#resolve_reference` already use, plus a bare `#id`
-    # matching one of the root element's own id_attributes. This runs
-    # before any cryptography -- it does not need (and does not wait for)
-    # a real Verification#covers_root? (S-06).
+    # The document facts +require_signed_root+ and +reject_duplicate_ids+
+    # need, from the native layer's parse of the same bytes xmlsec verifies
+    # (Native.scan). Scanned at most once, and only when a check asks.
+    class DocumentStructure
+      def initialize(xml_bytes, id_attributes)
+        @xml_bytes = xml_bytes
+        @id_attributes = id_attributes
+      end
+
+      def available?
+        !@xml_bytes.nil?
+      end
+
+      def id_attributes?
+        !@id_attributes.nil?
+      end
+
+      def id_names
+        (@id_attributes || []).map { |attr| attr.is_a?(Array) ? attr[1].to_s : attr.to_s }
+      end
+
+      def scan
+        @scan ||= Native.scan(@xml_bytes.b, id_names, false)
+      end
+    end
+    private_constant :DocumentStructure
+
     def missing_context_violation(field)
       HankoXml::PolicyError.new(
-        "#{field} needs the document to check; pass document:, sig_node: and id_attributes:, " \
+        "#{field} needs the document to check; pass xml_bytes: (or document:) and id_attributes:, " \
         "or use a policy with #{field}: false"
       )
     end
 
-    def root_signed_violation(document, sig_node, signature_info, id_attributes)
+    # Structural check: does any Reference cover the document root? An empty
+    # URI is the whole document; a bare `#id` covers the root when xmlsec's
+    # ID table resolves it to the root element (Native.scan's root_ids).
+    # Runs before any cryptography, and does not wait for a real
+    # Verification#covers_root? (S-06).
+    def root_signed_violation(structure, signature_info)
       return nil unless require_signed_root
-      # Without the DOM this cannot be checked, and an unchecked structural
-      # rule must fail closed, not pass (#96).
-      return missing_context_violation(:require_signed_root) if document.nil? || sig_node.nil?
+      # Without the document this cannot be checked, and an unchecked
+      # structural rule must fail closed, not pass (#96).
+      return missing_context_violation(:require_signed_root) unless structure.available?
 
       return nil if signature_info.references.any? { |ref| ref.uri.to_s.empty? }
 
-      root_ids = root_id_values(document, id_attributes)
+      root_ids = structure.id_attributes? ? structure.scan[:root_ids] : []
       return nil if signature_info.references.any? { |ref| ref.fragment? && root_ids.include?(ref.uri[1..]) }
 
       HankoXml::PolicyError.new(
@@ -342,32 +381,14 @@ module HankoXml
       )
     end
 
-    def root_id_values(document, id_attributes)
-      root = document.root
-      return [] if root.nil? || id_attributes.nil?
-
-      id_attributes.filter_map { |attr| root[attr.is_a?(Array) ? attr[1].to_s : attr.to_s] }
-    end
-
-    # Whole-document duplicate-ID scan (S-06). Deliberately as coarse as
-    # xmlSecAddIDs itself (S-03): matches by unqualified attribute name
-    # only, ignoring namespace.
-    def duplicate_id_violation(document, id_attributes)
+    # Whole-document duplicate-ID scan (S-06), as coarse as xmlSecAddIDs
+    # (S-03): any attribute whose local name is an ID attribute counts,
+    # whatever its namespace, because xmlsec registers all of them.
+    def duplicate_id_violation(structure)
       return nil unless reject_duplicate_ids
-      return missing_context_violation(:reject_duplicate_ids) if document.nil? || id_attributes.nil?
-      return nil if id_attributes.empty?
-
-      names = id_attributes.map { |attr| attr.is_a?(Array) ? attr[1].to_s : attr.to_s }
-      seen = Hash.new(0)
-      document.traverse do |node|
-        next unless node.element?
-
-        names.each do |name|
-          value = node[name]
-          seen[value] += 1 if value
-        end
-      end
-      return nil unless seen.any? { |_, count| count > 1 }
+      return missing_context_violation(:reject_duplicate_ids) unless structure.available? && structure.id_attributes?
+      return nil if structure.id_names.empty?
+      return nil unless structure.scan[:duplicate_ids]
 
       HankoXml::PolicyError.new(
         "document has more than one element with the same ID attribute value, and " \

@@ -19,8 +19,8 @@ and why its dependencies are vendored).
    present it is first-class: we accept and return `Nokogiri::XML::Document` /
    `::Node`, never force a `to_xml` round trip, never silently reformat, never
    corrupt a document Nokogiri owns. When it is absent the gem still installs
-   and loads. In 0.1.0 every signing and verification call then raises
-   `NokogiriRequired`; verifying without it is planned (§6.1, #102).
+   and loads, and verification runs on bytes; signing and the other
+   capabilities that need a DOM raise `NokogiriRequired` (§6.1, #102).
 3. **SHOULD — the Ruby way.** Keyword arguments with real defaults, predicates
    ending in `?`, bang methods that mutate, blocks for configuration, value
    objects that are frozen and comparable, exceptions for exceptional things.
@@ -161,6 +161,7 @@ lib/hanko_xml/verifier.rb
 lib/hanko_xml/verification.rb
 lib/hanko_xml/signed_document.rb     # safe-serialization wrapper returned by #sign
 lib/hanko_xml/dom.rb                 # the ONLY place that probes for Nokogiri (§6.1)
+lib/hanko_xml/input.rb               # a document as bytes, plus the caller's DOM if any (§6.1)
 lib/hanko_xml/signature_info.rb      # DOM-free <SignedInfo> value object
 lib/hanko_xml/xml.rb                 # HankoXml.parse / .serialize, Nokogiri helpers
 lib/hanko_xml/xmldsig-core-schema.xsd # bundled, for Verifier(schema: :default)
@@ -213,8 +214,9 @@ the trust check, and `if HankoXml.signed?(xml)` would read like verification
 while verifying nothing. Use it to route documents ("does this still need
 signing?"), never to decide whether to believe one.
 
-Every one of these needs Nokogiri loaded in 0.1.0 (§6.1); without it they raise
-`HankoXml::NokogiriRequired`.
+`valid?`, `verify!` and `signature_present?` run without Nokogiri, on a String,
+a path or an IO. `sign` and `sign!` need it, and raise
+`HankoXml::NokogiriRequired` without it (§6.1).
 
 **There is deliberately no `HankoXml.verify` returning a rich object.** A
 `Verification` instance is always truthy, so `if HankoXml.verify(doc, ...)` would
@@ -335,7 +337,8 @@ contains the `<Signature>` skeleton"; it does not mean "sign whatever the
 input asks for".
 
 `:require` is the signing mode that could run without Nokogiri, since nothing has
-to be constructed. In 0.1.0 it still needs Nokogiri (§6.1, #102).
+to be constructed. It still needs Nokogiri for now; signing into a template on
+bytes is the next step of #102 (§6.1).
 
 A template whose Reference URIs do not match `references` raises
 `HankoXml::ConfigurationError` rather than silently signing something else —
@@ -1143,38 +1146,62 @@ from `#message` and `#xmlsec_errors` (#96).
 
 ## 6. The XML layer: Nokogiri, and life without it
 
-### 6.1 Nokogiri is required (for now)
+### 6.1 Nokogiri is optional
 
-**In 0.1.0 every signing and verification call needs Nokogiri loaded.** Add
-`gem "nokogiri"` to your Gemfile and `require "nokogiri"`. Without it,
-`sign`, `sign!`, `valid?`, `verify!`, `signature_present?`, `HankoXml.parse`
-and the rest raise `HankoXml::NokogiriRequired` (a `ConfigurationError`)
+HankoXml works with Nokogiri and without it, and both are supported
+configurations (#102, #109). With Nokogiri loaded, every capability is
+available, and HankoXml accepts and returns Nokogiri documents (§6.2, §6.4).
+Without it, verification runs on bytes: `Verifier#verify`, `#verify!`,
+`#valid?` and `#verify_all`, `HankoXml.valid?`, `HankoXml.verify!` and
+`HankoXml.signature_present?` take a String, a path-like object or an IO.
+`Policy`, `schema: :default`, `require_signed_root`, `reject_duplicate_ids`,
+`max_document_size` and signature selection by index all run.
+
+What needs a DOM raises `HankoXml::NokogiriRequired` (a `ConfigurationError`)
 naming the capability and the fix, never a `NoMethodError` on a missing
-constant. `HankoXml.nokogiri?` reports whether it is loaded, and
-`HankoXml.capabilities` reports every capability as exactly that.
+constant. `HankoXml.nokogiri?` reports whether Nokogiri is loaded, and
+`HankoXml.capabilities` reports each capability:
 
-Nokogiri is not a runtime dependency in the gemspec, and `hanko_xml` never
-`require`s it itself: on Linux with system libraries, whichever of the two
-loads first decides which libxml2 the other runs on (§3.1), so the load order
-stays the caller's.
+| Capability | Without Nokogiri | `capabilities` key |
+|---|---|---|
+| Verification, `signature_present?` | runs | `:verify` (always `true`) |
+| Signing: `Signer`, `HankoXml.sign` / `sign!` | raises | `:sign` |
+| `Verification#signed?`, `#signed_nodes`, `#at_signed`, `#signed` | raises; `#covers_root?` and `#partial?` still answer | `:coverage_checks` |
+| A caller's own `Nokogiri::XML::Schema` as `schema:` | raises; `schema: :default` runs | `:schema` |
+| `HankoXml.parse` / `.serialize` | raises | `:parse` |
+| `Template`, `Signer#template` | raises | `:template_build` |
+| `signature:` as XPath, `resolver:`, `Xades::Verifier` | raises | none |
+
+**One pipeline.** Every security check runs on the document's bytes through
+the native layer, whether or not Nokogiri is loaded, so there is no second
+implementation to drift. A Nokogiri document is serialized. Anything else is
+read as bytes and, when Nokogiri is loaded, also parsed, so the `Verification`
+can answer coverage questions. Input that arrives as bytes is parsed strictly
+by the native layer as well, rejecting what a strict Nokogiri parse rejects
+(§6.3). `schema: :default` validates on the extension's libxml2, not
+Nokogiri's, so its verdict follows that build (§3.1). The rule: **a missing
+Nokogiri may remove a capability, it may never weaken one.** `#signed?` never
+degrades to `true`, and a check the caller asked for, like `resolver:`, raises
+rather than being skipped. `spec/without_nokogiri` runs in a process where
+Nokogiri is hidden and pins all of this (§12).
+
+**Packaging.** Nokogiri is not a runtime dependency in the gemspec, and
+`hanko_xml` never `require`s it itself: on Linux with system libraries,
+whichever of the two loads first decides which libxml2 the other runs on
+(§3.1), so the load order stays the caller's. For the DOM capabilities, add
+`gem "nokogiri"` to your Gemfile and `require "nokogiri"`.
 
 `lib/hanko_xml/dom.rb` is the single place that probes for or calls into
 Nokogiri. It holds every `defined?(Nokogiri…)` check and the few DOM
 operations the rest of the library needs: the strict parse, byte-faithful
 serialization, XPath with syntax-error handling, XSD loading and validation,
 and installing `nokogiri_ext`. Nothing else in the library references the
-constant, so a DOM-free path (#102) is one seam rather than a condition
-scattered through twelve files. `spec/hanko_xml/dom_spec.rb` enforces this,
-and that nothing in `lib/` ever `require`s Nokogiri.
+constant, so the DOM-free path is one seam rather than a condition scattered
+through twelve files. `spec/hanko_xml/dom_spec.rb` enforces this, and that
+nothing in `lib/` ever `require`s Nokogiri.
 
-**Planned, not in 0.1.0:** verification without Nokogiri (the native layer
-already parses the document, and `Native.inspect_sig` returns `<SignedInfo>` as
-plain Ruby data, so `Policy` needs no DOM) and signing into an existing
-template with `template: :require`. The rule it will follow: **a missing
-Nokogiri may remove a capability, it may never weaken one.** Every check that
-runs with Nokogiri present will run identically without it; `#signed?`,
-`#at_signed`, schema validation and template building will raise
-`NokogiriRequired` rather than return a less careful answer.
+**Next (#102):** signing into an existing template with `template: :require`
+on bytes.
 
 ### 6.2 Accepted inputs
 
@@ -1966,8 +1993,8 @@ they already hold it.
 
 ### 13.5 Nokogiri is optional, not required — **confirmed by the project owner**
 
-Specified at §6.1. **0.1.0 does not deliver it yet:** every call needs
-Nokogiri, and the DOM-free path is tracked in #102. The draft of this contract made Nokogiri mandatory by
+Specified at §6.1. Verification runs without Nokogiri (#102); signing into an
+existing template on bytes is the next step. The draft of this contract made Nokogiri mandatory by
 building Layer 1 on it throughout, which would have been an unannounced
 dependency regression: the pre-contract `lib/hanko_xml.rb` never requires
 Nokogiri, and `HankoXml.validate(xml_string, cert_pem)` runs today with it
@@ -2095,9 +2122,11 @@ signatures in `sig/`, YARD.
 - A round-trip property test: `verify(sign(doc)) == true` across the fixture
   matrix and across `{sign, sign!}` × `{Document, String, Pathname, IO}`.
 - An `unsafe`-block count assertion over `ext/hanko_xml/src` (§7.2).
-- **The whole suite run twice: once with Nokogiri loaded, once with it hidden**
-  (once #102 lands; until then, only `NokogiriRequired` is checked)
-  (a `$LOAD_PATH` stub that makes `require "nokogiri"` fail). Every DOM-free
+- **The suite run twice: once with Nokogiri loaded, once with it hidden.**
+  `spec/without_nokogiri` runs in its own process, where a `require` guard
+  makes loading Nokogiri fail; `spec/hanko_xml/without_nokogiri_spec.rb` runs
+  it from the regular suite, and `rake spec:without_nokogiri` runs it alone
+  (#102). Every DOM-free
   capability in §6.1's matrix must pass in both runs with identical verdicts,
   and every DOM-only one must raise `NokogiriRequired` rather than fail some
   other way. A capability matrix that is not executed is a capability matrix

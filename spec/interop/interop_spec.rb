@@ -37,7 +37,9 @@ module InteropVectors
   # <KeyValue> carries, standing in for a key the verifier already holds),
   # [:certificate, file] or [:store, file]. The outcome is :valid,
   # [:policy | :schema, message] or [:native, xmlsec log], the last meaning
-  # xmlsec itself refused while Policy let the signature through.
+  # xmlsec itself refused while Policy let the signature through, or
+  # [:either, [outcome, ...]] when the libxml2 build decides which check
+  # refuses first (the signature must fail either way).
   EXPECTED = {
     MERLIN => {
       "signature-enveloped-dsa" => %i[key_value valid],
@@ -61,9 +63,13 @@ module InteropVectors
       "signature-x509-ski" => [[:certificate, "certs/nemain.pem"], :valid],
       "signature-x509-sn" => [[:certificate, "certs/badb.pem"], :valid],
       "signature-retrievalmethod-rawx509crt" => [[:store, "certs/ca.pem"], RETRIEVAL_METHOD],
-      # A SignatureProperty holds a no-namespace element, where the XML-DSig
-      # schema's ##other wildcard only admits namespaced ones.
-      "signature" => [[:certificate, "certs/merlin.pem"], [:schema, /NonCommentandus/]]
+      # An <Object> holds a no-namespace element. `schema: :default` runs on
+      # the extension's libxml2 (#102): newer libxml2 (Nokogiri's, the
+      # vendored 2.14) rejects it under <Object>'s wildcard, while the 2.9
+      # line CI's Ubuntu jobs link admits it, as the XSD's ##any allows. Then
+      # Policy.interop refuses the <RetrievalMethod> instead.
+      "signature" => [[:certificate, "certs/merlin.pem"],
+                      [:either, [[:schema, /NonCommentandus/], RETRIEVAL_METHOD]]]
     },
     PHAOS => {
       "signature-dsa-enveloped" => [[:store, "certs/dsa-ca-cert.der"], :valid],
@@ -142,6 +148,15 @@ module InteropVectors
     when :store then { store: OpenSSL::X509::Store.new.tap { |store| store.add_cert(certificate(suite, file)) } }
     end
   end
+
+  # Whether +error+ is the refusal an outcome names: its class, and its
+  # message (policy) or xmlsec/libxml2 log (schema, native) matching.
+  def self.refused_by?(error, kind, pattern)
+    klass = { policy: HankoXml::PolicyError, schema: HankoXml::SchemaError,
+              native: HankoXml::VerificationError }.fetch(kind)
+    text = kind == :policy ? error.message : Array(error.xmlsec_errors).join("\n")
+    error.is_a?(klass) && text.match?(pattern)
+  end
 end
 
 RSpec.describe "Interop vectors (#62)" do
@@ -170,16 +185,11 @@ RSpec.describe "Interop vectors (#62)" do
             next
           end
 
-          kind, pattern = outcome
           error = verification.errors.first
           expect(verification.valid?).to be false
-          case kind
-          when :policy then expect(error).to be_a(HankoXml::PolicyError)
-          when :schema then expect(error).to be_a(HankoXml::SchemaError)
-          when :native then expect(error).to be_a(HankoXml::VerificationError)
-          end
-          text = kind == :policy ? error.message : Array(error.xmlsec_errors).join("\n")
-          expect(text).to match(pattern)
+          alternatives = outcome.first == :either ? outcome.last : [outcome]
+          expect(alternatives.any? { |expected| InteropVectors.refused_by?(error, *expected) })
+            .to be(true), "#{error.class}: #{error.message} #{Array(error.xmlsec_errors).first(3).inspect}"
         end
       end
     end
