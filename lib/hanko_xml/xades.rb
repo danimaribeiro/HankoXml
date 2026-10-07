@@ -12,6 +12,13 @@ module HankoXml
   module Xades
     NS = "http://uri.etsi.org/01903/v1.3.2#"
 
+    # Earlier XAdES namespaces (TS 101 903 v1.1.1, v1.2.2) that Xades::Verifier
+    # also reads (#86). Xades::Signer writes only NS.
+    LEGACY_NAMESPACES = %w[http://uri.etsi.org/01903/v1.2.2# http://uri.etsi.org/01903/v1.1.1#].freeze
+
+    # Every namespace Xades::Verifier reads QualifyingProperties in.
+    NAMESPACES = [NS, *LEGACY_NAMESPACES].freeze
+
     # RFC 5035 IssuerSerial: issuer as GeneralNames { directoryName [4] Name }.
     def self.issuer_serial_der(certificate)
       name = OpenSSL::ASN1.decode(certificate.issuer.to_der)
@@ -28,6 +35,11 @@ module HankoXml
 
     # The Reference Type that marks the Reference over <xades:SignedProperties>.
     SIGNED_PROPERTIES_TYPE = "http://uri.etsi.org/01903#SignedProperties"
+
+    # The Types a verified signature may use instead: the namespace-specific
+    # form older signatures write (http://uri.etsi.org/01903/v1.2.2#SignedProperties).
+    # Each only counts with QualifyingProperties in its own namespace (#86).
+    VERSIONED_SIGNED_PROPERTIES_TYPES = NAMESPACES.to_h { |ns| ["#{ns}SignedProperties", ns] }.freeze
 
     # <xades:SignaturePolicyIdentifier>: the policy document's identifier (an
     # OID URN or URI) and the digest of that document.

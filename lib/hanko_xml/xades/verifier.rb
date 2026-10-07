@@ -28,13 +28,13 @@ module HankoXml
     # XPath would find it is never read (XAdES signature wrapping). The
     # SigningCertificate(V2) must then name the certificate that verified.
     #
+    # Reads XAdES 1.3.2 and the older 1.2.2 and 1.1.1 namespaces (#86); the
+    # whole signature must use one.
+    #
     # Needs certificate-based trust (certificate:, certificates:, store:), and
     # Nokogiri: the signed properties are read from the DOM (#102).
     # Unsigned properties (XAdES-T/LT/LTA) are ignored: #81, #82.
     class Verifier < HankoXml::Verifier # rubocop:disable Metrics/ClassLength
-      DS = { "ds" => HankoXml::NS["ds"], "xades" => NS }.freeze
-      private_constant :DS
-
       # @param signature_policy [SignaturePolicy, Hash, :implied, nil] When given, the signed
       #   SignaturePolicyIdentifier must be exactly this.
       # All other keywords are {HankoXml::Verifier}'s.
@@ -99,74 +99,114 @@ module HankoXml
       end
 
       def signed_properties(verification)
-        node = signed_properties_node(verification)
-        signature_properties = node.at_xpath("xades:SignedSignatureProperties", DS)
+        node, ns = signed_properties_node(verification)
+        signature_properties = node.at_xpath("xades:SignedSignatureProperties", ns)
         fail!("<xades:SignedProperties> has no <xades:SignedSignatureProperties>") unless signature_properties
 
-        check_signing_certificate!(signature_properties, verification.certificate)
-        policy = signature_policy(signature_properties)
+        check_signing_certificate!(signature_properties, verification.certificate, ns)
+        policy = signature_policy(signature_properties, ns)
         check_signature_policy!(policy)
 
         SignedProperties.new(
-          signing_time: signing_time(signature_properties),
+          signing_time: signing_time(signature_properties, ns),
           signature_policy: policy,
           claimed_roles: signature_properties.xpath("xades:SignerRoleV2/xades:ClaimedRoles/xades:ClaimedRole | " \
-                                                    "xades:SignerRole/xades:ClaimedRoles/xades:ClaimedRole", DS)
+                                                    "xades:SignerRole/xades:ClaimedRoles/xades:ClaimedRole", ns)
                                              .map { |role| role.text.strip.freeze }.freeze,
-          data_object_formats: data_object_formats(node)
+          data_object_formats: data_object_formats(node, ns)
         )
       end
 
       # The SignedProperties xmlsec digested, checked to be the one this
-      # signature's QualifyingProperties holds.
+      # signature's QualifyingProperties holds, and the namespaces to read it
+      # with.
       def signed_properties_node(verification)
-        signature = verification.signature_node
-        indexes = verification.signature_info.references.each_index.select do |i|
-          verification.signature_info.references[i].type == SIGNED_PROPERTIES_TYPE
-        end
-        unless indexes.size == 1
-          fail!("a XAdES signature has exactly one <Reference> of Type #{SIGNED_PROPERTIES_TYPE}, " \
-                "this one has #{indexes.size}")
-        end
+        info, reference = signed_properties_reference(verification)
+        qualifying, ns = qualifying_properties(verification.signature_node)
 
-        reference = verification.references[indexes.first]
-        fail!("the SignedProperties <Reference> did not verify") unless reference.valid? && reference.node
-
-        signature_id = signature["Id"].to_s
-        fail!("the <Signature> has no Id for QualifyingProperties to target") if signature_id.empty?
-
-        qualifying = signature.xpath("ds:Object/xades:QualifyingProperties", DS)
-        fail!("a XAdES signature has exactly one <xades:QualifyingProperties>") unless qualifying.size == 1
-        unless qualifying.first["Target"] == "##{signature_id}"
-          fail!("<xades:QualifyingProperties> does not target this <Signature>")
+        type_namespace = VERSIONED_SIGNED_PROPERTIES_TYPES[info.type]
+        if type_namespace && type_namespace != ns["xades"]
+          fail!("the SignedProperties <Reference> Type names another XAdES version than its QualifyingProperties")
         end
 
-        expected = qualifying.first.xpath("xades:SignedProperties", DS)
+        expected = qualifying.xpath("xades:SignedProperties", ns)
         unless expected.size == 1 && expected.first.pointer_id == reference.node.pointer_id
           fail!("the signed <xades:SignedProperties> is not the one in this signature's QualifyingProperties")
         end
 
-        reference.node
+        [reference.node, ns]
       end
 
-      def check_signing_certificate!(signature_properties, certificate)
+      # The single SignedProperties Reference, as SignedInfo claims it and as
+      # it verified.
+      def signed_properties_reference(verification)
+        pairs = verification.signature_info.references.zip(verification.references)
+                            .select { |info, reference| signed_properties_reference?(info, reference) }
+        unless pairs.size == 1
+          fail!("a XAdES signature has exactly one <Reference> of Type #{SIGNED_PROPERTIES_TYPE}, " \
+                "this one has #{pairs.size}")
+        end
+
+        reference = pairs.first.last
+        fail!("the SignedProperties <Reference> did not verify") unless reference.valid? && reference.node
+
+        pairs.first
+      end
+
+      # This signature's single QualifyingProperties, in any XAdES namespace,
+      # and the namespaces to read it with.
+      def qualifying_properties(signature)
+        signature_id = signature["Id"].to_s
+        fail!("the <Signature> has no Id for QualifyingProperties to target") if signature_id.empty?
+
+        qualifying = signature.xpath("ds:Object/*[local-name()='QualifyingProperties']", "ds" => HankoXml::NS["ds"])
+                              .select { |node| NAMESPACES.include?(node.namespace&.href) }
+        fail!("a XAdES signature has exactly one <xades:QualifyingProperties>") unless qualifying.size == 1
+
+        qualifying = qualifying.first
+        fail!("<xades:QualifyingProperties> does not target this <Signature>") unless targets?(qualifying, signature_id)
+
+        [qualifying, { "ds" => HankoXml::NS["ds"], "xades" => qualifying.namespace.href }]
+      end
+
+      # By its Type, or, with no Type (as some 1.2.2 signatures write it), by
+      # what xmlsec resolved and digested: a SignedProperties element in a
+      # XAdES namespace. Never by the URI text (#86).
+      def signed_properties_reference?(info, reference)
+        return info.type == SIGNED_PROPERTIES_TYPE || VERSIONED_SIGNED_PROPERTIES_TYPES.key?(info.type) if info.type
+
+        node = reference.node
+        !node.nil? && node.name == "SignedProperties" && NAMESPACES.include?(node.namespace&.href)
+      end
+
+      # Target is "#" + the Signature Id. The older namespaces also had
+      # signers write the bare Id (Target="Signature"). Either way the
+      # QualifyingProperties must sit in this <Signature>'s own <Object>.
+      def targets?(qualifying, signature_id)
+        target = qualifying["Target"]
+        return true if target == "##{signature_id}"
+
+        LEGACY_NAMESPACES.include?(qualifying.namespace.href) && target == signature_id
+      end
+
+      def check_signing_certificate!(signature_properties, certificate, ns)
         fail!("no certificate verified the signature, so SigningCertificate cannot be checked") unless certificate
 
-        v2 = signature_properties.xpath("xades:SigningCertificateV2/xades:Cert", DS)
-        v1 = signature_properties.xpath("xades:SigningCertificate/xades:Cert", DS)
+        v2 = signature_properties.xpath("xades:SigningCertificateV2/xades:Cert", ns)
+        v1 = signature_properties.xpath("xades:SigningCertificate/xades:Cert", ns)
         if v1.empty? == v2.empty?
           fail!("exactly one of <xades:SigningCertificate> or <xades:SigningCertificateV2> is required")
         end
 
-        cert = (v2.empty? ? v1 : v2).find { |candidate| certificate_digest_matches?(candidate, certificate) }
+        cert = (v2.empty? ? v1 : v2).find { |candidate| certificate_digest_matches?(candidate, certificate, ns) }
         fail!("SigningCertificate does not name the certificate that verified the signature") unless cert
 
-        check_issuer_serial!(cert, certificate)
+        check_issuer_serial!(cert, certificate, ns)
       end
 
-      def certificate_digest_matches?(cert, certificate)
-        digest_method = cert.at_xpath("xades:CertDigest/ds:DigestMethod/@Algorithm", DS)&.value
-        digest_value = cert.at_xpath("xades:CertDigest/ds:DigestValue", DS)&.text
+      def certificate_digest_matches?(cert, certificate, ns)
+        digest_method = cert.at_xpath("xades:CertDigest/ds:DigestMethod/@Algorithm", ns)&.value
+        digest_value = cert.at_xpath("xades:CertDigest/ds:DigestValue", ns)&.text
         fail!("a <xades:Cert> has no CertDigest") unless digest_method && digest_value
 
         @policy.enforce_algorithm!(:digest, digest_method)
@@ -179,9 +219,9 @@ module HankoXml
       # IssuerSerialV2 must decode to the certificate's issuer and serial.
       # The v1 IssuerSerial's issuer is a DN string whose formatting varies
       # between implementations, so only its serial number is compared.
-      def check_issuer_serial!(cert, certificate)
-        v2 = cert.at_xpath("xades:IssuerSerialV2", DS)&.text
-        v1 = cert.at_xpath("xades:IssuerSerial/ds:X509SerialNumber", DS)&.text
+      def check_issuer_serial!(cert, certificate, ns)
+        v2 = cert.at_xpath("xades:IssuerSerialV2", ns)&.text
+        v1 = cert.at_xpath("xades:IssuerSerial/ds:X509SerialNumber", ns)&.text
 
         if v2
           issuer, serial = decode_issuer_serial(v2)
@@ -213,8 +253,8 @@ module HankoXml
         fail!("the IssuerSerialV2 of <xades:SigningCertificateV2> is malformed")
       end
 
-      def signing_time(signature_properties)
-        text = signature_properties.at_xpath("xades:SigningTime", DS)&.text
+      def signing_time(signature_properties, ns)
+        text = signature_properties.at_xpath("xades:SigningTime", ns)&.text
         return nil unless text
 
         Time.iso8601(text.strip).utc.freeze
@@ -222,17 +262,17 @@ module HankoXml
         fail!("<xades:SigningTime> is not an xs:dateTime")
       end
 
-      def signature_policy(signature_properties)
-        identifier = signature_properties.at_xpath("xades:SignaturePolicyIdentifier", DS)
+      def signature_policy(signature_properties, ns)
+        identifier = signature_properties.at_xpath("xades:SignaturePolicyIdentifier", ns)
         return nil unless identifier
-        return :implied if identifier.at_xpath("xades:SignaturePolicyImplied", DS)
+        return :implied if identifier.at_xpath("xades:SignaturePolicyImplied", ns)
 
-        policy_id = identifier.at_xpath("xades:SignaturePolicyId", DS)
+        policy_id = identifier.at_xpath("xades:SignaturePolicyId", ns)
         SignaturePolicy.new(
-          identifier: policy_id&.at_xpath("xades:SigPolicyId/xades:Identifier", DS)&.text.to_s.strip,
-          description: policy_id&.at_xpath("xades:SigPolicyId/xades:Description", DS)&.text,
-          digest_method: policy_id&.at_xpath("xades:SigPolicyHash/ds:DigestMethod/@Algorithm", DS)&.value.to_s,
-          digest_value: policy_id&.at_xpath("xades:SigPolicyHash/ds:DigestValue", DS)&.text.to_s.gsub(/\s/, "")
+          identifier: policy_id&.at_xpath("xades:SigPolicyId/xades:Identifier", ns)&.text.to_s.strip,
+          description: policy_id&.at_xpath("xades:SigPolicyId/xades:Description", ns)&.text,
+          digest_method: policy_id&.at_xpath("xades:SigPolicyHash/ds:DigestMethod/@Algorithm", ns)&.value.to_s,
+          digest_value: policy_id&.at_xpath("xades:SigPolicyHash/ds:DigestValue", ns)&.text.to_s.gsub(/\s/, "")
         )
       rescue HankoXml::ConfigurationError
         fail!("<xades:SignaturePolicyIdentifier> is malformed")
@@ -250,13 +290,13 @@ module HankoXml
         fail!("the signed SignaturePolicyIdentifier is not the expected signature policy")
       end
 
-      def data_object_formats(signed_properties)
-        signed_properties.xpath("xades:SignedDataObjectProperties/xades:DataObjectFormat", DS).map do |format|
+      def data_object_formats(signed_properties, ns)
+        signed_properties.xpath("xades:SignedDataObjectProperties/xades:DataObjectFormat", ns).map do |format|
           {
             object_reference: format["ObjectReference"],
-            mime_type: format.at_xpath("xades:MimeType", DS)&.text,
-            description: format.at_xpath("xades:Description", DS)&.text,
-            encoding: format.at_xpath("xades:Encoding", DS)&.text
+            mime_type: format.at_xpath("xades:MimeType", ns)&.text,
+            description: format.at_xpath("xades:Description", ns)&.text,
+            encoding: format.at_xpath("xades:Encoding", ns)&.text
           }.freeze
         end.freeze
       end

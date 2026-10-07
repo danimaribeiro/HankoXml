@@ -10,6 +10,13 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Added
 
+- **#86:** `Xades::Verifier` reads XAdES 1.2.2 and 1.1.1 signed properties
+  (`Xades::NAMESPACES`), with every check from #58. It accepts the versioned
+  Reference Type (`http://uri.etsi.org/01903/v1.2.2#SignedProperties`) when it
+  matches the QualifyingProperties' namespace, an untyped Reference when
+  xmlsec resolved it to a SignedProperties element, and, in the older
+  namespaces only, a bare-Id `Target`. `Xades::Signer` still writes 1.3.2.
+
 - **#85:** XPath Filter 2.0, in the shape EU DSS uses for enveloped XAdES: a
   whole-document reference whose single filter subtracts
   `/descendant::ds:Signature` or `/*/ds:Signature`. `Policy.xades` and
