@@ -3,11 +3,9 @@ module HankoXml
     DEFAULT_SCHEMA_PATH: String
 
     # §6.2: a String, a path-like object, an IO, or a Nokogiri document or node.
-    type input = String | _ToPath | _Reader | Nokogiri::XML::Node | Nokogiri::XML::Document
+    type input = HankoXml::input
 
     def self.default_schema: () -> Nokogiri::XML::Schema
-
-    TRUST_KEYWORDS: Array[Symbol]
 
     # #103: integrity only; takes every keyword of #initialize but the trust sources.
     def self.without_trust_verification: (**untyped options) -> Verifier

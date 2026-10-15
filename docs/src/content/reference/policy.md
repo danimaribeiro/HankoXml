@@ -62,6 +62,9 @@ HankoXml::Policy.new(
   check_certificate_validity: true,  # notBefore / notAfter against Time.now
   clock_skew:                60,     # seconds of tolerance for the above
   require_signing_key_usage: true,   # store: only -- see below
+
+  # --- structure -----------------------------------------------------------
+  schema:                    :default, # Verifier XSD check of <Signature>; nil skips it
 )
 ```
 
@@ -99,8 +102,9 @@ HankoXml::Policy.new(
   its contents.
 - **`require_signed_root: true`** is the structural half of the XSW defence — see
   [XSW Defense](/guide/xsw-defense).
-- **`reject_duplicate_ids: true`** is enforced by a Nokogiri scan before serialization. Duplicate IDs
-  make `URI="#x"` resolution ambiguous, and "which `x` did xmlsec pick" is the mechanism behind
+- **`reject_duplicate_ids: true`** is enforced on the native layer's parse of the same bytes xmlsec
+  verifies (`Native.scan`), with or without Nokogiri, matching ID attributes by local name as
+  `xmlSecAddIDs` registers them. Duplicate IDs make `URI="#x"` resolution ambiguous, and "which `x` did xmlsec pick" is the mechanism behind
   several XSW variants.
 - **`allow_external_references: false`** blocks the SSRF/file-read surface of XML-DSig outright. Any
   reference whose URI is not `""` or `#fragment` is rejected in Ruby before xmlsec sees it.

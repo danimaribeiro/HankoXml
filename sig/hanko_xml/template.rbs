@@ -1,19 +1,41 @@
 module HankoXml
   class Template
-    def self.build: (
-      signature_method: Symbol,
-      digest_method: Symbol,
-      canonicalization_method: Symbol,
-      references: Array[Reference],
-      key_info: Array[KeyInfo::Clause],
-      ?signature_id: String?
-    ) -> Nokogiri::XML::Node
+    # Builds the unsigned <ds:Signature> for +config+ (a Signer), in +doc+'s
+    # namespace context. Needs Nokogiri.
+    def self.build: (Nokogiri::XML::Document doc, Signer config) -> Nokogiri::XML::Node
+    def initialize: (Nokogiri::XML::Document doc, Signer config) -> void
+    def build: () -> Nokogiri::XML::Node
   end
 
   module Algorithms
-    def self.uri_for: (Symbol name, Symbol category) -> String?
-    def self.name_for: (String uri, Symbol category) -> Symbol?
-    def self.secure?: (Symbol name) -> bool
-    def self.register: (Symbol name, Symbol category, String uri, ?secure: bool) -> void
+    type slot = :canonicalization | :digest | :signature | :transform
+
+    class Entry < Struct[untyped]
+      attr_accessor slot: Symbol
+      attr_accessor name: Symbol
+      attr_accessor uri: String
+      attr_accessor secure: bool
+      def secure?: () -> bool
+    end
+
+    # Name/URI lookup for one algorithm slot.
+    class Table
+      def register: (Symbol | String name, String uri, secure: bool, ?replace: bool) -> Entry
+      def []: (Symbol | String name_or_uri) -> Entry?
+      def uri_for: (Symbol | String name_or_uri) -> String?
+      def name_for: (String uri) -> Symbol?
+      def secure?: (Symbol | String name_or_uri) -> bool
+      def names: () -> Array[Symbol]
+    end
+
+    def self.canonicalization: () -> Table
+    def self.digest: () -> Table
+    def self.signature: () -> Table
+    def self.transform: () -> Table
+
+    def self.register: (slot | String slot, Symbol | String name, String uri, secure: bool, ?replace: bool) -> Entry
+    def self.uri_for: (slot | String slot, Symbol | String name_or_uri) -> String?
+    def self.name_for: (slot | String slot, String uri) -> Symbol?
+    def self.secure?: (slot | String slot, Symbol | String name_or_uri) -> bool
   end
 end

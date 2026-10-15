@@ -162,8 +162,8 @@ module HankoXml
     #
     # @param document [Nokogiri::XML::Document, nil] the document, when the
     #   caller has only a DOM: it is serialized for the checks below.
-    # @param sig_node [Nokogiri::XML::Node, nil] accepted for compatibility;
-    #   no check needs it any more (#102).
+    # @param sig_node [Nokogiri::XML::Node, nil] internal (@api private):
+    #   accepted for compatibility; no check needs it any more (#102).
     # @param id_attributes [Array<String>, nil] the caller's `id_attributes:`,
     #   needed by +reject_duplicate_ids+ and +require_signed_root+.
     # @param xml_bytes [String, nil] the document's bytes, for
@@ -172,13 +172,15 @@ module HankoXml
     #   (Native.scan), so they run identically with or without Nokogiri
     #   (#102). Without +xml_bytes+ or +document+ an enabled check reports a
     #   violation rather than being skipped (#96).
-    # @param check_root_signed [Boolean] whether to apply
+    # @param check_root_signed [Boolean] internal (@api private), for
+    #   {Signer}: whether to apply
     #   +require_signed_root+ here. `require_signed_root` (API_CONTRACT.md
     #   §5.8.1) is a *verification*-time XSW defence -- it says nothing
     #   about what is legitimate to produce, so {Signer} deliberately signs
     #   a caller-chosen fragment (opted into via `references:`, R5) without
     #   tripping it; only {Verifier} checks it.
-    # @param referenced_uris [Array<String>] URIs the caller serves through
+    # @param referenced_uris [Array<String>] internal (@api private), for
+    #   {Verifier}: URIs the caller serves through
     #   `referenced_documents:` (#74). An external reference to one of them
     #   is allowed whatever +allow_external_references+ says: it is read from
     #   the caller's map, never fetched.

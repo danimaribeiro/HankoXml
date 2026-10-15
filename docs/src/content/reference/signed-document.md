@@ -45,6 +45,13 @@ when it is created. `#to_xml`, `#to_s`, `#bytes` and `#write_to` raise `FrozenSi
 document has changed since, whether through a reader's node or through `#document`. To write out a
 document you changed on purpose, use `HankoXml.serialize(signed.document)`.
 
+## Without Nokogiri
+
+Signed without Nokogiri (into a template the document already holds), a `SignedDocument` holds only
+the signed bytes. `#to_xml`, `#to_s`, `#bytes`, `#write_to`, `#valid?` and `#inspect` work, and
+`declaration: false` drops the `<?xml …?>` declaration. `#document` is `nil`, and the delegated
+readers and `#signatures` raise `HankoXml::NokogiriRequired`.
+
 ## `sign` vs `sign!`
 
 `sign!` still returns the caller's own `Nokogiri::XML::Document`, unwrapped, because the caller

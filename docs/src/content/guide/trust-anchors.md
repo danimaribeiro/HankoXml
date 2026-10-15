@@ -67,14 +67,16 @@ Setting `policy: policy.with(check_certificate_validity: false)` skips the windo
 An OpenSSL-independent structural check: the `<ds:Signature>` subtree is validated against the
 bundled `xmldsig-core-schema.xsd` (or a caller-supplied `Nokogiri::XML::Schema`) **before** any
 cryptography. A structurally malformed `<SignedInfo>` is rejected without reaching libxmlsec1's
-parser at all. `schema: :default` uses the bundled XSD; `nil` (the default) skips it.
-`Policy.strict` sets `schema: :default`.
+parser at all. `schema: :default` uses the bundled XSD. When you don't pass `schema:`, it defaults
+to the policy's `schema`, which is `:default` under `Policy.strict`, so the check is on by default.
+Pass `schema: nil` explicitly to skip it.
 
 ## `referenced_documents:`
 
 A `URI => document` map for references that point outside the document — the *only* way a
 non-fragment reference can resolve. `allow_external_references` stays `false`, nothing is fetched,
-and a reference whose URI is not a key in this map raises `HankoXml::ReferenceError`.
+and a reference whose URI is not a key in this map fails verification: the `Verification` is invalid
+with a `HankoXml::ReferenceError` in `#errors`, and only `verify!` raises it.
 
 ## Selecting which signature to verify
 
@@ -84,8 +86,9 @@ verifier = HankoXml::Verifier.new(certificate: cert, signature: :only)
 
 | Value | Meaning |
 | --- | --- |
-| `:first` (default) | verify the first `<ds:Signature>` in document order |
-| `:only` | as `:first`, but raise `MultipleSignatures` if more than one is present |
+| `nil` (default) | as `:only`: verify the one `<ds:Signature>`, and raise `MultipleSignatures` if there is more than one |
+| `:first` | verify the first `<ds:Signature>` in document order, ignoring any others (unsafe opt-in) |
+| `:only` | same as the default: raise `MultipleSignatures` if more than one is present |
 | `Integer` | the nth signature, document order, 0-based |
 | `String` | an XPath selecting exactly one `<ds:Signature>` |
 

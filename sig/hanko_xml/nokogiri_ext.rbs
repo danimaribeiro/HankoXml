@@ -1,0 +1,23 @@
+# These methods exist only after `require "hanko_xml/nokogiri_ext"`, which is
+# opt-in (API_CONTRACT.md §6.6). `require "hanko_xml"` alone does not add them.
+module HankoXml
+  module NokogiriExt
+    def sign: (**untyped kwargs) -> HankoXml::SignedDocument
+    def sign!: (**untyped kwargs) -> self
+    def signature_valid?: (**untyped kwargs) -> bool
+    def signatures: () -> Nokogiri::XML::NodeSet
+    def signature_present?: () -> bool
+  end
+end
+
+module Nokogiri
+  module XML
+    class Node
+      # Only after require "hanko_xml/nokogiri_ext".
+      include HankoXml::NokogiriExt
+    end
+
+    class Document < Node
+    end
+  end
+end

@@ -20,12 +20,16 @@ module HankoXml
   class Reference
     attr_reader uri: String
     attr_reader transforms: Array[Transform]
-    attr_reader digest_method: Symbol
-    attr_reader digest_method_uri: String
+    attr_reader digest_method: Symbol | String
+    attr_reader id: String?
+    attr_reader type: String?
 
     def self.coerce: (instance | String | Hash[Symbol, untyped] input) -> instance
 
-    def initialize: (?uri: String, ?transforms: Array[Transform | Symbol], ?digest_method: Symbol) -> void
+    def initialize: (?uri: String?, ?transforms: Array[Transform | Symbol | String], ?digest_method: Symbol | String,
+                     ?id: String?, ?type: String?) -> void
+    def digest_method_uri: () -> String?
+    def enveloped?: () -> bool
     def fragment?: () -> bool
     def target_id: () -> String?
   end

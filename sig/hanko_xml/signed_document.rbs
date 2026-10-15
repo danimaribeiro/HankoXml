@@ -1,5 +1,9 @@
 module HankoXml
   class SignedDocument
+    READ_METHODS: Array[Symbol]
+    MUTATORS: Array[Symbol]
+
+    # nil when signed without Nokogiri (bytes only).
     attr_reader document: Nokogiri::XML::Document?
 
     def self.from_bytes: (String bytes) -> instance
@@ -7,12 +11,56 @@ module HankoXml
     def to_xml: (?declaration: bool) -> String
     def to_s: () -> String
     def bytes: () -> String
-    def write_to: (IO io, ?declaration: bool) -> void
+    def write_to: (_Writer io, ?declaration: bool) -> untyped
     def signatures: () -> Nokogiri::XML::NodeSet
-    def valid?: (?certificate: (Key | OpenSSL::X509::Certificate | String | _ToPath)?,
-                 ?certificates: Array[Key | OpenSSL::X509::Certificate | String | _ToPath]?,
-                 ?store: OpenSSL::X509::Store?,
-                 ?key: (Key | OpenSSL::PKey::PKey | String | _ToPath)?,
-                 ?keys: Hash[String, Key | OpenSSL::X509::Certificate | String | _ToPath]?) -> bool
+    # Every keyword of Verifier#initialize (certificate:, store:, policy:, schema:, signature:, ...).
+    def valid?: (**untyped kwargs) -> bool
+    def inspect: () -> String
+
+    # Read-only Nokogiri methods, delegated to #document (READ_METHODS).
+    # Without Nokogiri they raise NokogiriRequired.
+    def at: (*untyped args, **untyped kwargs) ?{ (*untyped) -> untyped } -> untyped
+    def at_css: (*untyped args, **untyped kwargs) ?{ (*untyped) -> untyped } -> untyped
+    def at_xpath: (*untyped args, **untyped kwargs) ?{ (*untyped) -> untyped } -> untyped
+    def css: (*untyped args, **untyped kwargs) ?{ (*untyped) -> untyped } -> untyped
+    def search: (*untyped args, **untyped kwargs) ?{ (*untyped) -> untyped } -> untyped
+    def xpath: (*untyped args, **untyped kwargs) ?{ (*untyped) -> untyped } -> untyped
+    def root: () -> untyped
+    def encoding: () -> String?
+    def errors: () -> Array[untyped]
+    def namespaces: () -> Hash[String, String]
+    def children: () -> untyped
+    def version: () -> String?
+    def url: () -> String?
+
+    # Mutators (MUTATORS): each raises FrozenSignatureError (S-17).
+    def <<: (*untyped) -> bot
+    def add_child: (*untyped) -> bot
+    def add_next_sibling: (*untyped) -> bot
+    def add_previous_sibling: (*untyped) -> bot
+    def after: (*untyped) -> bot
+    def before: (*untyped) -> bot
+    def children=: (*untyped) -> bot
+    def content=: (*untyped) -> bot
+    def inner_html=: (*untyped) -> bot
+    def native_content=: (*untyped) -> bot
+    def parent=: (*untyped) -> bot
+    def remove: (*untyped) -> bot
+    def remove_attribute: (*untyped) -> bot
+    def replace: (*untyped) -> bot
+    def root=: (*untyped) -> bot
+    def set_attribute: (*untyped) -> bot
+    def []=: (*untyped) -> bot
+    def delete: (*untyped) -> bot
+    def encoding=: (*untyped) -> bot
+    def unlink: (*untyped) -> bot
+    def add_namespace: (*untyped) -> bot
+    def add_namespace_definition: (*untyped) -> bot
+    def default_namespace=: (*untyped) -> bot
+    def do_xinclude: (*untyped) -> bot
+    def canonicalize!: (*untyped) -> bot
+    def remove_namespaces!: (*untyped) -> bot
+    def swap: (*untyped) -> bot
+    def wrap: (*untyped) -> bot
   end
 end

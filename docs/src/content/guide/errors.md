@@ -31,12 +31,15 @@ StandardError
     │   │                                    verification_time
     │   ├── HankoXml::DigestMismatch         one <Reference>'s digest is wrong;
     │   │                                    carries #reference_uri
-    │   └── HankoXml::ResolutionMismatch     resolver vs xmlsec disagree
+    │   ├── HankoXml::ResolutionMismatch     resolver vs xmlsec disagree
+    │   └── HankoXml::XadesError             a XAdES signed-properties check failed
     ├── HankoXml::NotSignedError     Verification#at_signed found a node that
     │                                the signature does not cover
     ├── HankoXml::FrozenSignatureError  a mutator was called on a
     │                                SignedDocument
     └── HankoXml::NativeError        libxmlsec1 failed in an unexpected way
+        └── HankoXml::NativeVersionMismatch  the loaded libxmlsec1/libxml2 do not
+                                             match the build (raised at require)
 ```
 
 > Note the name is `HankoXml::KeyLoadError`, not `KeyError` — deliberately avoiding a name that

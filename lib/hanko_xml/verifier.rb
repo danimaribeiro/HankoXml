@@ -44,7 +44,8 @@ module HankoXml
     # @param referenced_documents [Hash<String, String | Nokogiri::XML::Document>] The only source an external
     #   reference is read from, keyed by its URI (without any `#fragment`). Pass the exact bytes that were signed
     #   as a String; a Document is serialized first, which only matches if that reproduces those bytes. Nothing
-    #   is ever fetched, and a URI not in the map fails with {ReferenceError} (#74).
+    #   is ever fetched, and a URI not in the map fails verification with a {ReferenceError} in
+    #   {Verification#errors}; only {#verify!} raises it (#74).
     def initialize(certificate: nil, certificates: nil, store: nil, key: nil, keys: nil,
                    policy: HankoXml::Policy.strict, id_attributes: %w[Id ID id], resolver: nil,
                    namespaces: {}, signature: nil, verification_time: nil,
@@ -78,6 +79,7 @@ module HankoXml
     end
 
     # The keywords that name a trust source.
+    # @api private
     TRUST_KEYWORDS = %i[certificate certificates store key keys certificate_subject].freeze
 
     # An integrity-only Verifier (#103): it checks that the document was not

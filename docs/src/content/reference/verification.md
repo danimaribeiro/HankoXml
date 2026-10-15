@@ -41,7 +41,8 @@ v.trusted?           # => valid? and the key came from trust you supplied; false
                      #    Verifier.without_trust_verification
 
 # --- What the document claimed (untrusted) --------------------------------
-v.key_info           # => KeyInfo::Parsed: #key_names, #certificates (PEM). Never picks the key.
+v.key_info           # => KeyInfo::Parsed: #key_names, #certificates (PEM), or nil when no
+                     #    <SignedInfo> was read (e.g. no signature). Never picks the key.
 
 # --- Provenance -----------------------------------------------------------
 v.signature_node     # => Nokogiri::XML::Element, the <ds:Signature> verified
@@ -77,8 +78,10 @@ ref.errors         # => [#<HankoXml::DigestMismatch reference_uri="#infNFe01">]
 
 Per-reference validity matters because "the digest of reference 2 does not match" and "the
 signature over `<SignedInfo>` does not match" are completely different bugs — the first means the
-data changed, the second means the key or the canonicalization is wrong. Per-reference status is
-recovered from the captured xmlsec error log; when it cannot be attributed to a specific reference,
+data changed, the second means the key or the canonicalization is wrong. Per-reference status comes
+from `Native.verify`'s `reference_valid`, xmlsec's own per-`<Reference>` status (S-09), never from
+parsing its error log. `ref.errors` holds a `DigestMismatch` only when xmlsec reported that
+reference's digest as wrong; when verification stopped before xmlsec reached a reference,
 `ref.errors` is empty and the failure appears only at `v.errors`.
 
 ## `#at_signed` — making the safe read shorter than the unsafe one

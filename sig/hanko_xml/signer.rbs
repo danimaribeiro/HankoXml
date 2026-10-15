@@ -1,5 +1,7 @@
 module HankoXml
   class Signer
+    # The setters work only inside the Signer.new block: the Signer is frozen
+    # when #initialize returns, after which they raise FrozenError.
     attr_accessor key: Key
     attr_accessor certificate: Key?
     attr_accessor certificates: Array[Key]
@@ -32,13 +34,14 @@ module HankoXml
       ?template: Symbol
     ) ?{ (self) -> void } -> void
 
-    def sign: (String | Nokogiri::XML::Node | Nokogiri::XML::Document | _ToPath | IO doc_or_xml, ?force: bool, ?signature: Integer?) -> HankoXml::SignedDocument
+    def sign: (HankoXml::input doc_or_xml, ?force: bool, ?signature: Integer?) -> HankoXml::SignedDocument
     def sign!: (Nokogiri::XML::Node | Nokogiri::XML::Document doc_or_xml, ?force: bool, ?signature: Integer?) -> (Nokogiri::XML::Node | Nokogiri::XML::Document)
-    def template: (String | Nokogiri::XML::Node | Nokogiri::XML::Document doc_or_xml) -> Nokogiri::XML::Node
+    def template: (HankoXml::input doc_or_xml) -> Nokogiri::XML::Node
     def reference: (?String? uri, **untyped kwargs) -> Array[Reference]
     def key_info: (*Symbol | Hash[Symbol, String] clauses, ?name: String?) -> Array[KeyInfo::Clause]
              | () -> Array[KeyInfo::Clause]
     def to_h: () -> Hash[Symbol, untyped]
+    def inspect: () -> String
 
     private
     def node_signed?: (Nokogiri::XML::Node sig_node) -> bool

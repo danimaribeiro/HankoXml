@@ -52,6 +52,8 @@ module HankoXml
     # input before it is read or parsed (S-12): see #read_source. An
     # existing Document/Node is not checked here; Signer/Verifier check its
     # serialized form before any native call.
+    #
+    # @api private
     def coerce_document(input, policy: nil)
       return input if Dom.document?(input)
       return input.document if Dom.node?(input)
@@ -64,6 +66,8 @@ module HankoXml
     # +max_document_size+ applies before the input is read (S-12): a String
     # by #bytesize, a path by File.size, an IO by reading at most one byte
     # past the limit.
+    #
+    # @api private
     def read_source(input, policy: nil)
       limit = policy&.max_document_size
       limit = nil unless limit&.finite?

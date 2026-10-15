@@ -39,6 +39,8 @@ module HankoXml
     ].map { |path| "./#{path}" }.join(" | ").freeze
     private_constant :KEY_DERIVED_LEAVES
 
+    # The setters are for the Signer.new block only: the Signer is frozen
+    # when #initialize returns, after which they raise FrozenError.
     attr_accessor :key, :certificate, :certificates, :signature_method, :canonicalization_method,
                   :digest_method, :references, :placement, :id_attributes, :namespaces,
                   :signature_id, :policy
@@ -155,7 +157,8 @@ module HankoXml
     #
     # @param doc_or_xml [String, Nokogiri::XML::Node, Nokogiri::XML::Document, IO] The document to sign.
     # @param force [Boolean] Whether to re-sign already signed signatures.
-    # @param signature [Symbol, Integer, String, nil] The target signature to sign (defaults to all).
+    # @param signature [Integer, nil] The document-order index of the one
+    #   <Signature> to sign (defaults to every unsigned one).
     # @return [HankoXml::SignedDocument] The new signed document.
     def sign(doc_or_xml, force: false, signature: nil)
       node_signer = signer_for_node(doc_or_xml)
@@ -174,8 +177,8 @@ module HankoXml
     #
     # @param doc_or_xml [Nokogiri::XML::Node, Nokogiri::XML::Document] The document to mutate.
     # @param force [Boolean] Whether to re-sign already signed signatures.
-    # @param signature [Symbol, Integer, String, nil] The target signature to sign
-    #   (defaults to all). An Integer indexes document order, matching
+    # @param signature [Integer, nil] The document-order index of the one
+    #   <Signature> to sign (defaults to every unsigned one), matching
     #   {Verifier}'s `signature:` Integer index (S-11).
     # @return [Nokogiri::XML::Node, Nokogiri::XML::Document] The mutated document.
     def sign!(doc_or_xml, force: false, signature: nil)

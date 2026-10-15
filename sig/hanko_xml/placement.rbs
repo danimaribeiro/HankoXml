@@ -1,15 +1,27 @@
 module HankoXml
   class Placement
+    type target = String | Nokogiri::XML::Node
+
+    MODES: Array[Symbol]
+
+    attr_reader mode: Symbol
+    attr_reader target: target?
+    attr_reader namespaces: Hash[String | Symbol, String]
+    attr_reader block: (^(Nokogiri::XML::Document, Nokogiri::XML::Node) -> void)?
+
     def self.append_to_root: () -> instance
     def self.prepend_to_root: () -> instance
-    def self.after: (String xpath, ?namespaces: Hash[String, String]) -> instance
-    def self.before: (String xpath, ?namespaces: Hash[String, String]) -> instance
-    def self.append_to: (String xpath, ?namespaces: Hash[String, String]) -> instance
-    def self.prepend_to: (String xpath, ?namespaces: Hash[String, String]) -> instance
+    def self.after: (target node_or_xpath, ?namespaces: Hash[String | Symbol, String]) -> instance
+    def self.before: (target node_or_xpath, ?namespaces: Hash[String | Symbol, String]) -> instance
+    def self.append_to: (target node_or_xpath, ?namespaces: Hash[String | Symbol, String]) -> instance
+    def self.prepend_to: (target node_or_xpath, ?namespaces: Hash[String | Symbol, String]) -> instance
     def self.detached: () -> instance
     def self.custom: () { (Nokogiri::XML::Document, Nokogiri::XML::Node) -> void } -> instance
-    def self.coerce: (instance | Symbol input) -> instance
+    def self.coerce: (instance | Symbol | nil input) -> instance?
 
-    def insert: (Nokogiri::XML::Document doc, Nokogiri::XML::Node signature_node) -> void
+    def initialize: (Symbol | String mode, ?target: target?, ?namespaces: Hash[String | Symbol, String]) ?{ (Nokogiri::XML::Document, Nokogiri::XML::Node) -> void } -> void
+    def detached?: () -> bool
+    def resolve: (Nokogiri::XML::Document doc, ?namespaces: Hash[String | Symbol, String]?) -> Nokogiri::XML::Node
+    def insert: (Nokogiri::XML::Document doc, Nokogiri::XML::Node signature_node, ?namespaces: Hash[String | Symbol, String]?) -> Nokogiri::XML::Node
   end
 end
