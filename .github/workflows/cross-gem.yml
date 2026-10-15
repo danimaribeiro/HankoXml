@@ -11,13 +11,11 @@ name: Cross-compile
 # See VENDORING.md.
 
 on:
-  # CI-PAUSED: automatic triggers are off to save Actions budget; run tests
-  # locally before merging. Re-enable by uncommenting the CI-PAUSED lines.
   # Pull requests only, plus manual runs. Deliberately not `push` as well: a
   # branch with an open PR would otherwise build every platform twice per
   # commit, and each build compiles libxml2 and xmlsec1 from source for four
   # Ruby ABIs.
-  # CI-PAUSED pull_request:
+  pull_request:
   workflow_dispatch:
   # Lets release.yml build the platform gems it publishes from this exact
   # matrix, rather than keeping a second copy of it in sync by hand -- same

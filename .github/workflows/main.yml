@@ -1,14 +1,12 @@
 name: Ruby
 
 on:
-  # CI-PAUSED: automatic triggers are off to save Actions budget; run tests
-  # locally before merging. Re-enable by uncommenting the CI-PAUSED lines.
   workflow_dispatch:
-  # CI-PAUSED push:
-  # CI-PAUSED   branches:
-  # CI-PAUSED     - main
+  push:
+    branches:
+      - main
 
-  # CI-PAUSED pull_request:
+  pull_request:
 
   # Lets the release workflow gate a tag on exactly the same matrix that
   # guards main, rather than keeping a second copy of it in sync by hand.

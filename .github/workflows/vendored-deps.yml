@@ -12,18 +12,16 @@ name: Vendored deps
 # version against our pin rather than trusting OSV's distro-proxy matching.
 
 on:
-  # CI-PAUSED: automatic triggers are off to save Actions budget; run tests
-  # locally before merging. Re-enable by uncommenting the CI-PAUSED lines.
-  # CI-PAUSED schedule:
-  # CI-PAUSED   # Mondays, 06:00 UTC.
-  # CI-PAUSED   - cron: '0 6 * * 1'
+  schedule:
+    # Mondays, 06:00 UTC.
+    - cron: '0 6 * * 1'
   workflow_dispatch:
-  # CI-PAUSED # Also on changes to the pins themselves, so a bump is checked immediately.
-  # CI-PAUSED pull_request:
-  # CI-PAUSED   paths:
-  # CI-PAUSED     - 'dependencies.yml'
-  # CI-PAUSED     - '.github/scripts/check_vendored_deps.rb'
-  # CI-PAUSED     - '.github/workflows/vendored-deps.yml'
+  # Also on changes to the pins themselves, so a bump is checked immediately.
+  pull_request:
+    paths:
+      - 'dependencies.yml'
+      - '.github/scripts/check_vendored_deps.rb'
+      - '.github/workflows/vendored-deps.yml'
 
 # Cheap, but there is no value in two concurrent upstream checks.
 concurrency:
