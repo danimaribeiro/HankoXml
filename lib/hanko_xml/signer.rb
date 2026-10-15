@@ -134,6 +134,7 @@ module HankoXml
     # it into +doc_or_xml+ and performs no cryptography -- for inspection
     # and testing (§5.2).
     def template(doc_or_xml)
+      Dom.require!("HankoXml::Signer#template")
       doc = HankoXml.coerce_document(doc_or_xml)
       HankoXml::Template.build(doc, self)
     end
@@ -185,8 +186,10 @@ module HankoXml
       node_signer = signer_for_node(doc_or_xml)
       return node_signer.sign!(doc_or_xml.document, force: force, signature: signature) if node_signer
 
-      doc = HankoXml.coerce_document(doc_or_xml, policy: policy)
+      # Before coercing: a String would otherwise fail inside HankoXml.parse
+      # and name that instead of the method the caller used.
       Dom.require!("HankoXml::Signer#sign!")
+      doc = HankoXml.coerce_document(doc_or_xml, policy: policy)
 
       signatures, adopted = find_or_build_signatures(doc)
       all_sigs_in_order = doc.xpath(".//ds:Signature", ds: NS["ds"])
