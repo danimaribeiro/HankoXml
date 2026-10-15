@@ -16,7 +16,7 @@ It works nicely with Nokogiri, signing and verifying the documents you already h
 
 ## Features
 - **Full XML-DSig Support:** Sign and verify Enveloped, Enveloping, and Detached signatures.
-- **Nokogiri Native, Nokogiri Optional:** Directly patches `Nokogiri::XML::Document` for seamless `.sign!` and `.verify!` calls when Nokogiri is loaded, and verifies Strings, files and IOs without it.
+- **Nokogiri Native, Nokogiri Optional:** Signs and verifies the Nokogiri documents you already hold, with opt-in `doc.sign!` / `doc.signature_valid?` shorthands (`require "hanko_xml/nokogiri_ext"`), and verifies Strings, files and IOs without Nokogiri.
 - **XSW Defense:** Provides a robust `Policy` engine and structural `signed?(node)` checks to defeat XML Signature Wrapping (XSW) attacks.
 - **Rust-Backed:** Memory-safe FFI boundaries, zero shell-outs to CLI binaries, and massive performance gains over pure-Ruby cryptography.
 
@@ -104,11 +104,16 @@ libxml2 the other runs on, so HankoXml leaves the load order to you.
 
 ### 1. The Nokogiri API (Recommended)
 
-HankoXml extends Nokogiri directly, making signing and verifying incredibly ergonomic.
+HankoXml can extend Nokogiri directly, making signing and verifying incredibly
+ergonomic. The extension is opt-in: `require "hanko_xml"` alone does not touch
+Nokogiri's classes, and `require "hanko_xml/nokogiri_ext"` adds `#sign`,
+`#sign!`, `#signature_valid?`, `#signatures` and `#signature_present?` to
+`Nokogiri::XML::Document` and `Node`.
 
 ```ruby
 require "nokogiri"
 require "hanko_xml"
+require "hanko_xml/nokogiri_ext"
 
 doc = Nokogiri::XML(File.read("document.xml"))
 private_key = File.read("private.pem")
@@ -129,7 +134,7 @@ end
 
 ### 2. The Module API
 
-If you prefer not to use the Nokogiri monkey-patches, you can use the top-level module:
+If you prefer not to load the Nokogiri extension, use the top-level module:
 
 #### Verification
 

@@ -25,7 +25,8 @@ verifier = HankoXml::Verifier.new(
   signature:     nil,      # nil (default) | :first | :only | Integer index | XPath String
 
   verification_time:    nil,   # Time — evaluate certificate validity as of then
-  schema:               nil,   # validate <Signature> against an XSD first
+  schema:               policy.schema, # XSD check of <Signature> first; :default under
+                                       # Policy.strict, nil skips it
   referenced_documents: {},    # URI => document, for non-fragment references
   certificate_subject:  nil,   # store: only — String CN or OpenSSL::X509::Name
 )
@@ -50,7 +51,20 @@ requires the certificate's KeyUsage, when present, to allow `digitalSignature` o
 | `:first` | verify the first `<ds:Signature>` in document order; ignores any others (unsafe opt-in) |
 | `:only` | as `:first`, but raise `MultipleSignatures` if the document has more than one — the safest choice for protocols that expect exactly one |
 | `Integer` | the nth signature, document order, 0-based |
+| `:all` | not supported in 0.1.0: raises `ConfigurationError` pointing at `#verify_all` |
 | `String` | an XPath selecting exactly one `<ds:Signature>` |
+
+## `schema:`
+
+Left out, `schema:` takes the policy's `schema` field, which is `:default` (the bundled
+`xmldsig-core-schema.xsd`) under `Policy.strict` and every other preset that keeps it. Pass a
+`Nokogiri::XML::Schema` for your own XSD, or `schema: nil` explicitly to skip the check.
+
+## `referenced_documents:`
+
+A `URI => bytes` map, the only source an external reference resolves from; nothing is ever fetched.
+A reference whose URI is not in the map makes the `Verification` invalid with a
+`HankoXml::ReferenceError` in `#errors`; `verify!` raises it.
 
 ## Methods
 

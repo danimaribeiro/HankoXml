@@ -1,12 +1,12 @@
 ---
 title: Module API
-description: The top-level HankoXml module, for use without the Nokogiri monkey-patches.
+description: The top-level HankoXml module, for use without the opt-in Nokogiri extension.
 order: 3
 ---
 
 # The Module API
 
-If you prefer not to use the Nokogiri monkey-patches, you can use the top-level `HankoXml` module
+If you prefer not to load the Nokogiri extension (`hanko_xml/nokogiri_ext`), you can use the top-level `HankoXml` module
 directly. It is the 90% case: constructor + single call, nothing more.
 
 ```ruby

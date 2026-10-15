@@ -8,6 +8,8 @@ module HankoXml
   # runs the same with or without Nokogiri. The DOM only serves what cannot
   # exist without one: Verification#signed? and friends, XPath signature
   # selection, a caller's own Nokogiri schema, a resolver:.
+  #
+  # @api private
   class Input
     attr_reader :bytes, :document
 

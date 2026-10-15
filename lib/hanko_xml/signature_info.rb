@@ -9,6 +9,10 @@ module HankoXml
   #
   # Everything here is "what the document claims" -- it runs before any
   # cryptography, and is not proof of anything until a Verification says so.
+  #
+  # The library builds these; callers only read them, through
+  # Verification#signed_info / #signature_info. The constructors are not
+  # part of the public API.
   class SignatureInfo
     XPATH_FILTER2 = "http://www.w3.org/2002/06/xmldsig-filter2"
     # The whole document: without comments (""), and with them ("#xpointer(/)",
@@ -79,6 +83,7 @@ module HankoXml
     attr_reader :signature_method, :canonicalization_method, :signature_count,
                 :key_names, :certificates, :references
 
+    # @api private
     def initialize(signature_method:, canonicalization_method:, references:,
                    signature_count: 1, key_names: [], certificates: [], has_retrieval_method: false)
       @signature_method = signature_method
@@ -107,6 +112,8 @@ module HankoXml
 
     # Builds a SignatureInfo from the native Native.inspect Hash shape
     # (String keys/URIs throughout).
+    #
+    # @api private
     def self.from_native(hash)
       new(
         signature_method: fetch(hash, :signature_method),

@@ -1,5 +1,8 @@
 module HankoXml
   # What <SignedInfo> claims, from Native.inspect_sig: URIs as Strings.
+  # Only its readers are listed: it reaches callers as Verification#signed_info
+  # / #signature_info and as Policy#violations' argument, and its constructors
+  # are @api private.
   class SignatureInfo
     class ReferenceInfo < Struct[untyped]
       attr_accessor uri: String?
@@ -9,8 +12,6 @@ module HankoXml
       attr_accessor type: String?
       attr_accessor xpath_filters: Array[Hash[Symbol, untyped]]
 
-      def initialize: (uri: String?, digest_method: String?, ?transforms: Array[String], ?id: String?, ?type: String?,
-                       ?xpath_filters: Array[Hash[Symbol, untyped]]) -> void
       def digest_method_name: () -> Symbol?
       def transform_names: () -> Array[Symbol?]
       def fragment?: () -> bool
@@ -27,18 +28,6 @@ module HankoXml
     attr_reader key_names: Array[String]
     attr_reader certificates: Array[String]
     attr_reader references: Array[ReferenceInfo]
-
-    def self.from_native: (Hash[Symbol | String, untyped] hash) -> instance
-
-    def initialize: (
-      signature_method: String?,
-      canonicalization_method: String?,
-      references: Array[ReferenceInfo | Hash[Symbol, untyped]],
-      ?signature_count: Integer,
-      ?key_names: Array[String],
-      ?certificates: Array[String],
-      ?has_retrieval_method: bool
-    ) -> void
 
     def retrieval_method?: () -> bool
     def signature_method_name: () -> Symbol?

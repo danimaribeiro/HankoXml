@@ -1,12 +1,12 @@
 # hanko_xml — API Contract
 
-Status: **design contract, not yet implemented.** This document is the reference
-we implement against. Where it disagrees with the code in `lib/` or
-`ext/hanko_xml/`, this document wins and the code is behind.
+Status: **implemented, as of 0.1.0.** This document is the spec for the public
+API, and it changes along with the code. Sections that describe plans rather
+than shipped behaviour say so.
 
-Companion documents: [`README.md`](README.md) (current, pre-contract
-behaviour), [`VENDORING.md`](VENDORING.md) (how the native extension is built
-and why its dependencies are vendored).
+Companion documents: [`README.md`](README.md) (usage),
+[`VENDORING.md`](VENDORING.md) (how the native extension is built and why its
+dependencies are vendored).
 
 ---
 
@@ -182,12 +182,21 @@ instead of Ruby's. See §5.10 for the names we use instead.
 
 ## 5. Public API
 
+The public API is what this section and §6 describe, with the signatures in
+`sig/`. Anything marked `@api private` in the YARD docs is not part of it, even
+when Ruby lets you call it: `HankoXml::Dom`, `HankoXml::Input`,
+`HankoXml.coerce_document` / `.read_source`, the `SignatureInfo` constructors
+(`SignatureInfo` itself reaches you, read-only, as `Verification#signed_info`),
+`Verifier::TRUST_KEYWORDS`, and the `sig_node:`, `check_root_signed:` and
+`referenced_uris:` keywords of `Policy#violations` / `#enforce!`. So is
+`HankoXml::Native` (§7). These can change in any release.
+
 ### 5.1 Layer 2 — the 90% case
 
 ```ruby
 require "hanko_xml"
 
-# Sign. Returns a NEW HankoXml::SignedDocument (§6.8); `doc` is untouched.
+# Sign. Returns a NEW HankoXml::SignedDocument (§6.7); `doc` is untouched.
 signed = HankoXml.sign(doc, key: key, certificate: cert)
 signed.to_xml   # signature-safe serialization; #to_s and #write_to too
 
@@ -215,8 +224,9 @@ while verifying nothing. Use it to route documents ("does this still need
 signing?"), never to decide whether to believe one.
 
 `valid?`, `verify!` and `signature_present?` run without Nokogiri, on a String,
-a path or an IO. `sign` and `sign!` need it, and raise
-`HankoXml::NokogiriRequired` without it (§6.1).
+a path or an IO. Without it, `sign` signs a document that already holds its
+`<Signature>` template, on the bytes; building a template, and `sign!`, raise
+`HankoXml::NokogiriRequired` (§6.1).
 
 **There is deliberately no `HankoXml.verify` returning a rich object.** A
 `Verification` instance is always truthy, so `if HankoXml.verify(doc, ...)` would
@@ -289,7 +299,7 @@ Verification needs no option. libxmlsec1 reads `InclusiveNamespaces` from a `<Tr
 #### Methods
 
 ```ruby
-signer.sign(doc_or_xml)   # => HankoXml::SignedDocument (§6.8), input untouched
+signer.sign(doc_or_xml)   # => HankoXml::SignedDocument (§6.7), input untouched
 signer.sign!(doc)         # => the same Nokogiri::XML::Document, now signed
 signer.template(doc)      # => Nokogiri::XML::Element — the unsigned <Signature>
                           #    it would insert. For inspection and testing.
@@ -336,9 +346,11 @@ adopted template beyond those checks. `:adopt` still means "the input already
 contains the `<Signature>` skeleton"; it does not mean "sign whatever the
 input asks for".
 
-`:require` is the signing mode that could run without Nokogiri, since nothing has
-to be constructed. It still needs Nokogiri for now; signing into a template on
-bytes is the next step of #102 (§6.1).
+Without Nokogiri, `sign` (not `sign!`) still signs a template the document
+already holds, under `:adopt` or `:require`, on the bytes: the same S-05 policy
+and reference checks run on `Native.inspect_sig`, and the result is a
+bytes-backed `SignedDocument`. One template is signed per call; see §6.1 for
+what still needs a DOM.
 
 A template whose Reference URIs do not match `references` raises
 `HankoXml::ConfigurationError` rather than silently signing something else —
@@ -405,7 +417,8 @@ verifier = HankoXml::Verifier.new(
   signature:     nil,      # nil (default) | :first | :only | Integer index | XPath String
 
   verification_time:    nil,   # Time — evaluate certificate validity as of then
-  schema:               nil,   # validate <Signature> against an XSD first
+  schema:               policy.schema, # validate <Signature> against an XSD first;
+                                       # :default under Policy.strict
   referenced_documents: {},    # URI => document, for non-fragment references
   certificate_subject:  nil,   # store: only — String CN or OpenSSL::X509::Name
 )
@@ -448,13 +461,15 @@ subtree is validated against `xmldsig-core-schema.xsd` (shipped) or a caller-
 supplied `Nokogiri::XML::Schema` *before* any cryptography. This is `xmldsig`'s
 `validate(cert, schema)`, and it is cheap defence in depth: a structurally
 malformed `<SignedInfo>` is rejected without reaching libxmlsec1's parser at
-all. `schema: :default` uses the bundled XSD; `nil` (the default) skips it.
-`Policy.strict` sets `schema: :default`.
+all. `schema: :default` uses the bundled XSD. Left out, `schema:` defaults to
+the policy's `schema` field, and `Policy.strict` sets `schema: :default`, so the
+check is on by default; an explicit `schema: nil` skips it (S-06).
 
 **`referenced_documents:`** — a `URI => bytes` map for references that point
 outside the document. It is the *only* way a non-fragment reference can resolve:
 it works with `allow_external_references` still `false`, nothing is fetched, and
-a reference whose URI is not a key in this map fails with `ReferenceError`. Keys
+a reference whose URI is not a key in this map fails verification with a
+`ReferenceError` in `Verification#errors` (only `verify!` raises it). Keys
 are the Reference URI without any `#fragment`. Values are the exact signed bytes
 as a `String`; a `Nokogiri::XML::Document` is serialized first, which matches
 only if that reproduces those bytes. At init the extension replaces xmlsec's
@@ -542,7 +557,8 @@ v.certificate_chain  # => Array<OpenSSL::X509::Certificate>, leaf first: the cha
 
 # --- What the document claimed (untrusted) --------------------------------
 v.key_info           # => HankoXml::KeyInfo::Parsed: <KeyName> texts and <X509Certificate>s
-                     #    (PEM), whether or not valid?. Never used to pick the key (S-01).
+                     #    (PEM), whether or not valid?, or nil when no <SignedInfo> was read
+                     #    (e.g. SignatureMissing). Never used to pick the key (S-01).
 
 # --- Provenance -----------------------------------------------------------
 v.signature_node     # => Nokogiri::XML::Element, the <ds:Signature> verified
@@ -662,9 +678,11 @@ Coercion is uniform, and applies to `key:`, `certificate:`, `certificates:`.
 `key:` accepts:
 
 - `OpenSSL::PKey::PKey` (RSA, EC, DSA) — used directly
-- a `String` of PEM (encrypted PEM requires `key_password:`). A `String` is
-  always content, never a filename: `key: "private.pem"` raises `KeyLoadError`
-  with a hint to pass `Pathname`
+- a `String` of PEM, unencrypted. A `String` is always content, never a
+  filename: `key: "private.pem"` raises `KeyLoadError` with a hint to pass
+  `Pathname`. There is no `key_password:` keyword: an encrypted PEM is loaded
+  with `HankoXml::Key.from_pem(pem, password: ...)` (or `Key.from_file`) and
+  passed as the `Key`
 - a `Pathname` / `File` / anything responding to `#to_path` — read from disk
 - `HankoXml::Key` — the explicit wrapper
 
@@ -1153,12 +1171,15 @@ StandardError
     │   │                                    verification_time (§5.3)
     │   ├── HankoXml::DigestMismatch         one <Reference>'s digest is wrong;
     │   │                                    carries #reference_uri (§5.4)
-    │   └── HankoXml::ResolutionMismatch     resolver vs xmlsec disagree (§5.9)
+    │   ├── HankoXml::ResolutionMismatch     resolver vs xmlsec disagree (§5.9)
+    │   └── HankoXml::XadesError             a XAdES signed-properties check failed (§5.9.1)
     ├── HankoXml::NotSignedError     Verification#at_signed found a node that
     │                                the signature does not cover (§5.4)
     ├── HankoXml::FrozenSignatureError  a mutator was called on a
     │                                SignedDocument (§6.7)
     └── HankoXml::NativeError        libxmlsec1 failed in an unexpected way
+        └── HankoXml::NativeVersionMismatch  the loaded libxmlsec1/libxml2 do not
+                                             match the build (raised at require)
 ```
 
 `HankoXml::KeyLoadError`, not `KeyError` — see the shadowing rule in §4.
@@ -1267,9 +1288,6 @@ constant, so the DOM-free path is one seam rather than a condition scattered
 through twelve files. `spec/hanko_xml/dom_spec.rb` enforces this, and that
 nothing in `lib/` ever `require`s Nokogiri.
 
-**Next (#102):** signing into an existing template with `template: :require`
-on bytes.
-
 ### 6.2 Accepted inputs
 
 Everywhere a document is taken (`sign`, `sign!`, `verify`, `valid?`, `signature_present?`):
@@ -1319,13 +1337,13 @@ Nokogiri, and everyone learns that the hard way.
 - Nokogiri's default is `DEFAULT_XML == FORMAT | AS_XML` (`33`). `FORMAT`
   reindents the tree. **Serializing a signed document with `FORMAT` invalidates
   the signature.** `AS_XML` alone (`32`) is byte-faithful.
-- `#to_s` and `#to_xml` on a signed document are therefore *not* safe, and this
-  is called out in the README, in the YARD docs of `sign`/`sign!`, and in
-  `Verification#inspect`.
+- `#to_s` and `#to_xml` on a bare signed `Nokogiri::XML::Document` are
+  therefore *not* safe.
 
-`Signer#sign` returns a document; getting bytes out of it is
-`HankoXml.serialize(signed)`, and that is the only serialization we support for
-signed documents.
+`Signer#sign` / `HankoXml.sign` sidestep this by returning a `SignedDocument`
+(§6.7), whose `#to_xml`, `#to_s`, `#bytes` and `#write_to` are byte-faithful.
+`sign!` returns the caller's own Nokogiri document, and `HankoXml.serialize(doc)`
+is how to write that out.
 
 ### 6.4 The write-back guarantee (how `sign!` stays safe)
 

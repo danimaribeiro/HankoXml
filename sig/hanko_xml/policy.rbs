@@ -64,21 +64,15 @@ module HankoXml
     def violations: (
       HankoXml::SignatureInfo signature_info,
       ?document: Nokogiri::XML::Document?,
-      ?sig_node: Nokogiri::XML::Node?,
       ?id_attributes: Array[String | [String, String]]?,
-      ?xml_bytes: String?,
-      ?check_root_signed: bool,
-      ?referenced_uris: Array[String]
+      ?xml_bytes: String?
     ) -> Array[HankoXml::PolicyError]
 
     def enforce!: (
       HankoXml::SignatureInfo signature_info,
       ?document: Nokogiri::XML::Document?,
-      ?sig_node: Nokogiri::XML::Node?,
       ?id_attributes: Array[String | [String, String]]?,
-      ?xml_bytes: String?,
-      ?check_root_signed: bool,
-      ?referenced_uris: Array[String]
+      ?xml_bytes: String?
     ) -> void
 
     def enforce_document_size!: (Integer bytesize) -> void

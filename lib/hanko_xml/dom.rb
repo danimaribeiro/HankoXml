@@ -17,6 +17,8 @@ module HankoXml
   # expressed at all without a DOM, and each of them raises
   # HankoXml::NokogiriRequired rather than quietly returning a less careful
   # answer.
+  #
+  # @api private
   module Dom
     class << self
       def available?
