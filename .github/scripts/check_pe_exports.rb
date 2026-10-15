@@ -29,6 +29,11 @@ module PeExports
   # What a Ruby extension built by rb-sys exports, and nothing else.
   ALLOWED_EXPORTS = %w[Init_hanko_xml ruby_abi_version].freeze
 
+  # One row of the export name table. binutils 2.42 (Ubuntu 24.04, the CI
+  # runner) prints "[   0] Init_hanko_xml"; newer releases insert
+  # "+base[   1]  0000" (ordinal and hint) before the name.
+  EXPORT_ROW = /^\s*\[\s*\d+\]\s+(?:\+base\[\s*\d+\]\s+\h+\s+)?(\S+)/
+
   # DLLs that would mean a vendored library is linked dynamically.
   VENDORED_DLL = /\A(lib)?(xml2|xmlsec|crypto|ssl|iconv)\b/i
 
@@ -47,7 +52,7 @@ module PeExports
         in_exports = true
       elsif in_exports && line.strip.empty?
         in_exports = false
-      elsif in_exports && (name = line[/^\s*\[\s*\d+\]\s+\+base\[\s*\d+\]\s+\h+\s+(\S+)/, 1])
+      elsif in_exports && (name = line[EXPORT_ROW, 1])
         exports << name
       end
     end

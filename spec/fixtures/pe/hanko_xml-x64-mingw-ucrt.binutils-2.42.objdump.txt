@@ -1,0 +1,33 @@
+
+lib/hanko_xml/3.4/hanko_xml.so:     file format pei-x86-64
+
+
+	DLL Name: ADVAPI32.dll
+	DLL Name: bcrypt.dll
+	DLL Name: CRYPT32.dll
+	DLL Name: KERNEL32.dll
+	DLL Name: api-ms-win-crt-convert-l1-1-0.dll
+	DLL Name: api-ms-win-crt-environment-l1-1-0.dll
+	DLL Name: api-ms-win-crt-filesystem-l1-1-0.dll
+	DLL Name: api-ms-win-crt-heap-l1-1-0.dll
+	DLL Name: api-ms-win-crt-math-l1-1-0.dll
+	DLL Name: api-ms-win-crt-private-l1-1-0.dll
+	DLL Name: api-ms-win-crt-runtime-l1-1-0.dll
+	DLL Name: api-ms-win-crt-stdio-l1-1-0.dll
+	DLL Name: api-ms-win-crt-string-l1-1-0.dll
+	DLL Name: api-ms-win-crt-time-l1-1-0.dll
+	DLL Name: api-ms-win-crt-utility-l1-1-0.dll
+	DLL Name: ntdll.dll
+	DLL Name: USER32.dll
+	DLL Name: USERENV.dll
+	DLL Name: WS2_32.dll
+	DLL Name: x64-ucrt-ruby340.dll
+	DLL Name: api-ms-win-core-synch-l1-2-0.dll
+	DLL Name: bcryptprimitives.dll
+
+There is an export table in .edata at 0x106ed000
+
+[Ordinal/Name Pointer] Table
+	[   0] Init_hanko_xml
+	[   1] ruby_abi_version
+
