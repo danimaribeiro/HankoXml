@@ -40,7 +40,7 @@ RSpec.describe "XAdES 1.1.1 and 1.2.2 signed properties (#86)" do
       <ds:DigestMethod Algorithm="http://www.w3.org/2001/04/xmlenc#sha256"/><ds:DigestValue>#{digest}</ds:DigestValue>
       </xa:CertDigest><xa:IssuerSerial><ds:X509IssuerName>#{certificate.issuer.to_s(OpenSSL::X509::Name::RFC2253)}</ds:X509IssuerName>
       <ds:X509SerialNumber>#{certificate.serial}</ds:X509SerialNumber></xa:IssuerSerial></xa:Cert></xa:SigningCertificate>
-      <xa:SignerRole><xa:ClaimedRoles><xa:ClaimedRole>Notary</xa:ClaimedRole></xa:ClaimedRoles></xa:SignerRole>
+      <xa:SignerRole><xa:ClaimedRoles><xa:ClaimedRole>Approver</xa:ClaimedRole></xa:ClaimedRoles></xa:SignerRole>
       </xa:SignedSignatureProperties></xa:SignedProperties></xa:QualifyingProperties></ds:Object>
       </ds:Signature></Invoice>
     XML
@@ -71,7 +71,7 @@ RSpec.describe "XAdES 1.1.1 and 1.2.2 signed properties (#86)" do
 
         expect(result.errors).to be_empty
         expect(result.signed_properties.signing_time).to eq(Time.utc(2016, 4, 21, 11, 32, 34))
-        expect(result.signed_properties.claimed_roles).to eq(["Notary"])
+        expect(result.signed_properties.claimed_roles).to eq(["Approver"])
       end
     end
   end
