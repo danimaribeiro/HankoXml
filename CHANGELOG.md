@@ -8,6 +8,11 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **#158:** Without Nokogiri, `Signer#sign!` and `Signer#template` given a String
+  now raise `NokogiriRequired` naming themselves instead of `HankoXml.parse`.
+
 ## [0.1.0] - 2026-10-15
 
 First release.

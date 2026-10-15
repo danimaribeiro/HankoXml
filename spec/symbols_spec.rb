@@ -70,7 +70,11 @@ RSpec.describe "exported symbols" do
     symbols = exported_symbols(artifact)
     skip "nm unavailable on this platform" if symbols.nil?
 
-    expect(symbols.map { |s| s.delete_prefix("_") })
-      .to contain_exactly("Init_hanko_xml", "ruby_abi_version")
+    # rb-sys defines ruby_abi_version, but whether the linker keeps it in the
+    # dynamic table varies by toolchain (the 0.1.0 platform gems and a local
+    # rustc 1.97 build drop it). Ruby checks it only on development builds of
+    # Ruby, so it is allowed but not required.
+    expect(symbols.map { |s| s.delete_prefix("_") } - ["ruby_abi_version"])
+      .to contain_exactly("Init_hanko_xml")
   end
 end

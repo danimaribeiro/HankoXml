@@ -106,8 +106,9 @@ RSpec.describe "Signing without Nokogiri" do
       expect { required.sign("<doc/>") }.to raise_error(HankoXml::ConfigurationError, /no <Signature> found/)
       expect { built.sign(template) }.to raise_error(HankoXml::ConfigurationError, /already exists/)
       expect { built.sign("<doc/>") }.to raise_error(HankoXml::NokogiriRequired, /Building a <Signature> template/)
-      expect { signer.sign!(template) }.to raise_error(HankoXml::NokogiriRequired)
-      expect { signer.template(template) }.to raise_error(HankoXml::NokogiriRequired)
+      expect { signer.sign!(template) }.to raise_error(HankoXml::NokogiriRequired, /\AHankoXml::Signer#sign! needs/)
+      expect { signer.template(template) }
+        .to raise_error(HankoXml::NokogiriRequired, /\AHankoXml::Signer#template needs/)
     end
   end
 
