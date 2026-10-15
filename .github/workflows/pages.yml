@@ -2,9 +2,8 @@
 # from lib/) and publishes it to GitHub Pages at https://danimar.dev/HankoXml/.
 # Requires the repository's Pages source to be set to "GitHub Actions".
 #
-# Runs only when the published docs can change, and not on pull requests, to
-# save Actions budget (see CI-PAUSED in main.yml). Check a docs change locally
-# with `npm run build` in docs/.
+# Runs only when the published docs can change, and not on pull requests.
+# Check a docs change locally with `npm run build` in docs/.
 name: Pages
 
 on:

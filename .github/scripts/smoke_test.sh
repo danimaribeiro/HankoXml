@@ -53,21 +53,23 @@ ruby -e '
 '
 
 # Loading proves linkage; this proves the crypto actually works on this
-# architecture. Uses the Native layer so no Nokogiri is required.
+# architecture.
 echo "== verify a real signature, and reject a wrong certificate"
+# Through the public API, not HankoXml::Native: the native signature is private
+# and changes with features (#147 added an argument), and a smoke test that
+# calls it breaks without anything a user would notice. This also proves
+# verification works without Nokogiri, which this bare install does not have.
 ruby -e '
   require "hanko_xml"
   xml   = File.read("#{ENV.fetch("FIXTURES_DIR")}/signed.xml")
   good  = File.read("#{ENV.fetch("FIXTURES_DIR")}/signer.crt")
   other = File.read("#{ENV.fetch("FIXTURES_DIR")}/other.crt")
-  ids   = %w[Id ID id]
 
-  ok = HankoXml::Native.verify(xml, [good], [], ids, 0, [])[:status]
-  no = HankoXml::Native.verify(xml, [other], [], ids, 0, [])[:status]
-  puts "signer cert -> #{ok} / other cert -> #{no}"
-  # Native.verify reports :status as a Symbol, not a String.
-  raise "expected the signing certificate to verify"  unless ok == :succeeded
-  raise "a non-signing certificate must not verify"   if     no == :succeeded
+  ok = HankoXml::Verifier.new(certificate: good).verify(xml)
+  no = HankoXml::Verifier.new(certificate: other).verify(xml)
+  puts "signer cert -> #{ok.valid?} / other cert -> #{no.valid?}"
+  raise "expected the signing certificate to verify: #{ok.errors.inspect}" unless ok.valid?
+  raise "a non-signing certificate must not verify" if no.valid?
 '
 
 echo "== no vendored symbols exported"

@@ -681,14 +681,10 @@ Settled on 2026-09-24:
    records the core version it bundles (for Ruby, in `NativeVersion`).
    `CHANGELOG.md` stays the gem's, and each other package gets a `CHANGELOG.md`
    in its own directory. The `**#NN:**` tagging rule applies to all of them.
-5. **CI.** CI stays paused until October 2026 to save Actions budget (see
-   CLAUDE.md). Until then, each phase's PRs are checked locally: the full suite,
-   rubocop and clippy, on both the system libraries and `HANKO_XML_VENDOR=1`,
-   plus `cargo test` for the core crates once they exist. New workflows (core
-   crate tests, the Python wheel matrix, the conformance run) are written with
-   their automatic triggers commented out as `CI-PAUSED`, like the existing
-   ones. When CI resumes, consider running the full wheel matrix only on
-   release tags, with a small Linux job on PRs.
+5. **CI.** CI resumed in October 2026, when the repository went public (#110).
+   New workflows (core crate tests, the Python wheel matrix, the conformance
+   run) run on pull requests like the existing ones. Consider running the full
+   wheel matrix only on release tags, with a small Linux job on PRs.
 
 6. **Each package gets its own name.** The gem stays `hanko_xml`: hanko is
    Japanese for a seal, a name chosen to sit next to Nokogiri. The Rust crate
