@@ -1,0 +1,84 @@
+name: CI
+
+# Every pull request runs this one workflow. It finds which suites the PR
+# touches, runs only those (main.yml, cross-gem.yml, security.yml), and ends in
+# `CI ok`, which always reports a result. `CI ok` is the check main requires:
+# a skipped suite counts as passing, a failed or cancelled one doesn't. A
+# required check on a workflow that never started would block the PR forever.
+#
+# Nothing re-runs on main after a merge: the PR run already checked the merged
+# result. Release tags still run every suite (release.yml), security.yml keeps
+# its weekly schedule, and a change to this file runs every suite.
+on:
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ruby: ${{ steps.paths.outputs.ruby }}
+      cross-gem: ${{ steps.paths.outputs.cross-gem }}
+      security: ${{ steps.paths.outputs.security }}
+    steps:
+      # The PR's changed files, from the API: no checkout and no third-party
+      # action. Each suite's paths are an extended regex.
+      - id: paths
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[].filename')
+          printf '%s\n' "$files"
+          hit() {
+            if printf '%s\n' "$files" | grep -qE "$2|^\.github/workflows/ci\.yml$"; then
+              echo "$1=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$1=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+          wf='^\.github/workflows'
+          cargo='(^|/)Cargo\.(toml|lock)$'
+          gem='^Gemfile(\.lock)?$|^[^/]+\.gemspec$|^Rakefile$'
+          # The specs read these Markdown files (packaging, native and docs
+          # specs), so editing them can fail the suite.
+          spec_docs='^(API_CONTRACT|CHANGELOG|SIGNING_TEST_COVERAGE|THIRD_PARTY_LICENSES|VENDORING)\.md$'
+          hit ruby "^(lib|ext|spec|sig)/|$gem|$cargo|^\.rubocop\.yml$|^\.rspec$|^dependencies\.yml$|^\.github/scripts/|$spec_docs|$wf/main\.yml$"
+          hit cross-gem "^(lib|ext)/|$gem|$cargo|^dependencies\.yml$|^\.github/scripts/(smoke_test\.sh|check_pe_exports\.rb)$|^spec/fixtures/(signed\.xml|signer\.crt|other\.crt)$|$wf/cross-gem\.yml$"
+          hit security "^ext/|$gem|$cargo|^deny\.toml$|$wf/security\.yml$"
+
+  ruby:
+    needs: changes
+    if: needs.changes.outputs.ruby == 'true'
+    uses: ./.github/workflows/main.yml
+
+  cross-gem:
+    needs: changes
+    if: needs.changes.outputs.cross-gem == 'true'
+    uses: ./.github/workflows/cross-gem.yml
+
+  security:
+    needs: changes
+    if: needs.changes.outputs.security == 'true'
+    uses: ./.github/workflows/security.yml
+
+  ci-ok:
+    name: CI ok
+    if: always()
+    needs: [changes, ruby, cross-gem, security]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: |
+          echo '${{ toJSON(needs) }}'
+          exit 1
+      - run: echo 'Every suite that ran passed.'

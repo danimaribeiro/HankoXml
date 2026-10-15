@@ -2,14 +2,13 @@ name: Ruby
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
 
-  pull_request:
+  # No push trigger: main only moves through PRs, and the PR run already
+  # checked the merged result.
 
-  # Lets the release workflow gate a tag on exactly the same matrix that
-  # guards main, rather than keeping a second copy of it in sync by hand.
+  # Pull requests run this through ci.yml, only when Ruby-relevant paths
+  # change. Also lets the release workflow gate a tag on exactly the same
+  # matrix that guards main, rather than keeping a second copy in sync by hand.
   workflow_call:
 
 # Read-only GITHUB_TOKEN unless a job asks for more (S-19). When called from
@@ -18,8 +17,11 @@ permissions:
   contents: read
 
 # Superseded runs are pointless: only the tip commit's result matters.
+# A literal group, not ${{ github.workflow }}: when ci.yml or release.yml calls
+# this file, github.workflow is the caller's name, and the suites it runs in
+# parallel would share one group and cancel each other.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ruby-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:

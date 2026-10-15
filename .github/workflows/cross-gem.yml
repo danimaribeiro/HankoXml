@@ -11,11 +11,10 @@ name: Cross-compile
 # See VENDORING.md.
 
 on:
-  # Pull requests only, plus manual runs. Deliberately not `push` as well: a
-  # branch with an open PR would otherwise build every platform twice per
-  # commit, and each build compiles libxml2 and xmlsec1 from source for four
-  # Ruby ABIs.
-  pull_request:
+  # Pull requests run this through ci.yml, only when the paths that go into a
+  # platform gem change. Deliberately not `push`: each build compiles libxml2,
+  # xmlsec1 and OpenSSL from source for four Ruby ABIs, and release.yml builds
+  # the gems it publishes from scratch anyway.
   workflow_dispatch:
   # Lets release.yml build the platform gems it publishes from this exact
   # matrix, rather than keeping a second copy of it in sync by hand -- same
@@ -28,8 +27,11 @@ permissions:
   contents: read
 
 # The most expensive workflow here, so cancelling superseded runs matters most.
+# A literal group, not ${{ github.workflow }}: when ci.yml or release.yml calls
+# this file, github.workflow is the caller's name, and the suites it runs in
+# parallel would share one group and cancel each other.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: cross-gem-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
