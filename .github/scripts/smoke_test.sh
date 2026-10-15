@@ -94,14 +94,12 @@ fi
 for so in "${sos[@]}"; do
   echo "artifact: $so"
 
-  # PE export/import tables need a different tool (objdump against a
-  # different format, not nm/otool) and no runner here is known to carry one
-  # by default. Getting the install/load/sign/verify path working comes
-  # first; this check gets a Windows leg once that is green -- see
-  # VENDORING.md Phase 5. Skipping is safe, not silent: it is logged.
+  # PE export/import tables need objdump, which windows-latest does not
+  # carry by default. cross-gem.yml checks them on Linux instead, right after
+  # building the gem (.github/scripts/check_pe_exports.rb, #20).
   case "$(uname -s)" in
     MINGW*|MSYS*)
-      echo "  skipping the symbol-leak check on Windows for now (VENDORING.md Phase 5)"
+      echo "  symbol-leak check: done on Linux in the build job (check_pe_exports.rb)"
       continue
       ;;
   esac

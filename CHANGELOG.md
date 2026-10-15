@@ -163,6 +163,12 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ### Fixed
 
+- **#20:** The x64-mingw-ucrt platform gem's symbol isolation is now checked
+  on every build. `cross-gem.yml` reads each DLL's export and import tables and
+  fails if it exports anything besides the Ruby entry point or loads libxml2,
+  xmlsec1 or OpenSSL from another DLL, the Windows counterpart of the Linux
+  and macOS check that keeps the vendored copies from meeting Nokogiri's.
+
 - **#102:** libxml2's parse errors no longer go to stderr. They land in
   `ParseError#xmlsec_errors`, like xmlsec's own log.
 
