@@ -350,15 +350,14 @@ Darwin went through:
    their import libraries. Added `advapi32`, `crypt32`, `bcrypt`, `user32`,
    `gdi32` to `emit_link_flags`'s Windows branch.
 
-**Deferred, not blocking:** the symbol-leak check (`spec/symbols_spec.rb` and
-`smoke_test.sh`'s per-platform loop) has no Windows leg yet. PE export/import
-inspection needs a different tool than `nm -D`/`otool -L` (objdump against a
-different table format), and no such tool is confirmed present on
-`windows-latest` by default. `smoke_test.sh` logs and skips this one check on
-Windows rather than failing; every other check (install, load, sign, verify)
-runs. Lower urgency than it sounds: unlike ELF/Mach-O, a PE DLL does not export
-static-archive members by default in the first place, so the failure mode this
-check guards against is differently shaped on Windows, not simply unguarded.
+**Symbol check (#20):** `nm`/`otool` do not read PE files and
+`windows-latest` carries no `objdump` by default, so the Windows leg runs on
+Linux in `cross-gem.yml`, right after the build:
+`.github/scripts/check_pe_exports.rb` reads every ABI's DLL with `objdump -p`
+and fails on any export besides `Init_hanko_xml`/`ruby_abi_version` or any
+imported libxml2, xmlsec1, OpenSSL or libiconv DLL. The first run confirmed
+what the PE format suggested: a DLL does not export static-archive members by
+default, and none leak.
 
 ## Trusted build inputs
 

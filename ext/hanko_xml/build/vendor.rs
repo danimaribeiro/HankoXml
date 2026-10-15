@@ -778,12 +778,11 @@ fn emit_link_flags(prefix: &Path) {
         // PE has no dlopen()/pthread/libm to link against -- mingw-w64's
         // runtime and rustc's own windows-gnu target spec already pull in
         // whatever those three cover on this platform (winpthread, ucrtbase).
-        // --exclude-libs is a GNU ld option for ELF/XCOFF; whether the mingw
-        // PE backend of ld.bfd honors it for symbol hiding here is unverified
-        // -- unlike ELF, a PE DLL does not export archive members by default
-        // in the first place, so the risk of a leak is different in kind, not
-        // just unmitigated. Confirm with the deferred Phase 5 symbol check
-        // once smoke_test.sh grows one.
+        // --exclude-libs is a GNU ld option for ELF/XCOFF and is not passed
+        // here. A PE DLL does not export archive members by default anyway,
+        // and cross-gem.yml confirms it on every build: the DLL exports only
+        // Init_hanko_xml and ruby_abi_version, and imports no libxml2, xmlsec1
+        // or OpenSSL DLL (.github/scripts/check_pe_exports.rb, #20).
         //
         // What Windows *does* need: system import libraries for the Win32
         // APIs our static libcrypto/libxml2 call directly instead of through

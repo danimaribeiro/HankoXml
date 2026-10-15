@@ -109,8 +109,9 @@ so a release ships exactly what the PR matrix tested. The smoke test
 present, requires it, checks `NativeVersion.build_versions` reports the pinned
 versions, verifies a real signature and rejects a wrong certificate, and, on
 Linux and macOS, checks the extension exports no `xml*`/`xmlSec*` symbols and
-links none of the vendored libraries dynamically. On Windows the symbol check
-is not done yet (#20).
+links none of the vendored libraries dynamically. Windows runners have no
+`objdump`, so for `x64-mingw-ucrt` the same check runs on Linux right after the
+build (`.github/scripts/check_pe_exports.rb`, #20).
 
 Precompiled gems that dynamically link the *system* libxmlsec1 are not an
 option: the binary would be frozen against the builder's headers and shipped to
