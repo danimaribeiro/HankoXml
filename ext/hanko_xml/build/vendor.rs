@@ -48,7 +48,7 @@ pub fn build() -> crate::Headers {
     // The stamp is written only after all three installs succeed, so an
     // interrupted build is never mistaken for a complete one. It also skips
     // checksum verification entirely, so the prefix is a trusted input: see
-    // "Trusted build inputs" in VENDORING.md (S-18).
+    // "Trusted build inputs" in RELEASING.md (S-18).
     let stamp = prefix.join(".stamp-complete");
     if stamp.exists() {
         eprintln!("hanko_xml: reusing vendored build at {}", prefix.display());

@@ -584,7 +584,8 @@ with no way to tighten or loosen from that entry point.
 ### S-18 -- Vendored build trust  [code review, Low, **fixed** (documented)]
 
 **Disposition:** closed as documentation, which is what the entry asked for.
-`VENDORING.md` now has a "Trusted build inputs" section: `dependencies.yml` is
+`VENDORING.md` now has a "Trusted build inputs" section (since moved to
+`RELEASING.md`): `dependencies.yml` is
 the root of trust; the tarball cache (`tmp/vendor-cache/` or
 `HANKO_XML_VENDOR_CACHE`) is untrusted because it is re-verified every build;
 the build prefix with `.stamp-complete` is trusted and unverified, so it must
