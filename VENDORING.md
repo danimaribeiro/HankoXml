@@ -1,5 +1,11 @@
 # Vendored precompiled gems for hanko_xml
 
+> **This is the design log** for the platform gems: the decisions, the FFI
+> audit and the CI failures each platform went through. The current reference
+> (what a release publishes, the CVE response, trusted build inputs) is
+> [RELEASING.md](RELEASING.md). The versions named below are the ones current
+> when each phase landed; `dependencies.yml` has today's pins.
+
 ## Context
 
 `hanko_xml` is unreleased (0.1.0, no tags). Release groundwork already landed this
@@ -266,19 +272,18 @@ boundaries can bite, and 1-2 minutes is not yet worth that risk.)*
   and costs only CI minutes.
 - `--with-openssl=` must point at the *target* sysroot's OpenSSL, not the host's.
 
-## Phase 4 — Release fan-out — **wired, not yet released**
+## Phase 4 — Release fan-out — **wired**
 
 `release.yml` now calls `cross-gem.yml` as a reusable workflow (`workflow_call`)
 so the tag-triggered release builds from the exact same matrix that guards pull
 requests, rather than a second copy of it. The `release` job downloads every
 `gem-*` artifact `cross-gem.yml` uploaded (`x86_64-linux`, `aarch64-linux`,
-`arm64-darwin`) into the same `pkg/` the source gem was built into, and pushes
+`arm64-darwin`, `x64-mingw-ucrt`) into the same `pkg/` the source gem was built into, and pushes
 and releases everything found there together — one `gem push` per file, one
 `gh release create` with all of `pkg/*.gem` as assets.
 
-`x86_64-darwin` and `x64-mingw-ucrt` are still absent from the matrix (see
-Phase 5), so those users get the source gem — unchanged behavior, since the
-source gem is what everyone got before this phase.
+`x64-mingw-ucrt` joined the matrix in Phase 5. `x86_64-darwin` is still
+absent, so those users get the source gem.
 
 Still outstanding before a real (non-dry-run) release:
 
@@ -357,31 +362,7 @@ check guards against is differently shaped on Windows, not simply unguarded.
 
 ## Trusted build inputs
 
-The SHA-256 pins protect the *download*. They do not protect everything a
-vendored build reads, and the rest has to be treated as trusted: whoever can
-write to it chooses the OpenSSL, libxml2 and xmlsec1 compiled into the gem.
-
-| Input | Trust | Why |
-|---|---|---|
-| `dependencies.yml` | **Root of trust** | Its `sha256` fields decide which bytes are accepted. Changing one is trusting a new release; verify it upstream first. |
-| Tarball cache: `tmp/vendor-cache/`, or `HANKO_XML_VENDOR_CACHE` | Untrusted, verified | Every tarball, cached or fresh, is hashed and compared before extraction on every build; a mismatch deletes it and fails the build. A shared or mirrored cache is safe. |
-| Build prefix: `tmp/vendor-build/<target>/<versions>/`, with `.stamp-complete` | **Trusted, not verified** | If the stamp exists, `vendor.rs` skips download, verification, extraction *and* compilation, and links whatever headers and static libraries are in that prefix. Nothing hashes the installed output. |
-| Download hosts (`url`, `mirror`), `curl -L` redirects | Untrusted | Integrity comes only from the SHA-256 check, never from TLS or from which host answered. |
-| Tarball contents (`tar -xf`, then `configure` / `make`) | Trusted once the hash matches | Extraction has no `--no-same-owner` or path checks beyond tar's defaults, and the build runs upstream's scripts. This is trusting the pinned upstream release, the same as linking it. |
-| Toolchain and environment (`CC`, `AR`, `CFLAGS`, `PATH`, `TARGET`, the rb-sys-dock image) | Trusted | They compile the code. |
-
-Rules that follow:
-
-- Only the account running the build should be able to write to
-  `tmp/vendor-build/`. Never restore it from a cache that less-trusted jobs can
-  write (for example a CI cache shared with pull requests from forks). CI does
-  not cache it today, and release builds start from a clean checkout.
-- To force a full rebuild from verified sources, delete
-  `tmp/vendor-build/<target>/` (or just its `.stamp-complete`).
-- `HANKO_XML_VENDOR_CACHE` can point anywhere, including a shared or read-only
-  mirror: a wrong or tampered file fails the build instead of being used. It
-  must be writable if a tarball is missing, because a failed checksum deletes
-  the file.
+Moved to [RELEASING.md](RELEASING.md#trusted-build-inputs) (S-18).
 
 ## Files
 
