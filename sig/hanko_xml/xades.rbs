@@ -1,6 +1,7 @@
 module HankoXml
   module Xades
     NS: String
+    NS141: String
     LEGACY_NAMESPACES: Array[String]
     NAMESPACES: Array[String]
     SIGNED_PROPERTIES_TYPE: String
@@ -77,6 +78,8 @@ module HankoXml
       attr_reader timestamp_digest_method: Symbol
       attr_reader timestamp_canonicalization_method: Symbol
       attr_reader validation_data: ValidationData?
+      attr_reader archive_timestamp: bool
+      attr_reader archive_canonicalization_method: Symbol
       attr_reader policy: Policy
 
       def initialize: (
@@ -84,6 +87,8 @@ module HankoXml
         ?timestamp_digest_method: Symbol,
         ?timestamp_canonicalization_method: Symbol,
         ?validation_data: (ValidationData | Hash[Symbol, untyped])?,
+        ?archive_timestamp: bool,
+        ?archive_canonicalization_method: Symbol,
         ?policy: Policy
       ) -> void
       def augment: (untyped source, ?signature: Integer?) -> SignedDocument
@@ -131,6 +136,7 @@ module HankoXml
       attr_reader signed_properties: SignedProperties?
       attr_reader signature_timestamps: Array[SignatureTimeStamp]?
       attr_reader long_term_validation: LongTermValidation?
+      attr_reader archive_timestamps: Array[SignatureTimeStamp]?
       def timestamp_time: () -> Time?
     end
 

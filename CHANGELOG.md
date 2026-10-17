@@ -42,6 +42,15 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   and issued no earlier than that time (`revocation_grace:` widens it).
   `long_term: :verify | :require | :ignore`; the result is
   `Xades::Verification#long_term_validation`. Fail closed (S-23).
+- **#169:** XAdES-LTA. `Xades::Augmenter.new(timestamper:, archive_timestamp: true)`
+  appends a `<xades141:ArchiveTimeStamp>` over the EN 319 132-1 input (the
+  References' data as xmlsec digested it, SignedInfo, SignatureValue, KeyInfo,
+  every unsigned property before it and the other `ds:Object`s); running it
+  again renews it. `Xades::Verifier` verifies every ArchiveTimeStamp against
+  the TSA trust, failing closed, and lists them in
+  `Xades::Verification#archive_timestamps`. `Native.reference_data` returns
+  each Reference's digested octets from xmlsec. SignXML's DSS-produced
+  HU_POL-3 ArchiveTimeStamp verifies.
 
 ### Changed
 
@@ -54,6 +63,9 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   timestamp time and fails when that evidence does not hold, which can also
   make a signature fail that verified before (and one whose certificate has
   expired pass). Pass `long_term: :ignore` to keep the XAdES-T behavior.
+- **#169:** `Xades::Verifier` no longer ignores `xades141:ArchiveTimeStamp`s:
+  one that does not verify, or one present without TSA trust, fails the
+  signature. `timestamps: :ignore` leaves them unread.
 
 ### Fixed
 

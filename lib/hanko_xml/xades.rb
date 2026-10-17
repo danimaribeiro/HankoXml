@@ -12,6 +12,10 @@ module HankoXml
   module Xades
     NS = "http://uri.etsi.org/01903/v1.3.2#"
 
+    # XAdES 1.4.1 (EN 319 132-1), the namespace of ArchiveTimeStamp and
+    # TimeStampValidationData (#169).
+    NS141 = "http://uri.etsi.org/01903/v1.4.1#"
+
     # Earlier XAdES namespaces (TS 101 903 v1.1.1, v1.2.2) that Xades::Verifier
     # also reads (#86). Xades::Signer writes only NS.
     LEGACY_NAMESPACES = %w[http://uri.etsi.org/01903/v1.2.2# http://uri.etsi.org/01903/v1.1.1#].freeze

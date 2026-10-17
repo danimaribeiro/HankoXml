@@ -59,6 +59,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-19 | **Low** | CI | Actions pinned by major tag, not commit SHA; `main.yml` has no top-level `permissions:` | **fixed** | code review |
 | S-20 | **Info** | Native | Whether the root element's own `Id` is registered by `xmlSecAddIDs(doc, root, ids)` depends on xmlsec walking `cur` or `cur->children`; `URI="#rootId"` is untested | **fixed** (spec; no bug) | confirmed |
 | S-21 | **Info** | Docs | README passes file *paths* as `key:`/`certificate:` Strings (`key: "private.pem"`); `Key.coerce(String)` treats them as PEM and raises `KeyLoadError`. Fails closed, but misleading | **fixed** | code review, re-checked |
+| S-24 | **Info** | Xades::Verifier, Augmenter | An XAdES-LTA ArchiveTimeStamp's imprint covers a concatenation of the signature's parts: an input computed differently from the signer's (another c14n of a node-set Reference, a part left out or added, elements found by search) either fails good signatures or lets parts change unnoticed | **by design** (#169) | spec, interop |
 | S-23 | **Info** | Xades::Verifier | XAdES-LT validates the signing certificate at a past time with revocation data the document carries: stale, unverifiable or foreign evidence, or a validation time nobody vouched for, would turn an expired or revoked certificate into a valid signature | **by design** (#168) | spec, interop |
 | S-22 | **Info** | Xades::Verifier | XAdES-T `SignatureTimeStamp` lives in UnsignedProperties, outside everything the signature covers: it can be added, swapped or moved by anyone, and a verifier that trusts it, finds it by search, or skips a bad one reports a time nobody vouched for | **by design** (#163, #167) | spec |
 
@@ -707,10 +708,9 @@ type-checked only, and never trusted until they chain to the verifier's
 own anchors (#168). The Augmenter does not verify the signature it extends.
 
 **Limits:** the TSA chain is checked at the current time (OpenSSL's
-`Response#verify` does not take a verification time). Checking at a past time,
-is #169. Tokens whose CMS
-`certificates` OpenSSL's PKCS7 parser cannot read (seen in two Czech samples)
-fail closed.
+`Response#verify` does not take a verification time); checking it at a past
+time is not done yet (S-24). Tokens whose CMS `certificates` OpenSSL's PKCS7
+parser cannot read (seen in two Czech samples) fail closed.
 
 Specs: `spec/hanko_xml/xades_timestamp_verifier_spec.rb`,
 `spec/hanko_xml/xades_augmenter_spec.rb`, and the
@@ -749,8 +749,8 @@ certificates, and the revocation evidence.
 
 **Limits:** the TSA's own chain is still checked at the current time (S-22),
 so an expired TSA certificate fails the timestamp; validating it at a past
-time belongs with archive timestamps (#169). Indirect CRLs and CRL
-distribution-point scoping are not supported: a CRL counts only when its
+time is not done yet: ArchiveTimeStamps are verified (S-24) but not used for
+it. Indirect CRLs and CRL distribution-point scoping are not supported: a CRL counts only when its
 issuer is the certificate's issuer. The strict default rejects real-world
 evidence collected a moment before the timestamp (SignXML's HU_POL-3, by one
 second); `revocation_grace:` is the explicit opt-in.
@@ -758,11 +758,50 @@ second); `revocation_grace:` is the explicit opt-in.
 Specs: `spec/hanko_xml/xades_long_term_verifier_spec.rb`, and the
 `XAdES-LT (#168)` section of `spec/interop/xades_interop_spec.rb`.
 
+### S-24 -- The ArchiveTimeStamp input  [design review, Info, **by design** (#169)]
+
+**Context:** an ArchiveTimeStamp (XAdES-LTA) is an RFC 3161 token over a
+digest of a concatenation EN 319 132-1 §5.5.2.2 defines: every Reference's
+data, SignedInfo, SignatureValue, KeyInfo, the unsigned signature properties
+before it, and the other `ds:Object`s, canonicalized. Like every unsigned
+property it is attacker-controlled until it verifies (S-22), and the input
+is where a verifier and a signer can silently disagree.
+
+**Design** (`Xades::ArchiveTimeStampCheck`, `Xades::Augmenter`):
+
+- **xmlsec computes every part.** The References' data is what xmlsec itself
+  digested while verifying the signature (`Native.reference_data`,
+  `XMLSEC_DSIG_FLAGS_STORE_SIGNEDINFO_REFERENCES`), never Ruby re-running
+  transforms; each other part is canonicalized by xmlsec (`Native.canonicalize`)
+  with the CanonicalizationMethod the ArchiveTimeStamp declares, which goes
+  through the Policy.
+- **Found by path.** Parts are addressed by native paths from the verified
+  `<ds:Signature>`, the ArchiveTimeStamps by the same Locator path as the
+  SignatureTimeStamps; nothing is found by search.
+- **Node sets are not guessed.** xmlsec canonicalizes a Reference that leaves
+  a node set with inclusive c14n; the standard says to use the
+  ArchiveTimeStamp's method. The two agree only for inclusive c14n, so any
+  other method is refused for such a signature (verifier and Augmenter), and
+  the Augmenter defaults to inclusive c14n.
+- **Fail closed**, with the same TSA trust and `timestamps:` modes as S-22.
+- **Pinned by a real signature.** SignXML's DSS-produced HU_POL-3 verifies:
+  its imprint matches only with every step above, including
+  TimeStampValidationData and the referenced base64 Object.
+
+**Limits:** ArchiveTimeStamps are verified but not yet used to validate TSA
+chains or the signing certificate at an earlier time (past-signature
+validation); TSA chains are checked at the current time. The distributed
+case (`xades:Include`, `ReferenceInfo`) is refused as for SignatureTimeStamp.
+
+Specs: `spec/hanko_xml/xades_archive_timestamp_spec.rb`, the `.reference_data`
+examples of `spec/hanko_xml/native_spec.rb`, and the HU_POL-3 ArchiveTimeStamp
+examples of `spec/interop/xades_interop_spec.rb`.
+
 ---
 
 ## Suggested remediation order
 
-All findings S-01 through S-21 are closed. S-22 and S-23 are design notes.
+All findings S-01 through S-21 are closed. S-22 to S-24 are design notes.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /

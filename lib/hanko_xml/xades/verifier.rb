@@ -17,11 +17,16 @@ module HankoXml
       # @return [LongTermValidation, nil] The XAdES-LT validation (#168): only when #valid? and the signature
       #   carries CertificateValues or RevocationValues that were checked.
       attr_reader :long_term_validation
+      # @return [Array<SignatureTimeStamp>, nil] The verified xades141:ArchiveTimeStamps (#169), in document
+      #   order; empty when there are none, nil unless #valid? or with timestamps: :ignore.
+      attr_reader :archive_timestamps
 
-      def initialize(signed_properties: nil, signature_timestamps: nil, long_term_validation: nil, **attributes)
+      def initialize(signed_properties: nil, signature_timestamps: nil, long_term_validation: nil,
+                     archive_timestamps: nil, **attributes)
         @signed_properties = signed_properties
         @signature_timestamps = signature_timestamps&.freeze
         @long_term_validation = long_term_validation
+        @archive_timestamps = archive_timestamps&.freeze
         super(**attributes)
       end
 
@@ -58,7 +63,9 @@ module HankoXml
     # certificate below the trust anchor from the embedded CRLs and OCSP
     # responses (Xades::LongTermCheck). A certificate that has expired since
     # still verifies; embedded data that does not hold fails (fail closed).
-    # ArchiveTimeStamp (LTA) is not read yet: #169.
+    # XAdES-LTA (#169): every xades141:ArchiveTimeStamp must verify too, over
+    # the EN 319 132-1 input (Xades::ArchiveTimeStampCheck), against the same
+    # TSA trust; fail closed, and not read with timestamps: :ignore.
     #
     # Needs certificate-based trust (certificate:, certificates:, store:), and
     # Nokogiri: the signed properties are read from the DOM (#102).
@@ -134,6 +141,7 @@ module HankoXml
                                   .verify(time: time, chain: long_term_chain(verification), values: values)
         rebuild(verification, signed_properties: verification.signed_properties,
                               signature_timestamps: verification.signature_timestamps,
+                              archive_timestamps: verification.archive_timestamps,
                               long_term_validation: validation)
       rescue HankoXml::XadesError, HankoXml::PolicyError => e
         rebuild(verification || super, error: e)
@@ -200,13 +208,15 @@ module HankoXml
 
         properties = signed_properties(verification)
         timestamps ||= signature_timestamps(verification.signature_node, xml_bytes, index)
-        rebuild(verification, signed_properties: properties, signature_timestamps: timestamps)
+        archives = archive_timestamps(verification, xml_bytes, index)
+        rebuild(verification, signed_properties: properties, signature_timestamps: timestamps,
+                              archive_timestamps: archives)
       rescue HankoXml::XadesError, HankoXml::PolicyError => e
         rebuild(verification, error: e)
       end
 
       def rebuild(verification, signed_properties: nil, signature_timestamps: nil, long_term_validation: nil,
-                  error: nil)
+                  archive_timestamps: nil, error: nil)
         Verification.new(
           valid: verification.valid? && error.nil?,
           errors: [*verification.errors, *error],
@@ -225,7 +235,8 @@ module HankoXml
           signature_element_index: verification.signature_element_index,
           signed_properties: signed_properties,
           signature_timestamps: signature_timestamps,
-          long_term_validation: long_term_validation
+          long_term_validation: long_term_validation,
+          archive_timestamps: archive_timestamps
         )
       end
 
@@ -251,6 +262,48 @@ module HankoXml
                                       ns: { "ds" => HankoXml::NS["ds"], "xades" => xades_ns },
                                       policy: @policy, tsa_store: @tsa_store).verify(xml_bytes, index)
         end
+      end
+
+      # Each xades141:ArchiveTimeStamp of this signature, verified (#169), read
+      # along the same path as the SignatureTimeStamps.
+      def archive_timestamps(verification, xml_bytes, index)
+        return nil if @timestamps == :ignore
+
+        signature = verification.signature_node
+        qualifying, ns = Locator.qualifying_properties(signature)
+        properties = Locator.unsigned_signature_properties(qualifying, ns)
+        nodes = properties ? properties.xpath("xades141:ArchiveTimeStamp", "xades141" => NS141).to_a : []
+        return [] if nodes.empty?
+
+        fail!("ArchiveTimeStamp is verified only with XAdES 1.3.2 QualifyingProperties") unless ns["xades"] == NS
+        unless @tsa_store
+          fail!("the signature has a <xades141:ArchiveTimeStamp>; pass tsa_store: or tsa_certificates: to " \
+                "verify it, or timestamps: :ignore")
+        end
+
+        path = Locator.unsigned_path(signature, qualifying, NS)
+        references = reference_data(verification, xml_bytes, index)
+        node_set = ArchiveTimeStampCheck.node_set_references?(verification.signature_info)
+        nodes.each_with_index.map do |node, i|
+          ArchiveTimeStampCheck.new(node, [*path, [NS141, "ArchiveTimeStamp", i]],
+                                    references: references, node_set_references: node_set,
+                                    element_paths: ArchiveTimeStampCheck.element_paths(signature, qualifying,
+                                                                                       properties, node, path),
+                                    ns: { "ds" => HankoXml::NS["ds"], "xades" => NS },
+                                    policy: @policy, tsa_store: @tsa_store).verify(xml_bytes, index)
+        end
+      end
+
+      # Each SignedInfo Reference's data as xmlsec digested it, verifying the
+      # signature again with the key that verified it.
+      def reference_data(verification, xml_bytes, index)
+        octets = Native.reference_data(xml_bytes, [verification.certificate.public_key.to_pem], native_id_attributes,
+                                       index, @referenced_documents.to_a, @policy.allows?(:transform, :xpath_filter2))
+        fail!("a Reference's data could not be read for the ArchiveTimeStamp") if octets.any?(&:nil?)
+
+        octets
+      rescue HankoXml::NativeError
+        fail!("the signature's Reference data could not be read for the ArchiveTimeStamp")
       end
 
       # The SignatureTimeStamp elements, the native path to their parent, and

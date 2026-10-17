@@ -647,6 +647,18 @@ impl<'mngr> DsigCtx<'mngr> {
         }
     }
 
+    /// Keeps each SignedInfo Reference's transform output, the octets
+    /// xmlsec digested, for `reference_octets` (XAdES ArchiveTimeStamp,
+    /// #169).
+    fn store_references(&mut self) {
+        // SAFETY: self.ptr is a live xmlSecDSigCtx we exclusively own; flags
+        // is application-settable and read when each Reference context is
+        // initialized. Same ABI caveat as the signKey write.
+        unsafe {
+            (*self.ptr).flags |= sys::XMLSEC_DSIG_FLAGS_STORE_SIGNEDINFO_REFERENCES;
+        }
+    }
+
     /// By default xmlsec also resolves and digests the references inside
     /// every `<Object><Manifest>`, whose URIs, transforms and digest methods
     /// never reach Ruby Policy, which reads only `<SignedInfo>` (#75). XML-DSig
@@ -933,6 +945,45 @@ impl<'mngr> DsigCtx<'mngr> {
     }
 }
 
+impl DsigCtx<'_> {
+    /// Per SignedInfo `<Reference>`, in document order, the octets xmlsec
+    /// digested (its pre-digest buffer), after `verify()` ran with
+    /// `store_references()`. `None` for a reference it did not process.
+    fn reference_octets(&self) -> Vec<Option<Vec<u8>>> {
+        // SAFETY: as in reference_statuses: signedInfoReferences is an
+        // embedded xmlSecPtrList that verify() populated.
+        let list = unsafe { ptr::addr_of!((*self.ptr).signedInfoReferences) as sys::xmlSecPtrListPtr };
+        // SAFETY: list is a valid, initialized xmlSecPtrList for self's lifetime.
+        let size = unsafe { sys::xmlSecPtrListGetSize(list) };
+        (0..size)
+            .map(|pos| {
+                // SAFETY: pos is in [0, size).
+                let item = unsafe { sys::xmlSecPtrListGetItem(list, pos) };
+                if item.is_null() {
+                    return None;
+                }
+                // SAFETY: item is a live xmlSecDSigReferenceCtx owned by the
+                // list; the buffer it returns (or null) lives as long as it.
+                let buffer = unsafe {
+                    sys::xmlSecDSigReferenceCtxGetPreDigestBuffer(item as sys::xmlSecDSigReferenceCtxPtr)
+                };
+                if buffer.is_null() {
+                    return None;
+                }
+                // SAFETY: buffer is a valid xmlSecBuffer; data points at size
+                // initialized bytes (or is null when size is 0).
+                let (data, len) = unsafe { (sys::xmlSecBufferGetData(buffer), sys::xmlSecBufferGetSize(buffer)) };
+                let len = usize::try_from(len).ok()?;
+                if data.is_null() || len == 0 {
+                    return Some(Vec::new());
+                }
+                // SAFETY: data is non-null and points at len bytes owned by buffer.
+                Some(unsafe { std::slice::from_raw_parts(data, len) }.to_vec())
+            })
+            .collect()
+    }
+}
+
 impl Drop for DsigCtx<'_> {
     fn drop(&mut self) {
         // SAFETY: we're the exclusive owner of this context.
@@ -1027,6 +1078,9 @@ pub struct VerifyResult {
     /// (`Verification#certificate`), which `certificates:` otherwise leaves
     /// ambiguous.
     pub trusted_index: Option<usize>,
+    /// Per SignedInfo `<Reference>`, the octets xmlsec digested, when
+    /// `verify_document` was asked to store them; empty otherwise (#169).
+    pub reference_octets: Vec<Option<Vec<u8>>>,
 }
 
 const DSIG_NS: &str = "http://www.w3.org/2000/09/xmldsig#";
@@ -1580,6 +1634,10 @@ pub fn sign_document(
 /// Returns a `VerifyResult` with status and captured error messages.
 /// Only raises (returns `Err`) for conditions that are not a verification
 /// verdict (unparseable input, out-of-range index, unreadable key).
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one positional argument per Native.verify parameter, plus store_references (#169)"
+)]
 pub fn verify_document(
     xml: &[u8],
     trusted_pems: &[Vec<u8>],
@@ -1588,6 +1646,7 @@ pub fn verify_document(
     signature_index: usize,
     referenced_documents: HashMap<Vec<u8>, Vec<u8>>,
     allow_xpath_filter2: bool,
+    store_references: bool,
 ) -> Result<VerifyResult, DsigError> {
     errors::clear_errors();
     let serves_external = !referenced_documents.is_empty();
@@ -1641,6 +1700,7 @@ pub fn verify_document(
             reference_valid: vec![None; reference_element_indexes.len()],
             reference_element_indexes,
             trusted_index: None,
+            reference_octets: Vec::new(),
         });
     }
 
@@ -1648,6 +1708,7 @@ pub fn verify_document(
     let mut captured_errors = Vec::new();
     let mut reference_valid = Vec::new();
     let mut trusted_index = None;
+    let mut reference_octets = Vec::new();
     for (key, index) in keys_to_try.into_iter().zip(tried_indexes) {
         errors::clear_errors();
         let mut ctx = DsigCtx::for_signing(&mngr, key).map_err(DsigError::native)?;
@@ -1657,11 +1718,17 @@ pub fn verify_document(
         if allow_xpath_filter2 {
             ctx.enable_xpath_filter2().map_err(DsigError::native)?;
         }
+        if store_references {
+            ctx.store_references();
+        }
         status = ctx.verify(sig_node);
         captured_errors = errors::drain_errors();
         reference_valid = ctx.reference_statuses();
         if status == VerifyStatus::Succeeded {
             trusted_index = Some(index);
+            if store_references {
+                reference_octets = ctx.reference_octets();
+            }
             break;
         }
     }
@@ -1672,6 +1739,7 @@ pub fn verify_document(
         reference_element_indexes,
         reference_valid,
         trusted_index,
+        reference_octets,
     })
 }
 

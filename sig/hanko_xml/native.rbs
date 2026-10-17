@@ -8,6 +8,7 @@ module HankoXml
     def self.sign: (String xml_bytes, String key_pem, Array[String] cert_pems, Array[String] id_attributes, Integer index) -> String
     def self.scan: (String xml_bytes, Array[String] id_attributes, bool strict) -> Hash[Symbol, untyped]
     def self.validate_schema: (String xml_bytes, Integer index, String xsd_path) -> Array[String]
+    def self.reference_data: (String xml_bytes, Array[String] trusted_pems, Array[String] id_attributes, Integer index, Array[[String, String]] referenced_documents, bool allow_xpath_filter2) -> Array[String?]
     def self.canonicalize: (String xml_bytes, Integer index, Array[[String, String, Integer?]] target_path, Array[[String, String, Integer?]] method_path) -> String
   end
 end
