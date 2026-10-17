@@ -45,7 +45,8 @@ module HankoXml
     # UnsignedSignatureProperties must verify against the TSA trust
     # (tsa_store: / tsa_certificates:), kept apart from the signer's. A
     # timestamp that does not verify fails the signature (fail closed).
-    # Other unsigned properties (XAdES-LT/LTA) are not read: #82.
+    # Other unsigned properties (XAdES-LT/LTA) are not read yet: #168, #169.
+    # Xades::Locator finds QualifyingProperties and its unsigned containers.
     #
     # Needs certificate-based trust (certificate:, certificates:, store:), and
     # Nokogiri: the signed properties are read from the DOM (#102).
@@ -162,27 +163,16 @@ module HankoXml
       # The SignatureTimeStamp elements, the native path to their parent, and
       # their XAdES namespace.
       def signature_timestamp_nodes(signature)
-        qualifying, ns = qualifying_properties(signature)
-        unsigned = qualifying.xpath("xades:UnsignedProperties", ns)
-        fail!("a XAdES signature has at most one <xades:UnsignedProperties>") if unsigned.size > 1
-        return [[], nil] if unsigned.empty?
+        qualifying, ns = Locator.qualifying_properties(signature)
+        properties = Locator.unsigned_signature_properties(qualifying, ns)
+        return [[], nil] unless properties
 
-        properties = unsigned.first.xpath("xades:UnsignedSignatureProperties", ns)
-        fail!("a XAdES signature has at most one <xades:UnsignedSignatureProperties>") if properties.size > 1
-        return [[], nil] if properties.empty?
-
-        timestamps = properties.first.xpath("xades:SignatureTimeStamp", ns)
+        timestamps = properties.xpath("xades:SignatureTimeStamp", ns)
         if timestamps.any? && ns["xades"] != NS
           fail!("SignatureTimeStamp is verified only in the XAdES 1.3.2 namespace")
         end
 
-        [timestamps.to_a, unsigned_path(signature, qualifying, ns["xades"]), ns["xades"]]
-      end
-
-      def unsigned_path(signature, qualifying, xades_ns)
-        object_index = signature.xpath("ds:Object", "ds" => HankoXml::NS["ds"]).index(qualifying.parent)
-        [[HankoXml::NS["ds"], "Object", object_index], [xades_ns, "QualifyingProperties", nil],
-         [xades_ns, "UnsignedProperties", nil], [xades_ns, "UnsignedSignatureProperties", nil]]
+        [timestamps.to_a, Locator.unsigned_path(signature, qualifying, ns["xades"]), ns["xades"]]
       end
 
       def coerce_timestamps(value)
@@ -245,7 +235,7 @@ module HankoXml
       # with.
       def signed_properties_node(verification)
         info, reference = signed_properties_reference(verification)
-        qualifying, ns = qualifying_properties(verification.signature_node)
+        qualifying, ns = Locator.qualifying_properties(verification.signature_node)
 
         type_namespace = VERSIONED_SIGNED_PROPERTIES_TYPES[info.type]
         if type_namespace && type_namespace != ns["xades"]
@@ -276,22 +266,6 @@ module HankoXml
         pairs.first
       end
 
-      # This signature's single QualifyingProperties, in any XAdES namespace,
-      # and the namespaces to read it with.
-      def qualifying_properties(signature)
-        signature_id = signature["Id"].to_s
-        fail!("the <Signature> has no Id for QualifyingProperties to target") if signature_id.empty?
-
-        qualifying = signature.xpath("ds:Object/*[local-name()='QualifyingProperties']", "ds" => HankoXml::NS["ds"])
-                              .select { |node| NAMESPACES.include?(node.namespace&.href) }
-        fail!("a XAdES signature has exactly one <xades:QualifyingProperties>") unless qualifying.size == 1
-
-        qualifying = qualifying.first
-        fail!("<xades:QualifyingProperties> does not target this <Signature>") unless targets?(qualifying, signature_id)
-
-        [qualifying, { "ds" => HankoXml::NS["ds"], "xades" => qualifying.namespace.href }]
-      end
-
       # By its Type, or, with no Type (as some 1.2.2 signatures write it), by
       # what xmlsec resolved and digested: a SignedProperties element in a
       # XAdES namespace. Never by the URI text (#86).
@@ -300,16 +274,6 @@ module HankoXml
 
         node = reference.node
         !node.nil? && node.name == "SignedProperties" && NAMESPACES.include?(node.namespace&.href)
-      end
-
-      # Target is "#" + the Signature Id. The older namespaces also had
-      # signers write the bare Id (Target="Signature"). Either way the
-      # QualifyingProperties must sit in this <Signature>'s own <Object>.
-      def targets?(qualifying, signature_id)
-        target = qualifying["Target"]
-        return true if target == "##{signature_id}"
-
-        LEGACY_NAMESPACES.include?(qualifying.namespace.href) && target == signature_id
       end
 
       def check_signing_certificate!(signature_properties, certificate, ns)

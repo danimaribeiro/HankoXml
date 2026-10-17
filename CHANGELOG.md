@@ -25,6 +25,14 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   as xmlsec canonicalizes it. `Xades::Verification#signature_timestamps` lists
   them (time, serial, TSA certificate) and `#timestamp_time` gives the earliest.
   `timestamps: :require` also fails a signature without one (S-22).
+- **#167:** XAdES-LT validation data. `Xades::Augmenter` adds unsigned
+  properties to an existing, signed XAdES signature: a `SignatureTimeStamp`
+  (`timestamper:`, B to T) and `CertificateValues` / `RevocationValues`
+  (`validation_data:`, T to LT), leaving everything signed byte-identical.
+  `Xades::Signer` takes `validation_data:` too, with `timestamper:`.
+  `Xades::ValidationData` holds caller-supplied certificates, CRLs and OCSP
+  responses, type-checked only; the library never fetches them, and nothing
+  embedded is trusted yet (#168).
 
 ### Changed
 
