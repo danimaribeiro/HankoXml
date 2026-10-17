@@ -1596,11 +1596,26 @@ HankoXml::Native.validate_schema(xml, signature_index, xsd_path)
 #   Validates a copy of the nth <ds:Signature> against the XSD at xsd_path
 #   with the extension's libxml2 (schema: :default).
 # => Array<String> — libxml2's validation errors; empty means valid
+
+HankoXml::Native.canonicalize(xml, signature_index, target_path, method_path)
+#   One element of the nth <ds:Signature>, canonicalized by xmlsec's own C14N
+#   transforms: the bytes a digest over that element covers. The XAdES-T
+#   timestamp imprint over <ds:SignatureValue> needs it (#161, #81).
+#   target_path, method_path : Array<[ns_href, local_name, index]> — child
+#                     steps from the <ds:Signature>. index nil means exactly
+#                     one child may match; anything else raises, never the
+#                     first match.
+#   method_path leads to a CanonicalizationMethod-shaped element. xmlsec reads
+#   its Algorithm (and InclusiveNamespaces) as it reads SignedInfo's, and only
+#   the six c14n algorithms are enabled (S-10). Comments are kept or dropped
+#   as the algorithm says.
+# => String (binary) — the canonical bytes
+# raises ParseError / NativeError, with #xmlsec_errors populated
 ```
 
-That is eight functions (`check_version`, `abi_compatible?`, `versions`,
-`sign`, `inspect_sig`, `verify`, `scan`, `validate_schema`). Everything else
-in this document is Ruby.
+That is nine functions (`check_version`, `abi_compatible?`, `versions`,
+`sign`, `inspect_sig`, `verify`, `scan`, `validate_schema`, `canonicalize`).
+Everything else in this document is Ruby.
 
 ### 7.1 Design notes for the native layer
 
@@ -1648,7 +1663,7 @@ ext/hanko_xml/src/
   errors.rs   the xmlSecErrorsSetCallback handler + thread-local buffer
   dsig.rs     RAII wrappers (OwnedXmlDoc, Key, KeysMngr, DsigCtx) and the two
               operations (sign_document, verify_document)
-  lib.rs      magnus glue: 5 functions, argument coercion, error construction
+  lib.rs      magnus glue: the §7 functions, argument coercion, error construction
 ```
 
 Simplifications adopted from the POC:

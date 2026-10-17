@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "nokogiri"
+require "openssl"
 require "pathname"
 
 RSpec.describe "HankoXml::Native" do
@@ -196,6 +198,96 @@ RSpec.describe "HankoXml::Native" do
       expect do
         HankoXml::Native.sign(template_xml, "bad key data", [signer_cert_pem], id_attrs, 0)
       end.to raise_error(HankoXml::KeyLoadError)
+    end
+  end
+
+  # #161: one element of a signature, canonicalized by xmlsec's own C14N
+  # transforms, as the XAdES-T timestamp imprint needs it (#81).
+  describe ".canonicalize" do
+    let(:ds) { HankoXml::NS["ds"] }
+    let(:exc) { "http://www.w3.org/2001/10/xml-exc-c14n#" }
+    let(:xml) do
+      <<~XML
+        <root xmlns="urn:r" xmlns:a="urn:a"><ds:Signature xmlns:ds="#{ds}">
+          <ds:SignatureValue a:n="1">QUJD<!-- c --></ds:SignatureValue>
+          <ds:Object>
+            <ds:CanonicalizationMethod Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"/>
+            <ds:CanonicalizationMethod Algorithm="#{exc}"/>
+            <ds:CanonicalizationMethod Algorithm="#{exc}">
+              <ec:InclusiveNamespaces xmlns:ec="#{exc}" PrefixList="#default"/>
+            </ds:CanonicalizationMethod>
+            <ds:CanonicalizationMethod Algorithm="#{exc}WithComments"/>
+            <ds:CanonicalizationMethod Algorithm="http://www.w3.org/2000/09/xmldsig#sha1"/>
+          </ds:Object>
+        </ds:Signature></root>
+      XML
+    end
+    let(:signature_value) { [[ds, "SignatureValue", nil]] }
+
+    def canonicalize(method_index, target = signature_value, source = xml)
+      method = [[ds, "Object", nil], [ds, "CanonicalizationMethod", method_index]]
+      HankoXml::Native.canonicalize(source, 0, target, method)
+    end
+
+    it "renders the element with the namespaces each algorithm keeps" do
+      expect(canonicalize(0)).to eq(
+        %(<ds:SignatureValue xmlns="urn:r" xmlns:a="urn:a" xmlns:ds="#{ds}" a:n="1">QUJD</ds:SignatureValue>)
+      )
+      expect(canonicalize(1))
+        .to eq(%(<ds:SignatureValue xmlns:a="urn:a" xmlns:ds="#{ds}" a:n="1">QUJD</ds:SignatureValue>))
+      expect(canonicalize(3))
+        .to eq(%(<ds:SignatureValue xmlns:a="urn:a" xmlns:ds="#{ds}" a:n="1">QUJD<!-- c --></ds:SignatureValue>))
+      expect(canonicalize(1).encoding).to eq(Encoding::BINARY)
+    end
+
+    it "reads InclusiveNamespaces from the CanonicalizationMethod, as xmlsec does for SignedInfo" do
+      expect(canonicalize(2)).to eq(
+        %(<ds:SignatureValue xmlns="urn:r" xmlns:a="urn:a" xmlns:ds="#{ds}" a:n="1">QUJD</ds:SignatureValue>)
+      )
+    end
+
+    it "gives the bytes xmlsec digested for a Reference over the same element" do
+      signed = HankoXml::Xades::Signer.new(key: signer_key_pem, certificate: signer_cert_pem)
+                                      .sign(%(<Invoice xmlns="urn:x"><Total>1</Total></Invoice>)).to_s
+      xades = HankoXml::Xades::NS
+      references = HankoXml::Native.inspect_sig(signed, 0)[:references]
+      index = references.index { |ref| ref[:type] == HankoXml::Xades::SIGNED_PROPERTIES_TYPE }
+      bytes = HankoXml::Native.canonicalize(
+        signed, 0,
+        [[ds, "Object", nil], [xades, "QualifyingProperties", nil], [xades, "SignedProperties", nil]],
+        [[ds, "SignedInfo", nil], [ds, "Reference", index], [ds, "Transforms", nil], [ds, "Transform", 0]]
+      )
+      reference = Nokogiri::XML(signed).xpath("//ds:Reference", "ds" => ds)[index]
+      digest_value = reference.at_xpath("ds:DigestValue", "ds" => ds)
+
+      expect(bytes).to start_with("<xades:SignedProperties")
+      expect(OpenSSL::Digest::SHA256.base64digest(bytes)).to eq(digest_value.text)
+    end
+
+    it "refuses an algorithm that is not canonicalization (S-10)" do
+      expect { canonicalize(4) }.to raise_error(HankoXml::NativeError, /not a supported c14n algorithm/) { |error|
+        expect(error.xmlsec_errors).not_to be_empty
+      }
+    end
+
+    it "refuses an ambiguous or missing path step instead of taking the first match" do
+      expect { canonicalize(nil) }.to raise_error(HankoXml::NativeError, /exactly one element/)
+      expect { canonicalize(5) }.to raise_error(HankoXml::NativeError, /out of range/)
+      expect { canonicalize(1, [[ds, "KeyInfo", nil]]) }.to raise_error(HankoXml::NativeError, /exactly one element/)
+      expect { canonicalize(1, [["urn:other", "SignatureValue", nil]]) }
+        .to raise_error(HankoXml::NativeError, /exactly one element/)
+    end
+
+    it "canonicalizes the signature itself for an empty path" do
+      expect(canonicalize(1, [])).to start_with(%(<ds:Signature xmlns:ds="#{ds}">))
+    end
+
+    it "raises for malformed steps, bad input and a missing signature" do
+      expect { canonicalize(1, [[ds, "SignatureValue"]]) }.to raise_error(HankoXml::NativeError, /path step/)
+      expect { canonicalize(1, ["SignatureValue"]) }.to raise_error(HankoXml::NativeError, /path step/)
+      expect { canonicalize(1, signature_value, "<root") }.to raise_error(HankoXml::ParseError)
+      expect { HankoXml::Native.canonicalize(xml, 1, signature_value, []) }
+        .to raise_error(HankoXml::NativeError, /index out of range/)
     end
   end
 
