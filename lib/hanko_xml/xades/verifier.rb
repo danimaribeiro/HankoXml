@@ -11,10 +11,20 @@ module HankoXml
     class Verification < HankoXml::Verification
       # @return [SignedProperties, nil] Only when #valid?.
       attr_reader :signed_properties
+      # @return [Array<SignatureTimeStamp>, nil] The verified SignatureTimeStamps (#163), in document order;
+      #   empty when there are none, nil unless #valid? or with timestamps: :ignore.
+      attr_reader :signature_timestamps
 
-      def initialize(signed_properties: nil, **attributes)
+      def initialize(signed_properties: nil, signature_timestamps: nil, **attributes)
         @signed_properties = signed_properties
+        @signature_timestamps = signature_timestamps&.freeze
         super(**attributes)
+      end
+
+      # The earliest verified SignatureTimeStamp time: when a trusted third
+      # party saw this signature at the latest. Nil without one.
+      def timestamp_time
+        signature_timestamps&.map(&:time)&.min
       end
     end
 
@@ -31,14 +41,26 @@ module HankoXml
     # Reads XAdES 1.3.2 and the older 1.2.2 and 1.1.1 namespaces (#86); the
     # whole signature must use one.
     #
+    # XAdES-T (#163): every <xades:SignatureTimeStamp> in the signature's
+    # UnsignedSignatureProperties must verify against the TSA trust
+    # (tsa_store: / tsa_certificates:), kept apart from the signer's. A
+    # timestamp that does not verify fails the signature (fail closed).
+    # Other unsigned properties (XAdES-LT/LTA) are not read: #82.
+    #
     # Needs certificate-based trust (certificate:, certificates:, store:), and
     # Nokogiri: the signed properties are read from the DOM (#102).
-    # Unsigned properties (XAdES-T/LT/LTA) are ignored: #81, #82.
     class Verifier < HankoXml::Verifier # rubocop:disable Metrics/ClassLength
+      TIMESTAMP_MODES = %i[verify require ignore].freeze
+
       # @param signature_policy [SignaturePolicy, Hash, :implied, nil] When given, the signed
       #   SignaturePolicyIdentifier must be exactly this.
+      # @param timestamps [Symbol] :verify (default) checks every SignatureTimeStamp present; :require also
+      #   fails a signature without one; :ignore does not read them, the XAdES-B behavior.
+      # @param tsa_store [OpenSSL::X509::Store, nil] Trust for the TSAs, not the signer.
+      # @param tsa_certificates [Array<OpenSSL::X509::Certificate, String, Key>, nil] Trusted TSA roots or
+      #   certificates, instead of tsa_store:.
       # All other keywords are {HankoXml::Verifier}'s.
-      def initialize(signature_policy: nil, **options)
+      def initialize(signature_policy: nil, timestamps: :verify, tsa_store: nil, tsa_certificates: nil, **options)
         Dom.require!("HankoXml::Xades::Verifier")
         if options[:key] || options[:keys]
           raise HankoXml::ConfigurationError,
@@ -47,6 +69,8 @@ module HankoXml
         end
 
         @expected_signature_policy = coerce_signature_policy(signature_policy)
+        @timestamps = coerce_timestamps(timestamps)
+        @tsa_store = coerce_tsa_store(tsa_store, tsa_certificates)
         super(**options)
       end
 
@@ -59,25 +83,37 @@ module HankoXml
       end
 
       def verify(xml)
-        xades(super)
+        as_xades(super)
       end
 
       def verify_all(xml)
-        super.map { |verification| xades(verification) }
+        super.map { |verification| as_xades(verification) }
       end
 
       private
 
-      def xades(verification)
+      # Every signature verified goes through here, with the bytes and the
+      # index the native layer used, which the timestamp checks reuse.
+      def verify_single(input, index)
+        xades(super, input.bytes, index)
+      end
+
+      # A result that never reached verify_single (no signature found).
+      def as_xades(verification)
+        verification.is_a?(Verification) ? verification : rebuild(verification)
+      end
+
+      def xades(verification, xml_bytes, index)
         return rebuild(verification) unless verification.valid?
 
         properties = signed_properties(verification)
-        rebuild(verification, signed_properties: properties)
+        timestamps = signature_timestamps(verification, xml_bytes, index)
+        rebuild(verification, signed_properties: properties, signature_timestamps: timestamps)
       rescue HankoXml::XadesError, HankoXml::PolicyError => e
         rebuild(verification, error: e)
       end
 
-      def rebuild(verification, signed_properties: nil, error: nil)
+      def rebuild(verification, signed_properties: nil, signature_timestamps: nil, error: nil)
         Verification.new(
           valid: verification.valid? && error.nil?,
           errors: [*verification.errors, *error],
@@ -94,8 +130,95 @@ module HankoXml
           reference_element_indexes: verification.reference_element_indexes,
           reference_valid: verification.reference_valid,
           signature_element_index: verification.signature_element_index,
-          signed_properties: signed_properties
+          signed_properties: signed_properties,
+          signature_timestamps: signature_timestamps
         )
+      end
+
+      # Each SignatureTimeStamp of this signature, verified (#163). Read only
+      # along the path from its own QualifyingProperties, never by a search
+      # that a wrapped element elsewhere could satisfy.
+      def signature_timestamps(verification, xml_bytes, index)
+        return nil if @timestamps == :ignore
+
+        nodes, path, xades_ns = signature_timestamp_nodes(verification.signature_node)
+        if nodes.empty?
+          fail!("timestamps: :require, but the signature has no <xades:SignatureTimeStamp>") if @timestamps == :require
+          return []
+        end
+
+        unless @tsa_store
+          fail!("the signature has a <xades:SignatureTimeStamp>; pass tsa_store: or tsa_certificates: to " \
+                "verify it, or timestamps: :ignore")
+        end
+
+        nodes.each_with_index.map do |node, i|
+          SignatureTimeStampCheck.new(node, [*path, [xades_ns, "SignatureTimeStamp", i]],
+                                      ns: { "ds" => HankoXml::NS["ds"], "xades" => xades_ns },
+                                      policy: @policy, tsa_store: @tsa_store).verify(xml_bytes, index)
+        end
+      end
+
+      # The SignatureTimeStamp elements, the native path to their parent, and
+      # their XAdES namespace.
+      def signature_timestamp_nodes(signature)
+        qualifying, ns = qualifying_properties(signature)
+        unsigned = qualifying.xpath("xades:UnsignedProperties", ns)
+        fail!("a XAdES signature has at most one <xades:UnsignedProperties>") if unsigned.size > 1
+        return [[], nil] if unsigned.empty?
+
+        properties = unsigned.first.xpath("xades:UnsignedSignatureProperties", ns)
+        fail!("a XAdES signature has at most one <xades:UnsignedSignatureProperties>") if properties.size > 1
+        return [[], nil] if properties.empty?
+
+        timestamps = properties.first.xpath("xades:SignatureTimeStamp", ns)
+        if timestamps.any? && ns["xades"] != NS
+          fail!("SignatureTimeStamp is verified only in the XAdES 1.3.2 namespace")
+        end
+
+        [timestamps.to_a, unsigned_path(signature, qualifying, ns["xades"]), ns["xades"]]
+      end
+
+      def unsigned_path(signature, qualifying, xades_ns)
+        object_index = signature.xpath("ds:Object", "ds" => HankoXml::NS["ds"]).index(qualifying.parent)
+        [[HankoXml::NS["ds"], "Object", object_index], [xades_ns, "QualifyingProperties", nil],
+         [xades_ns, "UnsignedProperties", nil], [xades_ns, "UnsignedSignatureProperties", nil]]
+      end
+
+      def coerce_timestamps(value)
+        return value if TIMESTAMP_MODES.include?(value)
+
+        raise HankoXml::ConfigurationError, "timestamps: must be one of #{TIMESTAMP_MODES.inspect}"
+      end
+
+      # The TSA trust, separate from the signer's: tsa_store: as given, or a
+      # store over tsa_certificates:.
+      def coerce_tsa_store(store, certificates)
+        raise HankoXml::ConfigurationError, "pass tsa_store: or tsa_certificates:, not both" if store && certificates
+
+        if @timestamps == :require && !store && !certificates
+          raise HankoXml::ConfigurationError, "timestamps: :require needs tsa_store: or tsa_certificates:"
+        end
+        return tsa_store_from(certificates) if store.nil?
+        return store if store.is_a?(OpenSSL::X509::Store)
+
+        raise HankoXml::ConfigurationError, "tsa_store: must be an OpenSSL::X509::Store"
+      end
+
+      def tsa_store_from(certificates)
+        return nil if certificates.nil?
+
+        list = Array(certificates)
+        raise HankoXml::ConfigurationError, "tsa_certificates: must not be empty" if list.empty?
+
+        OpenSSL::X509::Store.new.tap do |store|
+          list.each do |certificate|
+            key = HankoXml::Key.coerce(certificate)
+            raise HankoXml::ConfigurationError, "tsa_certificates: must be X.509 certificates" unless key.certificate?
+
+            store.add_cert(key.to_openssl)
+          end
+        end
       end
 
       def signed_properties(verification)

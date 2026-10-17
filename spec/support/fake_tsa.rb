@@ -8,16 +8,17 @@ require "openssl"
 class FakeTsa
   attr_reader :ca_certificate, :certificate, :requests
 
-  def initialize(gen_time: Time.utc(2026, 9, 17, 14, 33, 0), serial: 1,
+  def initialize(name: "HankoXml Test TSA", gen_time: Time.utc(2026, 9, 17, 14, 33, 0), serial: 1,
                  allowed_digests: %w[sha1 sha256 sha384 sha512 sha3-256 sha3-384 sha3-512])
     @gen_time = gen_time
     @allowed_digests = allowed_digests
     @serial = serial
     @requests = []
     @ca_key = OpenSSL::PKey::RSA.new(2048)
-    @ca_certificate = build_certificate("CN=HankoXml Test TSA Root", @ca_key, @ca_key, authority: true)
+    # Distinct names per TSA: a store finds issuers by name.
+    @ca_certificate = build_certificate("CN=#{name} Root", @ca_key, @ca_key, authority: true)
     @key = OpenSSL::PKey::RSA.new(2048)
-    @certificate = build_certificate("CN=HankoXml Test TSA", @key, @ca_key, issuer: @ca_certificate)
+    @certificate = build_certificate("CN=#{name}", @key, @ca_key, issuer: @ca_certificate)
   end
 
   # A timestamper: for Xades::Signer. +tamper+ may rewrite the parsed

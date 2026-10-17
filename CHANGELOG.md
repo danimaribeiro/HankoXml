@@ -17,7 +17,21 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   grant the timestamp and carry the request's imprint and nonce, otherwise
   signing raises `SigningError`. `timestamp_digest_method:` (default: the
   Signer's `digest_method:`) and `timestamp_canonicalization_method:` (default
-  `:exc_c14n`) go through the Signer's policy. Verifying the timestamp is #163.
+  `:exc_c14n`) go through the Signer's policy.
+- **#163:** XAdES-T verification. `Xades::Verifier` checks every
+  `<xades:SignatureTimeStamp>` of the signature against the TSA trust in
+  `tsa_store:` or `tsa_certificates:`, which is kept separate from the signer's.
+  OpenSSL verifies the token, and its imprint must cover the `<ds:SignatureValue>`
+  as xmlsec canonicalizes it. `Xades::Verification#signature_timestamps` lists
+  them (time, serial, TSA certificate) and `#timestamp_time` gives the earliest.
+  `timestamps: :require` also fails a signature without one (S-22).
+
+### Changed
+
+- **#163:** `Xades::Verifier` no longer ignores unsigned SignatureTimeStamps.
+  A signature that carries one now fails verification unless the timestamp
+  verifies, which needs `tsa_store:` or `tsa_certificates:`. Pass
+  `timestamps: :ignore` to keep the XAdES-B-only behavior.
 
 ### Fixed
 

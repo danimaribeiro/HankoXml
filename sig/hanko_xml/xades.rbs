@@ -69,12 +69,31 @@ module HankoXml
       attr_reader data_object_formats: Array[Hash[Symbol, String?]]
     end
 
+    class SignatureTimeStamp
+      attr_reader id: String?
+      attr_reader time: Time
+      attr_reader serial_number: Integer
+      attr_reader tsa_certificate: OpenSSL::X509::Certificate?
+      attr_reader digest_method: String
+      attr_reader policy_id: String?
+    end
+
     class Verification < HankoXml::Verification
       attr_reader signed_properties: SignedProperties?
+      attr_reader signature_timestamps: Array[SignatureTimeStamp]?
+      def timestamp_time: () -> Time?
     end
 
     class Verifier < HankoXml::Verifier
-      def initialize: (?signature_policy: (SignaturePolicy | Hash[Symbol, untyped] | :implied)?, **untyped) -> void
+      TIMESTAMP_MODES: Array[Symbol]
+
+      def initialize: (
+        ?signature_policy: (SignaturePolicy | Hash[Symbol, untyped] | :implied)?,
+        ?timestamps: :verify | :require | :ignore,
+        ?tsa_store: OpenSSL::X509::Store?,
+        ?tsa_certificates: Array[OpenSSL::X509::Certificate | String | Key]?,
+        **untyped
+      ) -> void
       def verify: (untyped xml) -> Verification
       def verify_all: (untyped xml) -> Array[Verification]
     end

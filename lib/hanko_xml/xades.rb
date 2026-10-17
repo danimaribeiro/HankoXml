@@ -70,8 +70,8 @@ module HankoXml
     end
 
     # The authenticated view of a verified <xades:SignedProperties>
-    # (Xades::Verification#signed_properties). Unsigned properties
-    # (timestamps, validation data) are never read.
+    # (Xades::Verification#signed_properties). Timestamps are
+    # Xades::Verification#signature_timestamps (#163).
     SignedProperties = Struct.new(:signing_time, :signature_policy, :claimed_roles, :data_object_formats,
                                   keyword_init: true) do
       def initialize(**)

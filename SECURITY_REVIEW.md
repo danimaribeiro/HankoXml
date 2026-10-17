@@ -59,6 +59,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-19 | **Low** | CI | Actions pinned by major tag, not commit SHA; `main.yml` has no top-level `permissions:` | **fixed** | code review |
 | S-20 | **Info** | Native | Whether the root element's own `Id` is registered by `xmlSecAddIDs(doc, root, ids)` depends on xmlsec walking `cur` or `cur->children`; `URI="#rootId"` is untested | **fixed** (spec; no bug) | confirmed |
 | S-21 | **Info** | Docs | README passes file *paths* as `key:`/`certificate:` Strings (`key: "private.pem"`); `Key.coerce(String)` treats them as PEM and raises `KeyLoadError`. Fails closed, but misleading | **fixed** | code review, re-checked |
+| S-22 | **Info** | Xades::Verifier | XAdES-T `SignatureTimeStamp` lives in UnsignedProperties, outside everything the signature covers: it can be added, swapped or moved by anyone, and a verifier that trusts it, finds it by search, or skips a bad one reports a time nobody vouched for | **by design** (#163) | spec |
 
 What is done well (so the fixing agent does not undo it): PEM-only FFI
 boundary with every Ruby argument copied before the native call; RAII wrappers
@@ -664,11 +665,52 @@ Original report:
 `from_pem`, which raises `KeyLoadError`. Use `Pathname` in the examples or
 accept path Strings explicitly.
 
+### S-22 -- Unsigned XAdES properties are attacker-controlled  [design review, Info, **by design** (#163)]
+
+**Context:** XAdES-T adds a `<xades:SignatureTimeStamp>` under
+`QualifyingProperties/UnsignedProperties/UnsignedSignatureProperties`. No
+Reference covers it (that is what "unsigned" means), so after signing anyone
+can add, replace, duplicate or move one without breaking the XML-DSig
+signature. Its only protection is the RFC 3161 token: the TSA's signature over
+a digest of the canonicalized `<ds:SignatureValue>`.
+
+**Design** (`lib/hanko_xml/xades/timestamp.rb`, `Xades::Verifier`):
+
+- **Found by path, never by search.** Timestamps are read only from the verified
+  signature's single QualifyingProperties, through exactly one
+  UnsignedProperties and one UnsignedSignatureProperties. A copy placed elsewhere
+  (another `<Object>`, another signature) is never read. The same path goes to
+  `Native.canonicalize`, so xmlsec reads the CanonicalizationMethod of the
+  element the DOM checked.
+- **OpenSSL decides.** `OpenSSL::Timestamp::Response#verify` checks the TSA's
+  signature, its chain and timeStamping purpose, and that the token's imprint
+  is the digest of the bytes we computed. Ruby only chooses those bytes.
+- **The bytes come from xmlsec.** The SignatureValue is canonicalized by xmlsec's
+  own C14N transforms (#161, S-10 allowlist), with the method the timestamp
+  declares. Both that method and the imprint digest go through the Policy, so
+  a SHA-1 imprint needs `Policy.legacy_sha1`.
+- **Separate trust.** TSA trust is `tsa_store:` / `tsa_certificates:`, never
+  the signer's `certificate:`/`store:`, and never a certificate the token or
+  the document carries (as S-01 for KeyInfo).
+- **Fail closed.** Any SignatureTimeStamp that does not verify, including one
+  checked with no TSA trust configured, fails the whole Verification. Only an
+  explicit `timestamps: :ignore` leaves them unread, which is the XAdES-B
+  behavior.
+
+**Limits:** the TSA chain is checked at the current time (OpenSSL's
+`Response#verify` does not take a verification time). Checking at a past time,
+with embedded validation data, is XAdES-LT (#82). Tokens whose CMS
+`certificates` OpenSSL's PKCS7 parser cannot read (seen in two Czech samples)
+fail closed.
+
+Specs: `spec/hanko_xml/xades_timestamp_verifier_spec.rb`, and the
+`SignatureTimeStamp (#163)` section of `spec/interop/xades_interop_spec.rb`.
+
 ---
 
 ## Suggested remediation order
 
-All findings S-01 through S-21 are closed.
+All findings S-01 through S-21 are closed. S-22 is a design note.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /
