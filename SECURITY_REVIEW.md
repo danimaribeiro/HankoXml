@@ -59,6 +59,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-19 | **Low** | CI | Actions pinned by major tag, not commit SHA; `main.yml` has no top-level `permissions:` | **fixed** | code review |
 | S-20 | **Info** | Native | Whether the root element's own `Id` is registered by `xmlSecAddIDs(doc, root, ids)` depends on xmlsec walking `cur` or `cur->children`; `URI="#rootId"` is untested | **fixed** (spec; no bug) | confirmed |
 | S-21 | **Info** | Docs | README passes file *paths* as `key:`/`certificate:` Strings (`key: "private.pem"`); `Key.coerce(String)` treats them as PEM and raises `KeyLoadError`. Fails closed, but misleading | **fixed** | code review, re-checked |
+| S-23 | **Info** | Xades::Verifier | XAdES-LT validates the signing certificate at a past time with revocation data the document carries: stale, unverifiable or foreign evidence, or a validation time nobody vouched for, would turn an expired or revoked certificate into a valid signature | **by design** (#168) | spec, interop |
 | S-22 | **Info** | Xades::Verifier | XAdES-T `SignatureTimeStamp` lives in UnsignedProperties, outside everything the signature covers: it can be added, swapped or moved by anyone, and a verifier that trusts it, finds it by search, or skips a bad one reports a time nobody vouched for | **by design** (#163, #167) | spec |
 
 What is done well (so the fixing agent does not undo it): PEM-only FFI
@@ -707,7 +708,7 @@ own anchors (#168). The Augmenter does not verify the signature it extends.
 
 **Limits:** the TSA chain is checked at the current time (OpenSSL's
 `Response#verify` does not take a verification time). Checking at a past time,
-with embedded validation data, is #168. Tokens whose CMS
+is #169. Tokens whose CMS
 `certificates` OpenSSL's PKCS7 parser cannot read (seen in two Czech samples)
 fail closed.
 
@@ -715,11 +716,53 @@ Specs: `spec/hanko_xml/xades_timestamp_verifier_spec.rb`,
 `spec/hanko_xml/xades_augmenter_spec.rb`, and the
 `SignatureTimeStamp (#163)` section of `spec/interop/xades_interop_spec.rb`.
 
+### S-23 -- XAdES-LT validates at a past time with embedded evidence  [design review, Info, **by design** (#168)]
+
+**Context:** XAdES-LT exists so a signature verifies after its certificate
+expires: the certificate is validated at the time a TSA saw the signature,
+with CRLs and OCSP responses embedded in the (unsigned) document. Each input
+to that decision can be forged or stale: the validation time, the embedded
+certificates, and the revocation evidence.
+
+**Design** (`lib/hanko_xml/xades/long_term.rb`, `Xades::Verifier`):
+
+- **The time is vouched for.** It is the earliest SignatureTimeStamp that
+  verified against the caller's TSA trust (S-22); LT values without one fail.
+  Without LT values nothing changes: the certificate is checked now.
+- **Embedded certificates are never trust.** They only complete a `store:`
+  chain as untrusted intermediates (never its anchor, never the signing
+  certificate, which still comes from `<KeyInfo>` and SigningCertificateV2);
+  OpenSSL builds and verifies it at the validation time.
+- **OpenSSL verifies the evidence.** OCSP: `BasicResponse#verify` against the
+  same anchor (signature, responder chain, responder authorization). It
+  takes no verification time, so it runs with `NO_CHECK_TIME` and the
+  responder's chain is verified again at the response's producedAt, read from
+  the DER with the ResponderID (Ruby does not expose either). CRL: signed by
+  the certificate's own issuer, which must allow cRLSign. Ruby only matches
+  evidence to certificates and compares times.
+- **Fresh, or not at all.** Evidence must be issued at or after the
+  validation time (`revocation_grace:` seconds earlier at most, default 0) and
+  not in the future. Stale or unverifiable evidence is ignored; a certificate
+  left without evidence fails, and any usable evidence of revocation at or
+  before the validation time fails even beside good evidence. Revocation after
+  it is accepted and reported (`:revoked_later`).
+
+**Limits:** the TSA's own chain is still checked at the current time (S-22),
+so an expired TSA certificate fails the timestamp; validating it at a past
+time belongs with archive timestamps (#169). Indirect CRLs and CRL
+distribution-point scoping are not supported: a CRL counts only when its
+issuer is the certificate's issuer. The strict default rejects real-world
+evidence collected a moment before the timestamp (SignXML's HU_POL-3, by one
+second); `revocation_grace:` is the explicit opt-in.
+
+Specs: `spec/hanko_xml/xades_long_term_verifier_spec.rb`, and the
+`XAdES-LT (#168)` section of `spec/interop/xades_interop_spec.rb`.
+
 ---
 
 ## Suggested remediation order
 
-All findings S-01 through S-21 are closed. S-22 is a design note.
+All findings S-01 through S-21 are closed. S-22 and S-23 are design notes.
 
 Companion document: `SIGNING_TEST_COVERAGE.md` lists the specs that should
 exist for the signing path and for each finding above. Specs T1–T4 for S-02 /

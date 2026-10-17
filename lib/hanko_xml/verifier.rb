@@ -510,7 +510,7 @@ module HankoXml
                 HankoXml::UntrustedCertificate.new("No X509Certificate found in KeyInfo for store verification")]
       end
 
-      chain, error = verified_chain_from_store(embedded)
+      chain, error = verified_chain_from_store(embedded, chain_intermediates)
       leaf = chain&.first
       error ||= signing_certificate_violation(leaf)
       return [nil, nil, error] if error
@@ -549,9 +549,16 @@ module HankoXml
       sig_info.certificates.map { |pem| OpenSSL::X509::Certificate.new(pem) }
     end
 
+    # Untrusted certificates that may complete a store: chain besides those in
+    # <KeyInfo>; never candidates for the signing certificate. Xades::Verifier
+    # supplies a signature's embedded CertificateValues (#168).
+    def chain_intermediates
+      []
+    end
+
     # The chain OpenSSL built and verified for the one end-entity certificate
     # that chains to the store, leaf first, or an error.
-    def verified_chain_from_store(certificates)
+    def verified_chain_from_store(certificates, intermediates = [])
       candidates = end_entity_certificates(certificates)
       candidates = certificates if candidates.empty?
 
@@ -559,7 +566,7 @@ module HankoXml
       last_error = "Certificate chain validation failed"
 
       candidates.each do |leaf|
-        chain = certificates.reject { |cert| cert.equal?(leaf) }
+        chain = certificates.reject { |cert| cert.equal?(leaf) } + intermediates
         ctx = OpenSSL::X509::StoreContext.new(@store, leaf, chain)
         if @policy.check_certificate_validity
           ctx.time = @verification_time if @verification_time

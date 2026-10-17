@@ -1228,7 +1228,7 @@ After the XML-DSig signature verifies (#58):
 
 A failure is a `HankoXml::XadesError < VerificationError` in `#errors` (a
 `PolicyError` for a disallowed algorithm). Of the unsigned properties, only
-`SignatureTimeStamp` is read; embedded validation data is not checked yet (#168). The verifier reads XAdES 1.3.2
+`SignatureTimeStamp` and the XAdES-LT values are read (below). The verifier reads XAdES 1.3.2
 (`http://uri.etsi.org/01903/v1.3.2#`) and the TS 101 903 v1.2.2 and v1.1.1
 namespaces (`Xades::NAMESPACES`, #86), whose signed properties have the same
 shape. One signature uses one namespace: QualifyingProperties in two of them is
@@ -1260,8 +1260,8 @@ namespace:
 3. The token's imprint digest must be a registered digest the policy allows.
 4. `OpenSSL::Timestamp::Response#verify` checks the token: the TSA's signature,
    its chain to the TSA trust and its timeStamping purpose, and that the imprint
-   is the digest of step 2's bytes. The TSA chain is checked at the current time;
-   validation at a past time is XAdES-LT (#82).
+   is the digest of step 2's bytes. The TSA chain is checked at the current time
+   (OpenSSL's `Response#verify` takes no verification time); #169.
 
 Any failure fails the Verification. A timestamp with no TSA trust configured
 fails too, with a message naming the options. `:require` also fails a signature
@@ -1273,6 +1273,54 @@ unsigned property (the XAdES-B behavior).
 digest_method:, policy_id:)`, in document order. It is empty when there are
 none, and `nil` unless valid or with `:ignore`. `#timestamp_time` is the earliest
 `time`, or `nil`.
+
+**XAdES-LT (#168).** More keywords:
+
+```ruby
+HankoXml::Xades::Verifier.new(store: roots, tsa_certificates: tsa_roots,
+  long_term:        nil,   # :verify | :require | :ignore; nil = :verify, or :ignore with timestamps: :ignore
+  revocation_grace: 0)     # seconds an embedded CRL / OCSP response may predate the validation time
+```
+
+When the signature's UnsignedSignatureProperties holds `CertificateValues` or
+`RevocationValues` (read along the same path as the timestamps, 1.3.2 only,
+never those inside `TimeStampValidationData`), and `long_term:` is not
+`:ignore`:
+
+1. The SignatureTimeStamps are verified first (above). There must be at
+   least one; the earliest `time` is the **validation time**.
+2. The XML-DSig signature is verified at the validation time (as with
+   `verification_time:`, which takes precedence when the caller set it), so a
+   signing certificate that has expired since still verifies. Under `store:`
+   the embedded `CertificateValues` may complete the chain as untrusted
+   intermediates, never as its anchor or its signing certificate.
+3. Every certificate of the verified chain below the trust anchor needs
+   revocation evidence (`certificate:`/`certificates:` pin the signing
+   certificate itself as the anchor, so there is none to check):
+   - an embedded OCSP response about it that `OpenSSL::OCSP::BasicResponse#verify`
+     accepts against the same anchor (signature, responder chain, responder
+     authorized for that certificate), whose responder chain also verifies at
+     the response's producedAt; or an embedded CRL signed by its issuer, an
+     issuer whose KeyUsage (if any) allows cRLSign;
+   - issued (thisUpdate) no earlier than the validation time minus
+     `revocation_grace:`, and not in the future;
+   - not showing it revoked at or before the validation time. Revoked later
+     is accepted: the timestamp proves the signature existed before.
+
+   Evidence that does not verify or is stale is not used. A certificate with
+   no usable evidence fails, and so does usable evidence of an earlier
+   revocation, even beside good evidence.
+
+Any failure is a `XadesError` (fail closed, S-23). `:require` also fails a
+signature without LT values; `:verify` and `:require` need SignatureTimeStamps,
+so they cannot go with `timestamps: :ignore`. Embedded values that do not
+parse as their type fail too.
+
+`Xades::Verification#long_term_validation` is then a frozen
+`Xades::LongTermValidation(time:, certificate_chain:, revocation:)`:
+`revocation` holds one frozen `Xades::RevocationStatus(certificate:, source:
+:ocsp | :crl, issued_at:, status: :good | :revoked_later)` per certificate below
+the anchor. It is `nil` without LT values, with `:ignore`, or unless valid.
 
 SignXML 5.1.0's `XAdESSigner` output verifies under `Policy.strict` (#59): it
 carries a third Reference over `<KeyInfo>`, `SigningCertificateV2` without
@@ -2188,11 +2236,10 @@ Listed so that "not implemented" is a decision rather than an omission:
 
 - **XML Encryption** — the one feature `nokogiri-xmlsec` has and we do not.
   Reasoning and future shape in §11.3.
-- **XAdES-LT verification and XAdES-LTA** (validating embedded data at the
-  timestamp time, #168; archive timestamps, #169). XAdES-B and XAdES-T are
-  §5.9.1: signing (#57, #162), verifying the signed properties (#58) and the
-  SignatureTimeStamp (#163), and SignXML `XAdESSigner` interop (#59). Embedding
-  LT validation data is §5.9.1 too (#167).
+- **XAdES-LTA** (archive timestamps, #169), and validating a TSA's chain at a
+  past time. XAdES-B, -T and -LT are §5.9.1: signing (#57, #162), verifying the
+  signed properties (#58) and the SignatureTimeStamp (#163), embedding (#167)
+  and validating (#168) LT data, and SignXML `XAdESSigner` interop (#59).
 - **WS-Security / SOAP** binding, including `wsu:Id` resolution as a default.
   The `resolver:` hook (§5.9) is the extension point that makes it possible
   out-of-tree.
