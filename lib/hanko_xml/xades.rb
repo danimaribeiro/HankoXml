@@ -91,11 +91,14 @@ module HankoXml
     # With timestamper:, a XAdES-T signature (#162): an RFC 3161 token over
     # the canonicalized <ds:SignatureValue> in a <xades:SignatureTimeStamp>.
     #
-    # Always builds a new <Signature> (template: :build). Validation data
-    # (XAdES-LT/LTA) is #82.
+    # With validation_data: as well, XAdES-LT (#167): CertificateValues and
+    # RevocationValues after the SignatureTimeStamp. Xades::Augmenter adds
+    # either to a signature that already exists.
+    #
+    # Always builds a new <Signature> (template: :build).
     class Signer < HankoXml::Signer
       attr_reader :signing_time, :signature_policy, :claimed_roles, :data_object_format,
-                  :timestamper, :timestamp_canonicalization_method
+                  :timestamper, :timestamp_canonicalization_method, :validation_data
 
       # @param certificate [Key, OpenSSL::X509::Certificate, String, Pathname] Required: SigningCertificateV2
       #   commits to it.
@@ -111,10 +114,13 @@ module HankoXml
       # @param timestamp_digest_method [Symbol, nil] The imprint digest; nil means digest_method:.
       # @param timestamp_canonicalization_method [Symbol] How <ds:SignatureValue> is canonicalized for the
       #   imprint.
+      # @param validation_data [ValidationData, Hash, nil] Certificates, CRLs and OCSP responses to embed
+      #   (XAdES-LT); needs timestamper:, since B-LT builds on B-T.
       # All other keywords are {HankoXml::Signer}'s.
       def initialize(certificate: nil, signing_time: nil, signature_policy: nil, claimed_roles: [],
                      data_object_format: nil, signature_id: nil, template: :build, timestamper: nil,
-                     timestamp_digest_method: nil, timestamp_canonicalization_method: :exc_c14n, **options, &block)
+                     timestamp_digest_method: nil, timestamp_canonicalization_method: :exc_c14n, validation_data: nil,
+                     **options, &block)
         unless template.to_sym == :build
           raise HankoXml::ConfigurationError,
                 "template: #{template.inspect} is not supported for XAdES; it always builds a new <Signature>"
@@ -127,14 +133,14 @@ module HankoXml
         @signature_policy = coerce_signature_policy(signature_policy)
         @claimed_roles = Array(claimed_roles).map { |role| role.to_s.dup.freeze }.freeze
         @data_object_format = coerce_data_object_format(data_object_format)
-        if timestamper && !timestamper.respond_to?(:call)
-          raise HankoXml::ConfigurationError,
-                "timestamper: must respond to #call (TimeStampReq DER -> TimeStampResp DER)"
-        end
-
+        SignatureTimeStamper.check_timestamper!(timestamper)
         @timestamper = timestamper
         @timestamp_digest_method = timestamp_digest_method
         @timestamp_canonicalization_method = timestamp_canonicalization_method
+        @validation_data = ValidationData.coerce(validation_data)
+        if @validation_data && !timestamper
+          raise HankoXml::ConfigurationError, "validation_data: needs timestamper: (XAdES-LT builds on XAdES-T)"
+        end
 
         super(certificate: certificate, signature_id: signature_id || "xades-#{SecureRandom.hex(8)}",
               template: :build, **options, &block)
@@ -173,7 +179,8 @@ module HankoXml
         super.merge(signing_time: signing_time, signature_policy: signature_policy, claimed_roles: claimed_roles,
                     data_object_format: data_object_format, timestamper: timestamper,
                     timestamp_digest_method: timestamp_digest_method,
-                    timestamp_canonicalization_method: timestamp_canonicalization_method)
+                    timestamp_canonicalization_method: timestamp_canonicalization_method,
+                    validation_data: validation_data)
       end
 
       private
@@ -225,23 +232,13 @@ module HankoXml
       # Checked with the key material, after the block may have set certificate:.
       def check_key_material!
         super
-        check_timestamp_algorithms! if timestamper
+        if timestamper
+          SignatureTimeStamper.check_algorithms!(policy, digest: timestamp_digest_method,
+                                                         canonicalization: timestamp_canonicalization_method)
+        end
         return if certificate.is_a?(HankoXml::Key) && certificate.certificate?
 
         raise HankoXml::ConfigurationError, "XAdES needs certificate:, which SigningCertificateV2 commits to"
-      end
-
-      # The imprint algorithms go through the registry and the Signer's
-      # policy, like every algorithm the signature itself uses.
-      def check_timestamp_algorithms!
-        { digest: timestamp_digest_method, canonicalization: timestamp_canonicalization_method }.each do |slot, name|
-          unless HankoXml::Algorithms.uri_for(slot, name)
-            raise HankoXml::ConfigurationError,
-                  "timestamp_#{slot}_method: #{name.inspect} is not a registered #{slot} algorithm"
-          end
-
-          policy.enforce_algorithm!(slot, name)
-        end
       end
     end
 
@@ -267,7 +264,7 @@ module HankoXml
 
         build_signature_properties(xades(signed, "SignedSignatureProperties"))
         build_data_object_properties(signed) if @signer.data_object_format
-        build_signature_timestamp(qualifying) if @signer.timestamper
+        build_unsigned_properties(qualifying) if @signer.timestamper
         object
       end
 
@@ -308,13 +305,19 @@ module HankoXml
         hash.add_child(element("DigestValue")).content = policy.digest_value
       end
 
+      # SignatureTimeStamp, then any validation data (#167).
+      def build_unsigned_properties(qualifying)
+        unsigned = xades(xades(qualifying, "UnsignedProperties"), "UnsignedSignatureProperties")
+        build_signature_timestamp(unsigned)
+        @signer.validation_data&.append_to(unsigned, @xades_ns)
+      end
+
       # The SignatureTimeStamp skeleton: the CanonicalizationMethod is in the
       # document before signing, so xmlsec reads it to canonicalize the
       # SignatureValue (#161), as the verifier will. No Reference covers
       # UnsignedProperties, so filling EncapsulatedTimeStamp afterwards
       # changes nothing signed.
-      def build_signature_timestamp(qualifying)
-        unsigned = xades(xades(qualifying, "UnsignedProperties"), "UnsignedSignatureProperties")
+      def build_signature_timestamp(unsigned)
         timestamp = xades(unsigned, "SignatureTimeStamp")
         timestamp["Id"] = @signer.signature_timestamp_id
         method = timestamp.add_child(element("CanonicalizationMethod"))
@@ -359,5 +362,8 @@ module HankoXml
   end
 end
 
+require_relative "xades/locator"
 require_relative "xades/timestamp"
+require_relative "xades/validation_data"
+require_relative "xades/augmenter"
 require_relative "xades/verifier"

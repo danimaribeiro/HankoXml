@@ -38,10 +38,31 @@ module HankoXml
         ).to_s.tr("_", "-")
       end
 
+      def self.check_timestamper!(timestamper)
+        return if timestamper.nil? || timestamper.respond_to?(:call)
+
+        raise HankoXml::ConfigurationError, "timestamper: must respond to #call (TimeStampReq DER -> TimeStampResp DER)"
+      end
+
+      # The imprint algorithms go through the registry and +policy+, like
+      # every algorithm the signature itself uses.
+      def self.check_algorithms!(policy, digest:, canonicalization:)
+        { digest: digest, canonicalization: canonicalization }.each do |slot, name|
+          unless HankoXml::Algorithms.uri_for(slot, name)
+            raise HankoXml::ConfigurationError,
+                  "timestamp_#{slot}_method: #{name.inspect} is not a registered #{slot} algorithm"
+          end
+
+          policy.enforce_algorithm!(slot, name)
+        end
+      end
+
       # The DER TimeStampToken for the nth signature in +signed_bytes+.
-      def token(signed_bytes, index)
+      # +method_path+ leads from the <ds:Signature> to the skeleton's
+      # CanonicalizationMethod.
+      def token(signed_bytes, index, method_path = METHOD_PATH)
         canonical = Native.canonicalize(signed_bytes, index, [[HankoXml::NS["ds"], "SignatureValue", nil]],
-                                        METHOD_PATH)
+                                        method_path)
         request = build_request(OpenSSL::Digest.digest(@digest, canonical))
         response = exchange(request)
         check_response!(request, response)

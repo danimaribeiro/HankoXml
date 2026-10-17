@@ -1085,6 +1085,7 @@ HankoXml::Xades::Signer.new(
   timestamper:        nil,              # XAdES-T: ->(request_der) { response_der }, #162
   timestamp_digest_method:           nil,        # imprint digest; nil = digest_method:
   timestamp_canonicalization_method: :exc_c14n,  # how SignatureValue is canonicalized
+  validation_data:    nil,              # XAdES-LT: Xades::ValidationData / Hash, #167; needs timestamper:
 )
 ```
 
@@ -1100,8 +1101,8 @@ each of the Signer's own references gets an `Id` (if it had none), which its
 
 It always builds a new `<Signature>` (`template:` other than `:build` raises
 `ConfigurationError`). The output conforms to the ETSI XAdES 1.3.2 schema and
-verifies with a plain `Verifier` under `Policy.strict`. Validation data
-(XAdES-LT/LTA) is #82.
+verifies with a plain `Verifier` under `Policy.strict`. Checking embedded
+validation data is #168; archive timestamps (LTA) are #169.
 
 **XAdES-T (#162).** With `timestamper:`, the template's QualifyingProperties also
 gets `<xades:UnsignedProperties><xades:UnsignedSignatureProperties><xades:SignatureTimeStamp Id="#sig-sigts">`
@@ -1128,6 +1129,68 @@ Both imprint algorithms must be registered and allowed by the Signer's
 `policy:`, so a SHA-1 imprint needs `Policy.legacy_sha1` like any other SHA-1
 use. A bad `timestamper:` or algorithm is a `ConfigurationError`/`PolicyError`
 at construction.
+
+**XAdES-LT (#167).** With `validation_data:` as well, the
+UnsignedSignatureProperties holds, after the SignatureTimeStamp,
+`<xades:CertificateValues>` (`EncapsulatedX509Certificate`) and
+`<xades:RevocationValues>` (`CRLValues/EncapsulatedCRLValue`, then
+`OCSPValues/EncapsulatedOCSPValue`), each entry Base64 DER, each container only
+when it has entries. `validation_data:` without `timestamper:` is a
+`ConfigurationError`: B-LT builds on B-T.
+
+```ruby
+HankoXml::Xades::ValidationData.new(
+  certificates:   [],   # X509 / PEM / Key: the chain, TSA certificates…
+  crls:           [],   # OpenSSL::X509::CRL, PEM or DER
+  ocsp_responses: [],   # OpenSSL::OCSP::Response or DER OCSPResponse
+)                       # (a Hash of these keywords works wherever it is taken)
+```
+
+The caller collects the material; the library never fetches it. Each entry is
+checked only for its type: X.509 certificates, CRLs, and OCSPResponses whose
+`responseStatus` is successful (otherwise `ConfigurationError`). None of it is
+trusted: a verifier must treat it as attacker-supplied until it chains to its
+own anchors (S-22, #168). It is frozen.
+
+#### `HankoXml::Xades::Augmenter`
+
+Adds unsigned properties to an existing, signed XAdES signature (#167): a
+SignatureTimeStamp (B to T) and the validation data above (T to LT).
+Revocation data is best collected once the signature timestamp exists, so this
+is the usual route to LT.
+
+```ruby
+augmenter = HankoXml::Xades::Augmenter.new(
+  timestamper:       nil,        # adds a SignatureTimeStamp, as for Xades::Signer
+  timestamp_digest_method:           :sha256,
+  timestamp_canonicalization_method: :exc_c14n,
+  validation_data:   nil,        # adds CertificateValues / RevocationValues
+  policy:            HankoXml::Policy.strict)   # imprint algorithms, max_document_size
+augmenter.augment(xml, signature: nil)          # => SignedDocument (a copy)
+```
+
+- At least one of `timestamper:` and `validation_data:` is required; the
+  imprint algorithms go through the registry and `policy:` as for the Signer.
+  The Augmenter is frozen; `#inspect` shows no material.
+- `signature:` is the document-order index of the `<ds:Signature>`; `nil` needs
+  the document to have exactly one. The signature must be signed (a non-empty
+  `SignatureValue`); otherwise `ConfigurationError`.
+- The QualifyingProperties is located exactly as `Xades::Verifier` locates it
+  (one, in this signature's own `ds:Object`, targeting its Id), and must be in
+  the 1.3.2 namespace. More than one UnsignedProperties or
+  UnsignedSignatureProperties is refused. These are `XadesError`s. Missing
+  containers are created: UnsignedProperties last in QualifyingProperties,
+  UnsignedSignatureProperties first in UnsignedProperties.
+- A SignatureTimeStamp is appended with the Signer's skeleton and token steps
+  (#162), with Id `<signature Id>-sigts` (then `-sigts-2`, … when taken); an
+  answer that does not hold is a `SigningError`. Validation data is appended
+  after it. Validation data on a signature with no SignatureTimeStamp (and no
+  `timestamper:`) is a `ConfigurationError`.
+- Nothing a Reference or the SignatureValue covers changes: the result is
+  written with `HankoXml.serialize`, so it still verifies. The caller's
+  document is not modified.
+- It does not verify the signature it extends, and embedding vouches for
+  nothing: verify first.
 
 #### `HankoXml::Xades::Verifier`
 
@@ -1165,7 +1228,7 @@ After the XML-DSig signature verifies (#58):
 
 A failure is a `HankoXml::XadesError < VerificationError` in `#errors` (a
 `PolicyError` for a disallowed algorithm). Of the unsigned properties, only
-`SignatureTimeStamp` is read. The verifier reads XAdES 1.3.2
+`SignatureTimeStamp` is read; embedded validation data is not checked yet (#168). The verifier reads XAdES 1.3.2
 (`http://uri.etsi.org/01903/v1.3.2#`) and the TS 101 903 v1.2.2 and v1.1.1
 namespaces (`Xades::NAMESPACES`, #86), whose signed properties have the same
 shape. One signature uses one namespace: QualifyingProperties in two of them is
@@ -2125,10 +2188,11 @@ Listed so that "not implemented" is a decision rather than an omission:
 
 - **XML Encryption** — the one feature `nokogiri-xmlsec` has and we do not.
   Reasoning and future shape in §11.3.
-- **XAdES beyond XAdES-T** (`-LT`, `-LTA`: validation data and archive
-  timestamps, #82). XAdES-B and XAdES-T are §5.9.1: signing (#57, #162),
-  verifying the signed properties (#58) and the SignatureTimeStamp (#163), and
-  SignXML `XAdESSigner` interop (#59).
+- **XAdES-LT verification and XAdES-LTA** (validating embedded data at the
+  timestamp time, #168; archive timestamps, #169). XAdES-B and XAdES-T are
+  §5.9.1: signing (#57, #162), verifying the signed properties (#58) and the
+  SignatureTimeStamp (#163), and SignXML `XAdESSigner` interop (#59). Embedding
+  LT validation data is §5.9.1 too (#167).
 - **WS-Security / SOAP** binding, including `wsu:Id` resolution as a default.
   The `resolver:` hook (§5.9) is the extension point that makes it possible
   out-of-tree.

@@ -59,7 +59,7 @@ README recommends: verify with a pinned certificate, then trust the document.
 | S-19 | **Low** | CI | Actions pinned by major tag, not commit SHA; `main.yml` has no top-level `permissions:` | **fixed** | code review |
 | S-20 | **Info** | Native | Whether the root element's own `Id` is registered by `xmlSecAddIDs(doc, root, ids)` depends on xmlsec walking `cur` or `cur->children`; `URI="#rootId"` is untested | **fixed** (spec; no bug) | confirmed |
 | S-21 | **Info** | Docs | README passes file *paths* as `key:`/`certificate:` Strings (`key: "private.pem"`); `Key.coerce(String)` treats them as PEM and raises `KeyLoadError`. Fails closed, but misleading | **fixed** | code review, re-checked |
-| S-22 | **Info** | Xades::Verifier | XAdES-T `SignatureTimeStamp` lives in UnsignedProperties, outside everything the signature covers: it can be added, swapped or moved by anyone, and a verifier that trusts it, finds it by search, or skips a bad one reports a time nobody vouched for | **by design** (#163) | spec |
+| S-22 | **Info** | Xades::Verifier | XAdES-T `SignatureTimeStamp` lives in UnsignedProperties, outside everything the signature covers: it can be added, swapped or moved by anyone, and a verifier that trusts it, finds it by search, or skips a bad one reports a time nobody vouched for | **by design** (#163, #167) | spec |
 
 What is done well (so the fixing agent does not undo it): PEM-only FFI
 boundary with every Ruby argument copied before the native call; RAII wrappers
@@ -697,13 +697,22 @@ a digest of the canonicalized `<ds:SignatureValue>`.
   explicit `timestamps: :ignore` leaves them unread, which is the XAdES-B
   behavior.
 
+**Writing (#167):** `Xades::Augmenter` adds unsigned properties to an
+existing signature through the same `Xades::Locator` path the verifier reads,
+so it never writes where a verifier would not look, and refuses a signature
+whose containers are ambiguous. Embedded `CertificateValues` and
+`RevocationValues` are the same kind of input: caller- or attacker-supplied,
+type-checked only, and never trusted until they chain to the verifier's
+own anchors (#168). The Augmenter does not verify the signature it extends.
+
 **Limits:** the TSA chain is checked at the current time (OpenSSL's
 `Response#verify` does not take a verification time). Checking at a past time,
-with embedded validation data, is XAdES-LT (#82). Tokens whose CMS
+with embedded validation data, is #168. Tokens whose CMS
 `certificates` OpenSSL's PKCS7 parser cannot read (seen in two Czech samples)
 fail closed.
 
-Specs: `spec/hanko_xml/xades_timestamp_verifier_spec.rb`, and the
+Specs: `spec/hanko_xml/xades_timestamp_verifier_spec.rb`,
+`spec/hanko_xml/xades_augmenter_spec.rb`, and the
 `SignatureTimeStamp (#163)` section of `spec/interop/xades_interop_spec.rb`.
 
 ---
