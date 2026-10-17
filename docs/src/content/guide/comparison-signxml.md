@@ -158,7 +158,7 @@ No vector showed HankoXml's Ruby layer rejecting a signature that xmlsec accepts
 
 SignXML implements a **baseline XAdES** wrapper (`XAdESSigner` / `XAdESVerifier`): extra `ds:Object` / `QualifyingProperties` references, `SignaturePolicyIdentifier`, `ClaimedRoles`, `DataObjectFormat`. It is not a full archival profile (XAdES-A / T / C / XL with RFC 3161 timestamps, OCSP, and certificate values).
 
-HankoXml signs XAdES-B with `HankoXml::Xades::Signer` (#57): `QualifyingProperties` with `SigningTime`, `SigningCertificateV2`, `SignaturePolicyIdentifier`, `SignerRoleV2` and `DataObjectFormat`, and a second reference over `SignedProperties`, conforming to the ETSI XAdES 1.3.2 schema. `HankoXml::Xades::Verifier` (#58) checks them on verification, reading only the SignedProperties xmlsec digested and binding `SigningCertificate(V2)` to the certificate that verified; it verifies SignXML's real-world XAdES samples, reads the older XAdES 1.2.2 and 1.1.1 namespaces too (#86), and refuses the EU DSS signature-wrapping attacks. SignXML's own `XAdESSigner` output verifies under `Policy.strict` (#59). RSA-PSS, SHA-3 and ECDSA-SHA3 are first-class `Algorithms` entries behind `Policy.xades` (#60). XAdES-T signing (`timestamper:`, a caller-supplied TSA exchange, #162) has landed; verifying the timestamp (#163) and XAdES-LT/LTA (#82) are still open.
+HankoXml signs XAdES-B with `HankoXml::Xades::Signer` (#57): `QualifyingProperties` with `SigningTime`, `SigningCertificateV2`, `SignaturePolicyIdentifier`, `SignerRoleV2` and `DataObjectFormat`, and a second reference over `SignedProperties`, conforming to the ETSI XAdES 1.3.2 schema. `HankoXml::Xades::Verifier` (#58) checks them on verification, reading only the SignedProperties xmlsec digested and binding `SigningCertificate(V2)` to the certificate that verified; it verifies SignXML's real-world XAdES samples, reads the older XAdES 1.2.2 and 1.1.1 namespaces too (#86), and refuses the EU DSS signature-wrapping attacks. SignXML's own `XAdESSigner` output verifies under `Policy.strict` (#59). RSA-PSS, SHA-3 and ECDSA-SHA3 are first-class `Algorithms` entries behind `Policy.xades` (#60). XAdES-T is supported: `Xades::Signer`'s `timestamper:` embeds an RFC 3161 SignatureTimeStamp through a TSA exchange the caller supplies (#162), and `Xades::Verifier` verifies it against separate TSA trust, failing closed (#163). XAdES-LT/LTA (#82) is still open.
 
 ### XAdES is an overlay, not a different crypto
 
@@ -221,7 +221,7 @@ HankoXml is the same kind of library: general XML-DSig. The NFe-shaped spec fixt
 
 ## Plan to close the gap with SignXML
 
-The main **feature** gap was XAdES-B. SignXML can emit and verify baseline qualifying properties; HankoXml now does too (#57–#59). RSA-PSS/SHA-3 sit behind `Policy.xades` (#60). Archival XAdES-T/LT/LTA is out of scope.
+The main **feature** gap was XAdES-B. SignXML can emit and verify baseline qualifying properties; HankoXml now does too (#57–#59). RSA-PSS/SHA-3 sit behind `Policy.xades` (#60). Beyond parity, XAdES-T has since landed (#162, #163); XAdES-LT/LTA is #82.
 
 Stay at **XAdES-B** (BES / baseline B) to match what SignXML actually ships. Do not start with XAdES-T/C/XL/A (RFC 3161 timestamps, OCSP, archive timestamps) — that is a PKI-lifetime product, not SignXML parity.
 

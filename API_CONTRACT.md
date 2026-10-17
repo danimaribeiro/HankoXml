@@ -1161,13 +1161,55 @@ After the XML-DSig signature verifies (#58):
    policy allows. `IssuerSerialV2` must decode to its issuer and serial;
    a v1 `IssuerSerial` must carry its serial (its DN string is not compared).
 4. `SigningTime`, when present, is an `xs:dateTime`.
+5. Each `SignatureTimeStamp` verifies (XAdES-T, #163, below).
 
-A failure is a `HankoXml::XadesError < VerificationError` in `#errors`. Unsigned
-properties are never read. The verifier reads XAdES 1.3.2
+A failure is a `HankoXml::XadesError < VerificationError` in `#errors` (a
+`PolicyError` for a disallowed algorithm). Of the unsigned properties, only
+`SignatureTimeStamp` is read. The verifier reads XAdES 1.3.2
 (`http://uri.etsi.org/01903/v1.3.2#`) and the TS 101 903 v1.2.2 and v1.1.1
 namespaces (`Xades::NAMESPACES`, #86), whose signed properties have the same
 shape. One signature uses one namespace: QualifyingProperties in two of them is
 refused like any second QualifyingProperties. `Xades::Signer` writes only 1.3.2.
+
+**XAdES-T (#163).** More keywords:
+
+```ruby
+HankoXml::Xades::Verifier.new(certificate: cert,
+  timestamps:       :verify,   # :verify | :require | :ignore
+  tsa_store:        nil,       # OpenSSL::X509::Store trusting the TSAs, or
+  tsa_certificates: nil)       # trusted TSA certificates (PEM / X509 / Key); not both
+```
+
+A SignatureTimeStamp lies outside everything the signature covers, so it is
+attacker-controlled until it verifies (S-22). With `:verify` (the default) and
+`:require`, after steps 1–4 every
+`QualifyingProperties/UnsignedProperties/UnsignedSignatureProperties/SignatureTimeStamp`
+of this signature is checked. It is read along that path only, with at most one
+UnsignedProperties and one UnsignedSignatureProperties, and only in the 1.3.2
+namespace:
+
+1. It holds one `ds:CanonicalizationMethod` and exactly one
+   `xades:EncapsulatedTimeStamp`, and nothing else (`Include`/`ReferenceInfo`
+   belong to other timestamp kinds; `XMLTimeStamp` is not supported). The
+   CanonicalizationMethod's algorithm must be allowed by the policy.
+2. `Native.canonicalize` (§7) canonicalizes `ds:SignatureValue` with that
+   CanonicalizationMethod, as xmlsec reads it.
+3. The token's imprint digest must be a registered digest the policy allows.
+4. `OpenSSL::Timestamp::Response#verify` checks the token: the TSA's signature,
+   its chain to the TSA trust and its timeStamping purpose, and that the imprint
+   is the digest of step 2's bytes. The TSA chain is checked at the current time;
+   validation at a past time is XAdES-LT (#82).
+
+Any failure fails the Verification. A timestamp with no TSA trust configured
+fails too, with a message naming the options. `:require` also fails a signature
+without any timestamp, and needs TSA trust at construction. `:ignore` reads no
+unsigned property (the XAdES-B behavior).
+
+`Xades::Verification#signature_timestamps` is a frozen Array of frozen
+`Xades::SignatureTimeStamp(id:, time:, serial_number:, tsa_certificate:,
+digest_method:, policy_id:)`, in document order. It is empty when there are
+none, and `nil` unless valid or with `:ignore`. `#timestamp_time` is the earliest
+`time`, or `nil`.
 
 SignXML 5.1.0's `XAdESSigner` output verifies under `Policy.strict` (#59): it
 carries a third Reference over `<KeyInfo>`, `SigningCertificateV2` without
@@ -2083,14 +2125,15 @@ Listed so that "not implemented" is a decision rather than an omission:
 
 - **XML Encryption** — the one feature `nokogiri-xmlsec` has and we do not.
   Reasoning and future shape in §11.3.
-- **XAdES beyond baseline signing** (`-T`, `-LT`, `-LTA`: timestamps and
-  archival, #81 / #82). XAdES-B signing is §5.9.1, built on this contract as a
-  profile plus custom `<Object>` content; verifying its signed properties is #58;
-  SignXML `XAdESSigner` interop is #59.
+- **XAdES beyond XAdES-T** (`-LT`, `-LTA`: validation data and archive
+  timestamps, #82). XAdES-B and XAdES-T are §5.9.1: signing (#57, #162),
+  verifying the signed properties (#58) and the SignatureTimeStamp (#163), and
+  SignXML `XAdESSigner` interop (#59).
 - **WS-Security / SOAP** binding, including `wsu:Id` resolution as a default.
   The `resolver:` hook (§5.9) is the extension point that makes it possible
   out-of-tree.
-- **Timestamp authority (RFC 3161)** interaction.
+- **Timestamp authority (RFC 3161)** interaction. XAdES-T builds the request and
+  checks the response, but the caller's `timestamper:` performs the exchange.
 - **A pure-Ruby signing/verification backend.** Considered and rejected, not
   merely deferred — see §13.6. Verification in Ruby is ruled out permanently.
 - **External signers (HSM, cloud KMS, A3 smartcards).** Real need, wrong

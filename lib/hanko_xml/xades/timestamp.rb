@@ -98,3 +98,143 @@ module HankoXml
     end
   end
 end
+
+module HankoXml
+  module Xades
+    # A verified <xades:SignatureTimeStamp> (#163), on
+    # Xades::Verification#signature_timestamps.
+    SignatureTimeStamp = Struct.new(:id, :time, :serial_number, :tsa_certificate, :digest_method, :policy_id,
+                                    keyword_init: true) do
+      def initialize(**)
+        super
+        freeze
+      end
+    end
+
+    # Verifies one <xades:SignatureTimeStamp> of a signature whose XML-DSig
+    # and signed properties already verified (#163).
+    #
+    # OpenSSL does the RFC 3161 work: OpenSSL::Timestamp::Response#verify
+    # checks the TSA's signature, its chain to the caller's TSA trust and the
+    # timeStamping purpose, and that the token's imprint is the digest of the
+    # bytes this class hands it. Those bytes are the <ds:SignatureValue>,
+    # canonicalized by xmlsec (#161) with the CanonicalizationMethod the
+    # SignatureTimeStamp declares. Both algorithms go through the policy.
+    #
+    # The element is attacker-controlled until this passes: it lies outside
+    # everything the signature covers.
+    #
+    # @api private
+    class SignatureTimeStampCheck
+      SIGNATURE_VALUE_PATH = [[HankoXml::NS["ds"], "SignatureValue", nil]].freeze
+      # The children a SignatureTimeStamp may have. Include and ReferenceInfo
+      # belong to other timestamp kinds, XMLTimeStamp has no defined format.
+      ALLOWED_CHILDREN = [[HankoXml::NS["ds"], "CanonicalizationMethod"], [:xades, "EncapsulatedTimeStamp"]].freeze
+
+      # +path+ is the native path from the <ds:Signature> to this
+      # SignatureTimeStamp.
+      def initialize(node, path, ns:, policy:, tsa_store:)
+        @node = node
+        @path = path
+        @ns = ns
+        @policy = policy
+        @tsa_store = tsa_store
+      end
+
+      # @return [SignatureTimeStamp]
+      # @raise [XadesError, PolicyError]
+      def verify(xml_bytes, signature_index)
+        check_children!
+        check_canonicalization_method!
+        canonical = Native.canonicalize(xml_bytes, signature_index, SIGNATURE_VALUE_PATH,
+                                        [*@path, [HankoXml::NS["ds"], "CanonicalizationMethod", nil]])
+        response = wrap(token_der)
+        digest = digest_method(response.token_info.algorithm)
+        verify_token!(response, digest, canonical)
+        result(response, digest)
+      rescue HankoXml::NativeError, HankoXml::ParseError
+        fail!("the SignatureValue could not be canonicalized for the SignatureTimeStamp")
+      end
+
+      private
+
+      def check_children!
+        children = @node.element_children
+        unless children.all? { |child| allowed_child?(child) }
+          fail!("a <xades:SignatureTimeStamp> holds only CanonicalizationMethod and EncapsulatedTimeStamp")
+        end
+        return if children.count { |child| child.name == "EncapsulatedTimeStamp" } == 1
+
+        fail!("a <xades:SignatureTimeStamp> needs exactly one <xades:EncapsulatedTimeStamp>")
+      end
+
+      def allowed_child?(child)
+        ALLOWED_CHILDREN.any? do |ns, name|
+          child.name == name && child.namespace&.href == (ns == :xades ? @ns["xades"] : ns)
+        end
+      end
+
+      def check_canonicalization_method!
+        methods = @node.xpath("ds:CanonicalizationMethod", @ns)
+        unless methods.size == 1 && methods.first["Algorithm"]
+          fail!("a <xades:SignatureTimeStamp> without a CanonicalizationMethod is not supported")
+        end
+
+        @policy.enforce_algorithm!(:canonicalization, methods.first["Algorithm"])
+      end
+
+      def token_der
+        @node.at_xpath("xades:EncapsulatedTimeStamp", @ns).text.gsub(/\s/, "").unpack1("m0")
+      rescue ArgumentError
+        fail!("<xades:EncapsulatedTimeStamp> is not Base64")
+      end
+
+      # A TimeStampToken is a ContentInfo; OpenSSL verifies it as the token of
+      # a granted TimeStampResp, so it is wrapped in one.
+      def wrap(token)
+        status = OpenSSL::ASN1::Sequence([OpenSSL::ASN1::Integer(0)])
+        OpenSSL::Timestamp::Response.new(OpenSSL::ASN1::Sequence([status, OpenSSL::ASN1.decode(token)]).to_der)
+      rescue OpenSSL::ASN1::ASN1Error, OpenSSL::Timestamp::TimestampError
+        fail!("<xades:EncapsulatedTimeStamp> is not an RFC 3161 TimeStampToken OpenSSL can read")
+      end
+
+      # The token's imprint digest, as a registry URI the policy allows.
+      def digest_method(openssl_name)
+        name = OpenSSL::Digest.new(openssl_name.to_s).name.downcase.tr("-", "_").to_sym
+        uri = HankoXml::Algorithms.uri_for(:digest, name)
+        fail!("the SignatureTimeStamp imprint digest is not a registered digest") unless uri
+
+        @policy.enforce_algorithm!(:digest, uri)
+        [name, uri]
+      rescue RuntimeError, OpenSSL::Digest::DigestError
+        fail!("the SignatureTimeStamp imprint digest is not a registered digest")
+      end
+
+      def verify_token!(response, digest, canonical)
+        request = OpenSSL::Timestamp::Request.new
+        request.algorithm = digest.first.to_s.tr("_", "-")
+        request.message_imprint = OpenSSL::Digest.digest(request.algorithm, canonical)
+        response.verify(request, @tsa_store)
+      rescue OpenSSL::Timestamp::TimestampError
+        fail!("the SignatureTimeStamp does not verify: its TSA is not trusted, its signature is invalid, " \
+              "or it does not cover this signature's SignatureValue")
+      end
+
+      def result(response, digest)
+        info = response.token_info
+        SignatureTimeStamp.new(
+          id: @node["Id"]&.dup&.freeze,
+          time: info.gen_time.utc.freeze,
+          serial_number: info.serial_number.to_i,
+          tsa_certificate: response.tsa_certificate,
+          digest_method: digest.last,
+          policy_id: info.policy_id
+        )
+      end
+
+      def fail!(message)
+        raise HankoXml::XadesError, message
+      end
+    end
+  end
+end

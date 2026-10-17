@@ -72,7 +72,7 @@ RSpec.describe HankoXml::Xades::Signer, "timestamper:" do
       standalone.root = properties.dup(1, standalone)
 
       expect(HankoXml::Verifier.new(certificate: cert_pem).verify(signed)).to be_valid
-      expect(HankoXml::Xades::Verifier.new(certificate: cert_pem).verify(signed)).to be_valid
+      expect(HankoXml::Xades::Verifier.new(certificate: cert_pem, timestamps: :ignore).verify(signed)).to be_valid
       expect(schema.validate(Nokogiri::XML(standalone.to_xml)).map(&:message)).to be_empty
     end
   end

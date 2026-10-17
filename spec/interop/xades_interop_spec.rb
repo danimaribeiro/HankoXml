@@ -10,6 +10,9 @@ require "pathname"
 # xsw/ set are signature-wrapping attacks. Each is verified under
 # Policy.interop, trusting the certificate the file itself carries (as
 # SignXML's own suite does), at the midpoint of that certificate's validity.
+# These check the XML-DSig signature and the signed properties, so their
+# SignatureTimeStamps are left out (timestamps: :ignore); the timestamps have
+# their own section below (#163).
 module XadesInteropVectors
   ROOT = Pathname.new(__dir__).join("xades")
   XPATH = [:policy, /\(:xpath\) .* not in this policy's transforms/].freeze
@@ -54,12 +57,24 @@ module XadesInteropVectors
 
   module_function
 
-  def verify(path, policy: HankoXml::Policy.interop)
+  def verify(path, policy: HankoXml::Policy.interop, **options)
     xml = ROOT.join(path).binread
     certificate = embedded_certificate(xml)
     midpoint = Time.at((certificate.not_before.to_i + certificate.not_after.to_i) / 2)
     HankoXml::Xades::Verifier.new(certificate: certificate, policy: policy, verification_time: midpoint,
-                                  signature: :first).verify(xml)
+                                  signature: :first, **{ timestamps: :ignore }.merge(options)).verify(xml)
+  end
+
+  # A TSA store trusting the certificates the token itself carries, as the
+  # signer's certificate is trusted above. Test-only: these TSAs' roots are
+  # not vendored, and their certificates expired long ago.
+  def embedded_tsa_store(xml)
+    node = Nokogiri::XML(xml).at_xpath("//*[local-name()='EncapsulatedTimeStamp']")
+    token = OpenSSL::PKCS7.new(node.text.gsub(/\s/, "").unpack1("m"))
+    OpenSSL::X509::Store.new.tap do |store|
+      store.flags = OpenSSL::X509::V_FLAG_PARTIAL_CHAIN | OpenSSL::X509::V_FLAG_NO_CHECK_TIME
+      token.certificates.each { |certificate| store.add_cert(certificate) }
+    end
   end
 
   def embedded_certificate(xml)
@@ -108,6 +123,36 @@ RSpec.describe "XAdES interop vectors (#58)" do
 
     expect(properties.signing_time).to eq(Time.utc(2016, 4, 19, 8, 47, 49))
     expect(properties.claimed_roles).to eq(["Manager"])
+  end
+
+  # #163: the SignatureTimeStamps real implementations wrote, checked with
+  # the TSA certificates their tokens carry.
+  describe "SignatureTimeStamp (#163)" do
+    it "verifies HU_POL-3's timestamp: the imprint over its exc-c14n SignatureValue matches" do
+      path = "signxml/Signature-X-HU_POL-3.xml"
+      store = XadesInteropVectors.embedded_tsa_store(XadesInteropVectors::ROOT.join(path).binread)
+      result = XadesInteropVectors.verify(path, timestamps: :require, tsa_store: store)
+
+      expect(result.errors).to be_empty
+      expect(result.signature_timestamps.size).to eq(1)
+      expect(result.timestamp_time).to be_a(Time).and(be > result.signed_properties.signing_time - 60)
+    end
+
+    it "fails closed on CZ_SEF's tokens, whose certificates OpenSSL's PKCS7 parser cannot read" do
+      %w[signxml/Signature-X-CZ_SEF-4.xml signxml/Signature-X-CZ_SEF-5.xml].each do |path|
+        result = XadesInteropVectors.verify(path, timestamps: :verify, tsa_store: OpenSSL::X509::Store.new)
+
+        expect(result.valid?).to be false
+        expect(result.errors.first.message).to match(/not an RFC 3161 TimeStampToken OpenSSL can read/)
+      end
+    end
+
+    it "fails closed when the signature has a timestamp and no TSA trust was given" do
+      result = XadesInteropVectors.verify("signxml/Signature-X-HU_POL-3.xml", timestamps: :verify)
+
+      expect(result.valid?).to be false
+      expect(result.errors.first.message).to match(/pass tsa_store: or tsa_certificates:/)
+    end
   end
 
   describe "what stays unsigned in the valid DSS attacks" do
