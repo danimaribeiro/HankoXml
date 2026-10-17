@@ -112,20 +112,39 @@ module HankoXml
       attr_reader policy_id: String?
     end
 
+    # The revocation evidence a chain certificate passed with (#168).
+    class RevocationStatus
+      attr_reader certificate: OpenSSL::X509::Certificate
+      attr_reader source: :ocsp | :crl
+      attr_reader issued_at: Time
+      attr_reader status: :good | :revoked_later
+    end
+
+    # A passed XAdES-LT validation (#168).
+    class LongTermValidation
+      attr_reader time: Time
+      attr_reader certificate_chain: Array[OpenSSL::X509::Certificate]
+      attr_reader revocation: Array[RevocationStatus]
+    end
+
     class Verification < HankoXml::Verification
       attr_reader signed_properties: SignedProperties?
       attr_reader signature_timestamps: Array[SignatureTimeStamp]?
+      attr_reader long_term_validation: LongTermValidation?
       def timestamp_time: () -> Time?
     end
 
     class Verifier < HankoXml::Verifier
       TIMESTAMP_MODES: Array[Symbol]
+      LONG_TERM_MODES: Array[Symbol]
 
       def initialize: (
         ?signature_policy: (SignaturePolicy | Hash[Symbol, untyped] | :implied)?,
         ?timestamps: :verify | :require | :ignore,
         ?tsa_store: OpenSSL::X509::Store?,
         ?tsa_certificates: Array[OpenSSL::X509::Certificate | String | Key]?,
+        ?long_term: (:verify | :require | :ignore)?,
+        ?revocation_grace: Numeric,
         **untyped
       ) -> void
       def verify: (untyped xml) -> Verification

@@ -147,6 +147,43 @@ RSpec.describe "XAdES interop vectors (#58)" do
       end
     end
 
+    # #168: HU_POL-3 is a DSS-produced XAdES-LTA. Its CertificateValues
+    # complete the chain (signer, GOV CA, root) and its two OCSP responses,
+    # from delegated responders, cover the signer and the GOV CA. The root
+    # it embeds is the test-only anchor here; the real one is not vendored.
+    describe "XAdES-LT (#168)" do
+      let(:xml) { XadesInteropVectors::ROOT.join("signxml/Signature-X-HU_POL-3.xml").binread }
+      let(:root) do
+        values = Nokogiri::XML(xml).xpath("//*[local-name()='UnsignedSignatureProperties']/*[local-name()='CertificateValues']/*")
+        values.map { |node| OpenSSL::X509::Certificate.new(node.text.gsub(/\s/, "").unpack1("m")) }
+              .find { |certificate| certificate.subject.to_der == certificate.issuer.to_der }
+      end
+
+      def verify_lt(**options)
+        HankoXml::Xades::Verifier.new(store: OpenSSL::X509::Store.new.tap { |store| store.add_cert(root) },
+                                      policy: HankoXml::Policy.interop, signature: :first,
+                                      tsa_store: XadesInteropVectors.embedded_tsa_store(xml), **options).verify(xml)
+      end
+
+      it "validates the signer's chain at its timestamp's time with the embedded OCSP responses" do
+        result = verify_lt(revocation_grace: 60)
+        validation = result.long_term_validation
+
+        expect(result.errors).to be_empty
+        expect(validation.time).to eq(result.timestamp_time)
+        expect(validation.certificate_chain.size).to eq(3)
+        expect(validation.revocation.map { |status| [status.source, status.status] }).to eq([%i[ocsp good]] * 2)
+      end
+
+      it "is strict by default: the GOV CA's OCSP response predates the timestamp by a second" do
+        result = verify_lt
+
+        expect(result.valid?).to be false
+        expect(result.errors.last.message).to match(/no embedded revocation data .* for chain certificate 1/)
+        expect(verify_lt(revocation_grace: 1).errors).to be_empty
+      end
+    end
+
     it "fails closed when the signature has a timestamp and no TSA trust was given" do
       result = XadesInteropVectors.verify("signxml/Signature-X-HU_POL-3.xml", timestamps: :verify)
 
