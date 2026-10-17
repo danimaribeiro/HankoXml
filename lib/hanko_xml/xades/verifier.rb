@@ -14,10 +14,14 @@ module HankoXml
       # @return [Array<SignatureTimeStamp>, nil] The verified SignatureTimeStamps (#163), in document order;
       #   empty when there are none, nil unless #valid? or with timestamps: :ignore.
       attr_reader :signature_timestamps
+      # @return [LongTermValidation, nil] The XAdES-LT validation (#168): only when #valid? and the signature
+      #   carries CertificateValues or RevocationValues that were checked.
+      attr_reader :long_term_validation
 
-      def initialize(signed_properties: nil, signature_timestamps: nil, **attributes)
+      def initialize(signed_properties: nil, signature_timestamps: nil, long_term_validation: nil, **attributes)
         @signed_properties = signed_properties
         @signature_timestamps = signature_timestamps&.freeze
+        @long_term_validation = long_term_validation
         super(**attributes)
       end
 
@@ -45,13 +49,22 @@ module HankoXml
     # UnsignedSignatureProperties must verify against the TSA trust
     # (tsa_store: / tsa_certificates:), kept apart from the signer's. A
     # timestamp that does not verify fails the signature (fail closed).
-    # Other unsigned properties (XAdES-LT/LTA) are not read yet: #168, #169.
     # Xades::Locator finds QualifyingProperties and its unsigned containers.
+    #
+    # XAdES-LT (#168): when the signature embeds CertificateValues or
+    # RevocationValues, the signing certificate is validated at the time of
+    # the earliest verified SignatureTimeStamp: XML-DSig trust (chain,
+    # validity dates) at that time, then revocation evidence for every
+    # certificate below the trust anchor from the embedded CRLs and OCSP
+    # responses (Xades::LongTermCheck). A certificate that has expired since
+    # still verifies; embedded data that does not hold fails (fail closed).
+    # ArchiveTimeStamp (LTA) is not read yet: #169.
     #
     # Needs certificate-based trust (certificate:, certificates:, store:), and
     # Nokogiri: the signed properties are read from the DOM (#102).
     class Verifier < HankoXml::Verifier # rubocop:disable Metrics/ClassLength
       TIMESTAMP_MODES = %i[verify require ignore].freeze
+      LONG_TERM_MODES = %i[verify require ignore].freeze
 
       # @param signature_policy [SignaturePolicy, Hash, :implied, nil] When given, the signed
       #   SignaturePolicyIdentifier must be exactly this.
@@ -60,8 +73,14 @@ module HankoXml
       # @param tsa_store [OpenSSL::X509::Store, nil] Trust for the TSAs, not the signer.
       # @param tsa_certificates [Array<OpenSSL::X509::Certificate, String, Key>, nil] Trusted TSA roots or
       #   certificates, instead of tsa_store:.
+      # @param long_term [Symbol, nil] :verify checks embedded XAdES-LT values when present; :require also
+      #   fails a signature without them; :ignore does not read them. nil (default) is :verify, or :ignore with
+      #   timestamps: :ignore, since the validation time comes from a SignatureTimeStamp.
+      # @param revocation_grace [Numeric] Seconds an embedded CRL or OCSP response may predate the validation
+      #   time and still count as fresh. 0 (default): it must be issued at or after it.
       # All other keywords are {HankoXml::Verifier}'s.
-      def initialize(signature_policy: nil, timestamps: :verify, tsa_store: nil, tsa_certificates: nil, **options)
+      def initialize(signature_policy: nil, timestamps: :verify, tsa_store: nil, tsa_certificates: nil,
+                     long_term: nil, revocation_grace: 0, **options)
         Dom.require!("HankoXml::Xades::Verifier")
         if options[:key] || options[:keys]
           raise HankoXml::ConfigurationError,
@@ -72,6 +91,10 @@ module HankoXml
         @expected_signature_policy = coerce_signature_policy(signature_policy)
         @timestamps = coerce_timestamps(timestamps)
         @tsa_store = coerce_tsa_store(tsa_store, tsa_certificates)
+        @long_term = coerce_long_term(long_term)
+        @revocation_grace = coerce_revocation_grace(revocation_grace)
+        # Kept to verify the XML-DSig signature again at the validation time.
+        @options = options.freeze
         super(**options)
       end
 
@@ -95,8 +118,76 @@ module HankoXml
 
       # Every signature verified goes through here, with the bytes and the
       # index the native layer used, which the timestamp checks reuse.
+      #
+      # With XAdES-LT values, the SignatureTimeStamps are verified first, as
+      # their earliest time is when the signing certificate is validated
+      # (#168): the XML-DSig signature is then verified at that time.
       def verify_single(input, index)
-        xades(super, input.bytes, index)
+        values, timestamps = long_term_plan(input, index)
+        return xades(super, input.bytes, index) unless values
+
+        time = timestamps.map(&:time).min
+        verification = xades(at_time(time, values, input, index), input.bytes, index, timestamps: timestamps)
+        return verification unless verification.valid?
+
+        validation = LongTermCheck.new(grace: @revocation_grace, clock_skew: @policy.clock_skew)
+                                  .verify(time: time, chain: long_term_chain(verification), values: values)
+        rebuild(verification, signed_properties: verification.signed_properties,
+                              signature_timestamps: verification.signature_timestamps,
+                              long_term_validation: validation)
+      rescue HankoXml::XadesError, HankoXml::PolicyError => e
+        rebuild(verification || super, error: e)
+      end
+
+      # The embedded XAdES-LT values and the verified SignatureTimeStamps, or
+      # nil when there are no values to check.
+      def long_term_plan(input, index)
+        return nil if @long_term == :ignore
+
+        signature = signature_nodes(input)[index]
+        values = long_term_values(signature)
+        unless values
+          if @long_term == :require
+            fail!("long_term: :require, but the signature has no <xades:CertificateValues> or " \
+                  "<xades:RevocationValues>")
+          end
+          return nil
+        end
+
+        timestamps = signature_timestamps(signature, input.bytes, index)
+        if timestamps.empty?
+          fail!("XAdES-LT values need a verified <xades:SignatureTimeStamp> for their validation time")
+        end
+
+        [values, timestamps]
+      end
+
+      # A signature whose QualifyingProperties or unsigned containers cannot
+      # be located has no values here: the signed-properties and timestamp
+      # checks fail it on the same structure, with their own message.
+      def long_term_values(signature)
+        qualifying, ns = Locator.qualifying_properties(signature)
+        properties = Locator.unsigned_signature_properties(qualifying, ns)
+      rescue HankoXml::XadesError
+        nil
+      else
+        LongTermValues.read(properties, ns)
+      end
+
+      # The XML-DSig verification at +time+ (unless the caller fixed
+      # verification_time:), with the embedded CertificateValues as untrusted
+      # intermediates for a store: chain.
+      def at_time(time, values, input, index)
+        verifier = AtTime.new(intermediates: values.certificates, signature_policy: @expected_signature_policy,
+                              timestamps: :ignore, long_term: :ignore,
+                              **@options.merge(verification_time: verification_time || time))
+        HankoXml::Verifier.instance_method(:verify_single).bind_call(verifier, input, index)
+      end
+
+      # store: gives the chain OpenSSL validated; certificate: and
+      # certificates: pin the signing certificate itself as the anchor.
+      def long_term_chain(verification)
+        verification.certificate_chain || [verification.certificate]
       end
 
       # A result that never reached verify_single (no signature found).
@@ -104,17 +195,18 @@ module HankoXml
         verification.is_a?(Verification) ? verification : rebuild(verification)
       end
 
-      def xades(verification, xml_bytes, index)
+      def xades(verification, xml_bytes, index, timestamps: nil)
         return rebuild(verification) unless verification.valid?
 
         properties = signed_properties(verification)
-        timestamps = signature_timestamps(verification, xml_bytes, index)
+        timestamps ||= signature_timestamps(verification.signature_node, xml_bytes, index)
         rebuild(verification, signed_properties: properties, signature_timestamps: timestamps)
       rescue HankoXml::XadesError, HankoXml::PolicyError => e
         rebuild(verification, error: e)
       end
 
-      def rebuild(verification, signed_properties: nil, signature_timestamps: nil, error: nil)
+      def rebuild(verification, signed_properties: nil, signature_timestamps: nil, long_term_validation: nil,
+                  error: nil)
         Verification.new(
           valid: verification.valid? && error.nil?,
           errors: [*verification.errors, *error],
@@ -132,17 +224,18 @@ module HankoXml
           reference_valid: verification.reference_valid,
           signature_element_index: verification.signature_element_index,
           signed_properties: signed_properties,
-          signature_timestamps: signature_timestamps
+          signature_timestamps: signature_timestamps,
+          long_term_validation: long_term_validation
         )
       end
 
       # Each SignatureTimeStamp of this signature, verified (#163). Read only
       # along the path from its own QualifyingProperties, never by a search
       # that a wrapped element elsewhere could satisfy.
-      def signature_timestamps(verification, xml_bytes, index)
+      def signature_timestamps(signature, xml_bytes, index)
         return nil if @timestamps == :ignore
 
-        nodes, path, xades_ns = signature_timestamp_nodes(verification.signature_node)
+        nodes, path, xades_ns = signature_timestamp_nodes(signature)
         if nodes.empty?
           fail!("timestamps: :require, but the signature has no <xades:SignatureTimeStamp>") if @timestamps == :require
           return []
@@ -173,6 +266,29 @@ module HankoXml
         end
 
         [timestamps.to_a, Locator.unsigned_path(signature, qualifying, ns["xades"]), ns["xades"]]
+      end
+
+      def coerce_long_term(value)
+        value = @timestamps == :ignore ? :ignore : :verify if value.nil?
+        unless LONG_TERM_MODES.include?(value)
+          raise HankoXml::ConfigurationError, "long_term: must be one of #{LONG_TERM_MODES.inspect}"
+        end
+        if value != :ignore && @timestamps == :ignore
+          raise HankoXml::ConfigurationError,
+                "long_term: #{value.inspect} needs SignatureTimeStamps for its validation time; " \
+                "it cannot go with timestamps: :ignore"
+        end
+        if value == :require && @tsa_store.nil?
+          raise HankoXml::ConfigurationError, "long_term: :require needs tsa_store: or tsa_certificates:"
+        end
+
+        value
+      end
+
+      def coerce_revocation_grace(value)
+        return value if value.is_a?(Numeric) && value >= 0
+
+        raise HankoXml::ConfigurationError, "revocation_grace: must be a number of seconds, 0 or more"
       end
 
       def coerce_timestamps(value)
@@ -400,6 +516,24 @@ module HankoXml
 
       def fail!(message)
         raise HankoXml::XadesError, message
+      end
+
+      # The XML-DSig verification of an XAdES-LT signature (#168): embedded
+      # certificates may complete the store: chain, never be its anchor or
+      # its signing certificate.
+      #
+      # @api private
+      class AtTime < Verifier
+        def initialize(intermediates:, **options)
+          @intermediates = intermediates
+          super(**options)
+        end
+
+        private
+
+        def chain_intermediates
+          @intermediates
+        end
       end
     end
   end

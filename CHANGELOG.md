@@ -33,6 +33,15 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   `Xades::ValidationData` holds caller-supplied certificates, CRLs and OCSP
   responses, type-checked only; the library never fetches them, and nothing
   embedded is trusted yet (#168).
+- **#168:** XAdES-LT verification. When a signature embeds `CertificateValues`
+  or `RevocationValues`, `Xades::Verifier` validates the signing certificate
+  at the time of its earliest verified SignatureTimeStamp: XML-DSig trust at
+  that time (an expired certificate still verifies; embedded certificates may
+  complete a `store:` chain), then embedded OCSP responses or CRLs for every
+  certificate below the anchor, verified by OpenSSL against the same anchor
+  and issued no earlier than that time (`revocation_grace:` widens it).
+  `long_term: :verify | :require | :ignore`; the result is
+  `Xades::Verification#long_term_validation`. Fail closed (S-23).
 
 ### Changed
 
@@ -40,6 +49,11 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
   A signature that carries one now fails verification unless the timestamp
   verifies, which needs `tsa_store:` or `tsa_certificates:`. Pass
   `timestamps: :ignore` to keep the XAdES-B-only behavior.
+- **#168:** `Xades::Verifier` no longer ignores embedded `CertificateValues` /
+  `RevocationValues`. A signature that carries them is validated at its
+  timestamp time and fails when that evidence does not hold, which can also
+  make a signature fail that verified before (and one whose certificate has
+  expired pass). Pass `long_term: :ignore` to keep the XAdES-T behavior.
 
 ### Fixed
 
