@@ -1372,6 +1372,158 @@ pub fn validate_signature_schema(
     result
 }
 
+// ---------------------------------------------------------------------------
+// Element canonicalization (#161)
+// ---------------------------------------------------------------------------
+
+/// One step from an element to one of its child elements: namespace href,
+/// local name, and which of the children with that name. `None` means there
+/// must be exactly one.
+pub type ChildStep = (String, String, Option<usize>);
+
+/// The only transforms a [`TransformCtx`] reads: the six canonicalization
+/// methods `restrict_transforms` also allows.
+const C14N_TRANSFORMS: &[unsafe extern "C" fn() -> sys::xmlSecTransformId] = &[
+    sys::xmlSecTransformInclC14NGetKlass,
+    sys::xmlSecTransformInclC14NWithCommentsGetKlass,
+    sys::xmlSecTransformInclC14N11GetKlass,
+    sys::xmlSecTransformInclC14N11WithCommentsGetKlass,
+    sys::xmlSecTransformExclC14NGetKlass,
+    sys::xmlSecTransformExclC14NWithCommentsGetKlass,
+];
+
+/// An owned xmlsec transforms chain that accepts only the C14N transforms.
+struct TransformCtx(sys::xmlSecTransformCtxPtr);
+
+impl TransformCtx {
+    fn c14n_only() -> Result<Self, &'static str> {
+        // SAFETY: creates and initializes a context we own; freed on drop.
+        let ptr = unsafe { sys::xmlSecTransformCtxCreate() };
+        if ptr.is_null() {
+            return Err("failed to create xmlsec transform context");
+        }
+        let ctx = Self(ptr);
+        for get_klass in C14N_TRANSFORMS {
+            // SAFETY: ctx.0 is live and its enabledTransforms list was
+            // initialized by xmlSecTransformCtxCreate. A non-empty list makes
+            // xmlSecTransformNodeRead refuse any transform not in it, which is
+            // how xmlSecDSigCtxEnableReferenceTransform restricts a DSig context.
+            let rc = unsafe {
+                sys::xmlSecPtrListAdd(&mut (*ctx.0).enabledTransforms, get_klass() as *mut c_void)
+            };
+            if rc < 0 {
+                return Err("failed to enable a canonicalization transform");
+            }
+        }
+        Ok(ctx)
+    }
+}
+
+impl Drop for TransformCtx {
+    fn drop(&mut self) {
+        // SAFETY: we're the exclusive owner of this context.
+        unsafe { sys::xmlSecTransformCtxDestroy(self.0) }
+    }
+}
+
+/// An xmlsec node set, destroyed on drop. xmlSecTransformCtxXmlExecute
+/// leaves the set to its caller.
+struct NodeSet(sys::xmlSecNodeSetPtr);
+
+impl Drop for NodeSet {
+    fn drop(&mut self) {
+        // SAFETY: we're the exclusive owner of this node set.
+        unsafe { sys::xmlSecNodeSetDestroy(self.0) }
+    }
+}
+
+/// Follows `path` from `start`, one child element per step. A step with no
+/// index fails unless exactly one child matches, so an ambiguous document is
+/// refused instead of resolved to its first match.
+fn follow_path(start: sys::xmlNodePtr, path: &[ChildStep]) -> Result<sys::xmlNodePtr, DsigError> {
+    let mut node = start;
+    for (ns_href, name, index) in path {
+        // SAFETY: node is a valid element of the document being walked.
+        let matches = unsafe { find_children(node, name, ns_href) };
+        node = match index {
+            None if matches.len() == 1 => matches[0],
+            None => return Err(DsigError::native("a canonicalize path step does not match exactly one element")),
+            Some(i) => *matches
+                .get(*i)
+                .ok_or(DsigError::native("a canonicalize path step index is out of range"))?,
+        };
+    }
+    Ok(node)
+}
+
+/// Canonicalizes one element of the nth `<ds:Signature>` with xmlsec's own
+/// C14N transforms (#161): the bytes a digest over that element covers.
+///
+/// `target` and `method` are paths from the `<ds:Signature>`. `method` must
+/// lead to a `CanonicalizationMethod`-shaped element: xmlsec reads its
+/// `Algorithm` and, for exclusive c14n, its `InclusiveNamespaces`, exactly as
+/// it reads a `<SignedInfo>`'s. Only the six c14n algorithms are accepted.
+/// Comments in the element are kept or dropped as the algorithm says.
+pub fn canonicalize_element(
+    xml: &[u8],
+    signature_index: usize,
+    target: &[ChildStep],
+    method: &[ChildStep],
+) -> Result<Vec<u8>, DsigError> {
+    errors::clear_errors();
+
+    let doc = OwnedXmlDoc::parse(xml).map_err(DsigError::parse)?;
+    let root = doc
+        .root_element()
+        .ok_or(DsigError::parse("XML document has no root element"))?;
+    let sig_node = doc
+        .find_nth_signature(root, signature_index)
+        .ok_or(DsigError::native("signature index out of range"))?;
+    let target_node = follow_path(sig_node, target)?;
+    let method_node = follow_path(sig_node, method)?;
+
+    errors::clear_errors();
+    let ctx = TransformCtx::c14n_only().map_err(DsigError::native)?;
+    // SAFETY: ctx.0 is a fresh context; method_node is valid in doc, which
+    // outlives ctx. The transform read is appended to ctx and freed with it.
+    let transform = unsafe {
+        sys::xmlSecTransformCtxNodeRead(ctx.0, method_node, sys::xmlSecTransformUsageC14NMethod as _)
+    };
+    if transform.is_null() {
+        return Err(DsigError::native("the canonicalization method is not a supported c14n algorithm"));
+    }
+
+    // SAFETY: doc.0 and target_node are valid; withComments = 1 puts comments
+    // in the set so the transform decides whether they are rendered.
+    let nodes = unsafe { sys::xmlSecNodeSetGetChildren(doc.0, target_node, 1, 0) };
+    if nodes.is_null() {
+        return Err(DsigError::native("failed to select the element to canonicalize"));
+    }
+    let nodes = NodeSet(nodes);
+
+    // SAFETY: ctx.0 has its one c14n transform and no URI; nodes belongs to
+    // doc. The result buffer is owned by ctx.
+    let rc = unsafe { sys::xmlSecTransformCtxXmlExecute(ctx.0, nodes.0) };
+    // SAFETY: ctx.0 is live; result is set by a successful execute.
+    let result = unsafe { (*ctx.0).result };
+    if rc < 0 || result.is_null() {
+        return Err(DsigError::native("canonicalization failed"));
+    }
+
+    // SAFETY: result is a live xmlSecBuffer owned by ctx; its data is size
+    // bytes long. The bytes are copied out before ctx is dropped.
+    let (data, size) = unsafe { (sys::xmlSecBufferGetData(result), sys::xmlSecBufferGetSize(result)) };
+    let size = usize::try_from(size).map_err(|_| DsigError::native("canonicalization failed"))?;
+    if size == 0 {
+        return Ok(Vec::new());
+    }
+    if data.is_null() {
+        return Err(DsigError::native("canonicalization failed"));
+    }
+    // SAFETY: see above.
+    Ok(unsafe { std::slice::from_raw_parts(data as *const u8, size) }.to_vec())
+}
+
 /// Signs the document's nth `<ds:Signature>` template.
 ///
 /// The XML must already contain a `<ds:Signature>` skeleton with empty

@@ -1,4 +1,4 @@
-//! Magnus glue: 5 functions on `HankoXml::Native`, matching the §7 contract.
+//! Magnus glue: the functions on `HankoXml::Native`, matching the §7 contract.
 //!
 //! Every argument from Ruby is copied into a Rust-owned `Vec<u8>` or `String`
 //! **before** any native call, so there is no `unsafe` in this file — no
@@ -120,6 +120,18 @@ fn rarray_to_strings(ruby: &Ruby, arr: RArray) -> Result<Vec<String>, Error> {
             String::from_utf8(rstring_to_bytes(s))
                 .map_err(|_| native_error(ruby, "id_attribute is not valid UTF-8".into()))?,
         );
+    }
+    Ok(result)
+}
+
+/// Extracts an RArray of `[ns_href, local_name, index]` steps (`index` nil
+/// or an Integer) for [`dsig::canonicalize_element`].
+fn rarray_to_steps(ruby: &Ruby, arr: RArray) -> Result<Vec<dsig::ChildStep>, Error> {
+    let mut result = Vec::new();
+    for item in arr.into_iter() {
+        let step: (String, String, Option<usize>) = TryConvert::try_convert(item)
+            .map_err(|_| native_error(ruby, "path step is not a [ns_href, name, index] triple".into()))?;
+        result.push(step);
     }
     Ok(result)
 }
@@ -308,6 +320,28 @@ fn native_validate_schema(
     string_slice_to_rarray(ruby, &messages)
 }
 
+/// `HankoXml::Native.canonicalize(xml, signature_index, target_path, method_path)`
+///
+/// Returns the element at `target_path` (from the nth `<ds:Signature>`)
+/// canonicalized by xmlsec with the `CanonicalizationMethod` at
+/// `method_path`, as a binary String (#161).
+fn native_canonicalize(
+    ruby: &Ruby,
+    xml: RString,
+    signature_index: usize,
+    target_path: RArray,
+    method_path: RArray,
+) -> Result<RString, Error> {
+    ensure_initialized().map_err(|msg| native_error(ruby, msg.into()))?;
+
+    let xml_bytes = rstring_to_bytes(xml);
+    let target = rarray_to_steps(ruby, target_path)?;
+    let method = rarray_to_steps(ruby, method_path)?;
+    let bytes = dsig::canonicalize_element(&xml_bytes, signature_index, &target, &method)
+        .map_err(|err| dsig_error(ruby, err))?;
+    Ok(ruby.str_from_slice(&bytes))
+}
+
 /// `HankoXml::Native.inspect_sig(xml, signature_index)`
 ///
 /// Returns metadata about the nth `<ds:Signature>` without performing
@@ -485,6 +519,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     native.define_singleton_method("inspect_sig", function!(native_inspect, 2))?;
     native.define_singleton_method("scan", function!(native_scan, 3))?;
     native.define_singleton_method("validate_schema", function!(native_validate_schema, 3))?;
+    native.define_singleton_method("canonicalize", function!(native_canonicalize, 4))?;
 
     Ok(())
 }
