@@ -1082,6 +1082,9 @@ HankoXml::Xades::Signer.new(
   claimed_roles:      [],               # SignerRoleV2/ClaimedRoles
   data_object_format: nil,              # Xades::DataObjectFormat / Hash: mime_type:, description:, encoding:
   signature_id:       nil,              # generated when nil; QualifyingProperties targets it
+  timestamper:        nil,              # XAdES-T: ->(request_der) { response_der }, #162
+  timestamp_digest_method:           nil,        # imprint digest; nil = digest_method:
+  timestamp_canonicalization_method: :exc_c14n,  # how SignatureValue is canonicalized
 )
 ```
 
@@ -1097,8 +1100,34 @@ each of the Signer's own references gets an `Id` (if it had none), which its
 
 It always builds a new `<Signature>` (`template:` other than `:build` raises
 `ConfigurationError`). The output conforms to the ETSI XAdES 1.3.2 schema and
-verifies with a plain `Verifier` under `Policy.strict`. Timestamps and
-validation data (XAdES-T/LT/LTA) are #81 and #82.
+verifies with a plain `Verifier` under `Policy.strict`. Validation data
+(XAdES-LT/LTA) is #82.
+
+**XAdES-T (#162).** With `timestamper:`, the template's QualifyingProperties also
+gets `<xades:UnsignedProperties><xades:UnsignedSignatureProperties><xades:SignatureTimeStamp Id="#sig-sigts">`
+with a `<ds:CanonicalizationMethod>` (from `timestamp_canonicalization_method:`)
+and an empty `<xades:EncapsulatedTimeStamp>`. No Reference covers
+UnsignedProperties. After xmlsec signs:
+
+1. `Native.canonicalize` (§7) canonicalizes the new `<ds:SignatureValue>` with
+   that CanonicalizationMethod, as xmlsec reads it.
+2. An `OpenSSL::Timestamp::Request` is built over its digest
+   (`timestamp_digest_method:`, else `digest_method:`), with a random nonce and
+   `certReq` set, and its DER is passed to `timestamper.call`. The library never
+   opens a connection; the callable owns the TSA exchange, as
+   `referenced_documents:` does for external references (#74).
+3. The returned TimeStampResp must parse, have status granted (or granted with
+   modifications), and its token must carry the request's imprint, digest
+   algorithm and nonce. Otherwise `SigningError` is raised before any signed value
+   is written back. The TSA's own signature is not checked when signing, because
+   the TSA trust anchors belong to verification (#163).
+4. The token (the TimeStampToken `ContentInfo`, not the whole response) is
+   written Base64 into `EncapsulatedTimeStamp`.
+
+Both imprint algorithms must be registered and allowed by the Signer's
+`policy:`, so a SHA-1 imprint needs `Policy.legacy_sha1` like any other SHA-1
+use. A bad `timestamper:` or algorithm is a `ConfigurationError`/`PolicyError`
+at construction.
 
 #### `HankoXml::Xades::Verifier`
 

@@ -23,11 +23,18 @@ module HankoXml
       def initialize: (?mime_type: String?, ?description: String?, ?encoding: String?) -> void
     end
 
+    # Takes a DER TimeStampReq, returns the TSA's DER TimeStampResp (#162).
+    interface _Timestamper
+      def call: (String request_der) -> String
+    end
+
     class Signer < HankoXml::Signer
       attr_reader signing_time: Time?
       attr_reader signature_policy: (SignaturePolicy | :implied)?
       attr_reader claimed_roles: Array[String]
       attr_reader data_object_format: DataObjectFormat?
+      attr_reader timestamper: _Timestamper?
+      attr_reader timestamp_canonicalization_method: Symbol
 
       def initialize: (
         ?certificate: (Key | OpenSSL::X509::Certificate | String | _ToPath)?,
@@ -37,10 +44,15 @@ module HankoXml
         ?data_object_format: (DataObjectFormat | Hash[Symbol, untyped])?,
         ?signature_id: String?,
         ?template: Symbol,
+        ?timestamper: _Timestamper?,
+        ?timestamp_digest_method: Symbol?,
+        ?timestamp_canonicalization_method: Symbol,
         **untyped
       ) ?{ (self) -> void } -> void
 
       def signed_properties_id: () -> String
+      def signature_timestamp_id: () -> String
+      def timestamp_digest_method: () -> Symbol
     end
   end
 end

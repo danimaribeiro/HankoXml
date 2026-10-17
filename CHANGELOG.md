@@ -8,6 +8,17 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ## [Unreleased]
 
+### Added
+
+- **#162:** XAdES-T signing. `Xades::Signer.new(timestamper: ->(request_der) { response_der })`
+  adds a `<xades:SignatureTimeStamp>`: an RFC 3161 token over the
+  `<ds:SignatureValue>`, canonicalized by xmlsec (#161). The callable does the
+  TSA exchange, so the library never opens a connection. The response must
+  grant the timestamp and carry the request's imprint and nonce, otherwise
+  signing raises `SigningError`. `timestamp_digest_method:` (default: the
+  Signer's `digest_method:`) and `timestamp_canonicalization_method:` (default
+  `:exc_c14n`) go through the Signer's policy. Verifying the timestamp is #163.
+
 ### Fixed
 
 - **#158:** Without Nokogiri, `Signer#sign!` and `Signer#template` given a String
