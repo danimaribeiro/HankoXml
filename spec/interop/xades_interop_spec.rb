@@ -65,15 +65,17 @@ module XadesInteropVectors
                                   signature: :first, **{ timestamps: :ignore }.merge(options)).verify(xml)
   end
 
-  # A TSA store trusting the certificates the token itself carries, as the
-  # signer's certificate is trusted above. Test-only: these TSAs' roots are
-  # not vendored, and their certificates expired long ago.
+  # A TSA store trusting the certificates the tokens themselves carry (the
+  # SignatureTimeStamp's and the ArchiveTimeStamp's TSAs), as the signer's
+  # certificate is trusted above. Test-only: these TSAs' roots are not
+  # vendored, and their certificates expired long ago.
   def embedded_tsa_store(xml)
-    node = Nokogiri::XML(xml).at_xpath("//*[local-name()='EncapsulatedTimeStamp']")
-    token = OpenSSL::PKCS7.new(node.text.gsub(/\s/, "").unpack1("m"))
+    certificates = Nokogiri::XML(xml).xpath("//*[local-name()='EncapsulatedTimeStamp']").flat_map do |node|
+      OpenSSL::PKCS7.new(node.text.gsub(/\s/, "").unpack1("m")).certificates
+    end
     OpenSSL::X509::Store.new.tap do |store|
       store.flags = OpenSSL::X509::V_FLAG_PARTIAL_CHAIN | OpenSSL::X509::V_FLAG_NO_CHECK_TIME
-      token.certificates.each { |certificate| store.add_cert(certificate) }
+      certificates.uniq(&:to_der).each { |certificate| store.add_cert(certificate) }
     end
   end
 
@@ -136,6 +138,38 @@ RSpec.describe "XAdES interop vectors (#58)" do
       expect(result.errors).to be_empty
       expect(result.signature_timestamps.size).to eq(1)
       expect(result.timestamp_time).to be_a(Time).and(be > result.signed_properties.signing_time - 60)
+    end
+
+    # #169: HU_POL-3's ArchiveTimeStamp, from another TSA, covers its References'
+    # data, SignedInfo, SignatureValue, KeyInfo, every unsigned property before
+    # it (TimeStampValidationData included) and its non-QualifyingProperties
+    # Object, all exc-c14n. Its imprint matching proves the EN 319 132-1 input.
+    it "verifies HU_POL-3's ArchiveTimeStamp over the EN 319 132-1 input" do
+      path = "signxml/Signature-X-HU_POL-3.xml"
+      store = XadesInteropVectors.embedded_tsa_store(XadesInteropVectors::ROOT.join(path).binread)
+      result = XadesInteropVectors.verify(path, timestamps: :verify, tsa_store: store)
+      archive = result.archive_timestamps
+
+      expect(result.errors).to be_empty
+      expect(archive.size).to eq(1)
+      expect(archive.first.time).to be > result.timestamp_time
+      expect(archive.first.digest_method).to eq(HankoXml::Algorithms.uri_for(:digest, :sha256))
+    end
+
+    it "fails closed when HU_POL-3's archived data changes" do
+      path = "signxml/Signature-X-HU_POL-3.xml"
+      xml = XadesInteropVectors::ROOT.join(path).binread
+      doc = Nokogiri::XML(xml)
+      doc.at_xpath("//*[local-name()='UnsignedSignatureProperties']/*[local-name()='RevocationValues']")
+         .add_child(doc.create_element("OtherValues"))
+      result = HankoXml::Xades::Verifier.new(
+        certificate: XadesInteropVectors.embedded_certificate(xml), policy: HankoXml::Policy.interop, signature: :first,
+        verification_time: Time.utc(2014, 11, 6), long_term: :ignore,
+        tsa_store: XadesInteropVectors.embedded_tsa_store(xml)
+      ).verify(HankoXml.serialize(doc))
+
+      expect(result.valid?).to be false
+      expect(result.errors.last.message).to match(/ArchiveTimeStamp does not verify/)
     end
 
     it "fails closed on CZ_SEF's tokens, whose certificates OpenSSL's PKCS7 parser cannot read" do

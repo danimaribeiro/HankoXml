@@ -1192,6 +1192,39 @@ augmenter.augment(xml, signature: nil)          # => SignedDocument (a copy)
 - It does not verify the signature it extends, and embedding vouches for
   nothing: verify first.
 
+**XAdES-LTA (#169).** `archive_timestamp: true` (with `timestamper:`) appends a
+`<xades141:ArchiveTimeStamp>` (namespace `http://uri.etsi.org/01903/v1.4.1#`,
+`Xades::NS141`) after everything else, Id `<signature Id>-ats` (then `-ats-2`,
+…). Run it again on the result to renew it: each new one covers the earlier
+ones. `timestamper:` then adds a SignatureTimeStamp only when the signature
+has none, and the signature must carry `CertificateValues` or
+`RevocationValues` (or `validation_data:` adds them in the same call),
+otherwise `ConfigurationError`.
+
+```ruby
+HankoXml::Xades::Augmenter.new(timestamper: tsa, archive_timestamp: true,
+  archive_canonicalization_method: :c14n)   # the ArchiveTimeStamp's CanonicalizationMethod
+```
+
+Its token's imprint is over the EN 319 132-1 §5.5.2.2 input, concatenated in
+this order:
+
+1. each SignedInfo Reference's data, exactly as xmlsec digested it
+   (`Native.reference_data`, §7);
+2. `ds:SignedInfo`, `ds:SignatureValue` and `ds:KeyInfo` (when present);
+3. every child of UnsignedSignatureProperties before this ArchiveTimeStamp
+   (`TimeStampValidationData` and earlier ArchiveTimeStamps included);
+4. every `ds:Object` except the one holding QualifyingProperties;
+
+2 to 4 each canonicalized by xmlsec (`Native.canonicalize`) with the
+ArchiveTimeStamp's CanonicalizationMethod. A Reference that leaves a node set
+(its transforms do not end in a c14n or base64, as `Xades::Signer`'s
+enveloped one) was canonicalized by xmlsec with inclusive c14n, so
+`archive_canonicalization_method:` other than `:c14n` is refused for such a
+signature. To read the References' data, xmlsec verifies the signature with a
+certificate of its own KeyInfo; one that does not verify is refused
+(`XadesError`). That vouches for nothing: verify the signature first.
+
 #### `HankoXml::Xades::Verifier`
 
 A `Verifier` (every keyword, except that trust must be `certificate:`,
@@ -1321,6 +1354,23 @@ parse as their type fail too.
 `revocation` holds one frozen `Xades::RevocationStatus(certificate:, source:
 :ocsp | :crl, issued_at:, status: :good | :revoked_later)` per certificate below
 the anchor. It is `nil` without LT values, with `:ignore`, or unless valid.
+
+**XAdES-LTA (#169).** Unless `timestamps: :ignore`, every
+`xades141:ArchiveTimeStamp` in this signature's UnsignedSignatureProperties
+(same path, 1.3.2 QualifyingProperties only) is verified like a
+SignatureTimeStamp: its children, its CanonicalizationMethod and imprint
+digest through the policy, and `OpenSSL::Timestamp::Response#verify` against
+the TSA trust, over the input the Augmenter section lists (recomputed by
+xmlsec from the verified signature). Any failure, or an ArchiveTimeStamp with
+no TSA trust configured, fails the Verification (`XadesError`). Unsigned
+properties after an ArchiveTimeStamp are outside it, as a renewal needs.
+`Xades::Verification#archive_timestamps` lists them as frozen
+`Xades::SignatureTimeStamp`s, in document order: empty when there are none,
+`nil` unless valid or with `:ignore`.
+
+An ArchiveTimeStamp is not yet used to validate anything at an earlier time:
+the TSAs' chains are checked at the current time, and the signing
+certificate at the SignatureTimeStamp's time (#168).
 
 SignXML 5.1.0's `XAdESSigner` output verifies under `Policy.strict` (#59): it
 carries a third Reference over `<KeyInfo>`, `SigningCertificateV2` without
@@ -1793,10 +1843,20 @@ HankoXml::Native.canonicalize(xml, signature_index, target_path, method_path)
 #   as the algorithm says.
 # => String (binary) — the canonical bytes
 # raises ParseError / NativeError, with #xmlsec_errors populated
+
+HankoXml::Native.reference_data(xml, trusted_pems, id_attributes, signature_index,
+                                referenced_documents, allow_xpath_filter2)
+#   Verifies the nth <ds:Signature> as verify does (same pinning, same
+#   restrictions) with XMLSEC_DSIG_FLAGS_STORE_SIGNEDINFO_REFERENCES, and
+#   returns what xmlsec digested for each SignedInfo Reference: the
+#   XAdES-LTA ArchiveTimeStamp input starts with it (#169).
+# => Array<String (binary) | nil>, SignedInfo order; nil = not processed
+# raises NativeError when the signature does not verify
 ```
 
-That is nine functions (`check_version`, `abi_compatible?`, `versions`,
-`sign`, `inspect_sig`, `verify`, `scan`, `validate_schema`, `canonicalize`).
+That is ten functions (`check_version`, `abi_compatible?`, `versions`,
+`sign`, `inspect_sig`, `verify`, `scan`, `validate_schema`, `canonicalize`,
+`reference_data`).
 Everything else in this document is Ruby.
 
 ### 7.1 Design notes for the native layer
@@ -2236,10 +2296,12 @@ Listed so that "not implemented" is a decision rather than an omission:
 
 - **XML Encryption** — the one feature `nokogiri-xmlsec` has and we do not.
   Reasoning and future shape in §11.3.
-- **XAdES-LTA** (archive timestamps, #169), and validating a TSA's chain at a
-  past time. XAdES-B, -T and -LT are §5.9.1: signing (#57, #162), verifying the
-  signed properties (#58) and the SignatureTimeStamp (#163), embedding (#167)
-  and validating (#168) LT data, and SignXML `XAdESSigner` interop (#59).
+- **Past-signature validation with archive timestamps**: using an
+  ArchiveTimeStamp's time to validate TSA chains and algorithms that have
+  expired or weakened since. XAdES-B, -T, -LT and -LTA are §5.9.1: signing
+  (#57, #162), verifying the signed properties (#58) and the SignatureTimeStamp
+  (#163), embedding (#167) and validating (#168) LT data, adding and verifying
+  ArchiveTimeStamps (#169), and SignXML `XAdESSigner` interop (#59).
 - **WS-Security / SOAP** binding, including `wsu:Id` resolution as a default.
   The `resolver:` hook (§5.9) is the extension point that makes it possible
   out-of-tree.

@@ -213,6 +213,7 @@ fn native_verify(
         signature_index,
         referenced,
         allow_xpath_filter2,
+        false,
     ) {
         Ok(result) => {
             let hash = ruby.hash_new();
@@ -340,6 +341,58 @@ fn native_canonicalize(
     let bytes = dsig::canonicalize_element(&xml_bytes, signature_index, &target, &method)
         .map_err(|err| dsig_error(ruby, err))?;
     Ok(ruby.str_from_slice(&bytes))
+}
+
+/// `HankoXml::Native.reference_data(xml, trusted_pems, id_attributes, signature_index, referenced_documents,
+/// allow_xpath_filter2)`
+///
+/// Verifies the nth `<ds:Signature>` as `verify` does and returns, per
+/// SignedInfo `<Reference>` in document order, the octets xmlsec digested
+/// (String, or nil when it did not process that reference). Raises
+/// NativeError when the signature does not verify: those octets are only
+/// worth anything for a signature that holds (#169).
+fn native_reference_data(
+    ruby: &Ruby,
+    xml: RString,
+    trusted_pems: RArray,
+    id_attributes: RArray,
+    signature_index: usize,
+    referenced_documents: RArray,
+    allow_xpath_filter2: bool,
+) -> Result<RArray, Error> {
+    ensure_initialized().map_err(|msg| native_error(ruby, msg.into()))?;
+
+    let xml_bytes = rstring_to_bytes(xml);
+    let trusted = rarray_to_byte_vecs(ruby, trusted_pems)?;
+    let id_attrs = rarray_to_strings(ruby, id_attributes)?;
+    let referenced = rarray_to_byte_pairs(ruby, referenced_documents)?;
+
+    let result = dsig::verify_document(
+        &xml_bytes,
+        &trusted,
+        &[],
+        &id_attrs,
+        signature_index,
+        referenced,
+        allow_xpath_filter2,
+        true,
+    )
+    .map_err(|err| dsig_error(ruby, err))?;
+    if result.status != dsig::VerifyStatus::Succeeded {
+        return Err(native_error(ruby, "the signature does not verify, so its reference data is not read".into()));
+    }
+
+    let octets = ruby.ary_new();
+    for entry in &result.reference_octets {
+        let value = match entry {
+            Some(bytes) => ruby.str_from_slice(bytes).as_value(),
+            None => ruby.qnil().as_value(),
+        };
+        octets
+            .push(value)
+            .map_err(|e| native_error(ruby, format!("array error: {e}")))?;
+    }
+    Ok(octets)
 }
 
 /// `HankoXml::Native.inspect_sig(xml, signature_index)`
@@ -520,6 +573,7 @@ fn init(ruby: &Ruby) -> Result<(), Error> {
     native.define_singleton_method("scan", function!(native_scan, 3))?;
     native.define_singleton_method("validate_schema", function!(native_validate_schema, 3))?;
     native.define_singleton_method("canonicalize", function!(native_canonicalize, 4))?;
+    native.define_singleton_method("reference_data", function!(native_reference_data, 6))?;
 
     Ok(())
 }

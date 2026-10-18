@@ -291,6 +291,36 @@ RSpec.describe "HankoXml::Native" do
     end
   end
 
+  # #169: what xmlsec digested for each SignedInfo Reference, for the
+  # ArchiveTimeStamp input; only from a signature that verifies.
+  describe ".reference_data" do
+    let(:ds) { HankoXml::NS["ds"] }
+    let(:xml) do
+      HankoXml::Signer.new(key: signer_key_pem, certificate: signer_cert_pem) do |signer|
+        signer.reference(uri: "")
+        signer.reference(uri: "#total", transforms: [:exc_c14n], digest_method: :sha512)
+      end.sign(%(<Invoice xmlns="urn:x"><Total Id="total">150.00</Total></Invoice>)).to_s
+    end
+
+    it "returns each Reference's digested octets, in SignedInfo order" do
+      octets = HankoXml::Native.reference_data(xml, [signer_cert_pem], id_attrs, 0, [], false)
+      references = Nokogiri::XML(xml).xpath("//ds:SignedInfo/ds:Reference", "ds" => ds)
+
+      expect(octets.size).to eq(2)
+      expect(octets.map(&:encoding).uniq).to eq([Encoding::BINARY])
+      expect(octets.last).to eq(%(<Total xmlns="urn:x" Id="total">150.00</Total>).b)
+      octets.zip(references, %w[SHA256 SHA512]).each do |bytes, reference, digest|
+        expect([OpenSSL::Digest.digest(digest, bytes)].pack("m0"))
+          .to eq(reference.at_xpath("ds:DigestValue", "ds" => ds).text.gsub(/\s/, ""))
+      end
+    end
+
+    it "raises for a signature that does not verify with the given key" do
+      expect { HankoXml::Native.reference_data(xml, [other_cert_pem], id_attrs, 0, [], false) }
+        .to raise_error(HankoXml::NativeError, /does not verify/)
+    end
+  end
+
   describe "safety budget" do
     it "keeps unsafe blocks contained in dsig.rs and errors.rs" do
       src_dir = Pathname.new(__dir__).join("../../ext/hanko_xml/src")
