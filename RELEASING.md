@@ -198,6 +198,7 @@ scored 5.2. These checks stay low on purpose or for now, and why:
 
 `codeql.yml` covers SAST, and the docs site's npm lockfile is kept free of
 known advisories for the Vulnerabilities check.
+
 ## Publishing a security fix
 
 A vulnerability reported through [SECURITY.md](SECURITY.md) arrives as a
