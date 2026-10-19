@@ -131,8 +131,13 @@ jobs:
           path: pkg
           merge-multiple: true
 
+      # What the platform gems link statically, for scanners that can't see
+      # inside hanko_xml.so (#180). Attached to the GitHub Release below.
+      - name: Generate the SBOM
+        run: ruby .github/scripts/sbom.rb "${{ steps.version.outputs.version }}" > "pkg/hanko_xml-${{ steps.version.outputs.version }}.cdx.json"
+
       - name: List everything about to be published
-        run: ls -la pkg/*.gem
+        run: ls -la pkg/*.gem pkg/*.cdx.json
 
       # Deliberately the two-step form rather than rubygems/release-gem, which
       # wraps `rake release` and would try to create and push the git tag that
@@ -160,7 +165,7 @@ jobs:
           gh release create "v${{ steps.version.outputs.version }}" \
             --title "v${{ steps.version.outputs.version }}" \
             --notes-file release-notes.md \
-            pkg/*.gem
+            pkg/*.gem pkg/*.cdx.json
 
       - name: Dry run summary
         if: inputs.dry_run == true
@@ -182,4 +187,6 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: hanko_xml-${{ steps.version.outputs.version }}-gems
-          path: pkg/*.gem
+          path: |
+            pkg/*.gem
+            pkg/*.cdx.json

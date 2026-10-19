@@ -379,6 +379,7 @@ Moved to [RELEASING.md](RELEASING.md#trusted-build-inputs) (S-18).
 | `.github/workflows/main.yml` | run a vendored build + symbol check |
 | `RELEASING.md` | vendored release policy; CVE response for pinned libs |
 | `CHANGELOG.md` | record vendored versions per release |
+| `.github/scripts/sbom.rb`, `spec/sbom_spec.rb` | **new** (#180) — CycloneDX SBOM of the vendored libraries and linked crates, attached to each release |
 
 ## Verification
 

@@ -117,7 +117,12 @@ verifies the tag matches `HankoXml::VERSION`, builds the source gem, **installs
 it into a clean `GEM_HOME` and requires it** (the check that actually proves the
 `spec.files` allowlist did not omit anything), pushes the source gem and every
 platform gem to RubyGems, and cuts a GitHub Release from the CHANGELOG section
-with all the `.gem` files attached.
+with all the `.gem` files attached, plus `hanko_xml-X.Y.Z.cdx.json`: a
+CycloneDX SBOM of the libxml2, xmlsec1 and OpenSSL the platform gems link
+statically and the crates compiled into the extension
+(`.github/scripts/sbom.rb`, #180). Scanners can't see the static copies
+inside `hanko_xml.so`, so this file is how a user checks a platform gem
+against a new advisory.
 
 To rehearse without publishing: Actions → Release → Run workflow, leaving
 `dry_run` checked. Everything up to and including the install smoke test runs;

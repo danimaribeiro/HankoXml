@@ -49,7 +49,9 @@ libraries in the platform gems.
 Vulnerabilities in libxml2, libxmlsec1 or OpenSSL themselves belong upstream.
 Tell us as well when they affect the versions pinned in `dependencies.yml`,
 since the platform gems bundle those copies; see "Responding to upstream
-security fixes" in [RELEASING.md](RELEASING.md).
+security fixes" in [RELEASING.md](RELEASING.md). Each GitHub release carries
+an SBOM (`hanko_xml-X.Y.Z.cdx.json`) listing the bundled versions, so you can
+check whether a platform gem includes an affected one.
 
 Known limits that are documented rather than bugs: choosing which certificate
 to trust is the caller's decision, `Policy.permissive` and the other presets
