@@ -8,6 +8,7 @@ export const guideNav = [
   { slug: 'trust-anchors', title: 'Trust Anchors & Verification' },
   { slug: 'keys-and-certificates', title: 'Keys & Certificates' },
   { slug: 'errors', title: 'Errors' },
+  { slug: 'xades', title: 'XAdES' },
   { slug: 'comparison-signxml', title: 'Comparison with SignXML' },
 ];
 
@@ -22,6 +23,7 @@ export const referenceNav = [
   { slug: 'algorithms', title: 'Algorithms', yard: withBase('api/HankoXml/Algorithms.html') },
   { slug: 'placement', title: 'Placement', yard: withBase('api/HankoXml/Placement.html') },
   { slug: 'signed-document', title: 'SignedDocument', yard: withBase('api/HankoXml/SignedDocument.html') },
+  { slug: 'xades', title: 'Xades', yard: withBase('api/HankoXml/Xades.html') },
 ];
 
 export const yardIndexUrl = withBase('api/HankoXml.html');

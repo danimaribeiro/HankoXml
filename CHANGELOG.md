@@ -8,6 +8,8 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-19
+
 ### Added
 
 - **#162:** XAdES-T signing. `Xades::Signer.new(timestamper: ->(request_der) { response_der })`

@@ -333,6 +333,18 @@ digest mismatch.
 | N3 | Exception messages never include the private key PEM (grep `-----BEGIN`) for every error path in section H | ? (S-13 made native messages fixed strings; no spec over section H yet) |
 | N4 | Unsafe-budget spec: extend to assert `dsig.rs` has a `// SAFETY:` comment within 3 lines above every `unsafe` | ? |
 
+### S-22 / S-23 / S-24 unsigned XAdES properties (by design, #162–#169)
+
+| # | Spec | Status |
+|---|------|--------|
+| X1 | `Xades::Signer` `timestamper:` embeds a token over the canonicalized SignatureValue; a refused answer, another imprint or digest, a missing nonce or bytes that are not a TimeStampResp raise `SigningError` | pass (`xades_timestamp_signer_spec.rb`) |
+| X2 | A SignatureTimeStamp fails without TSA trust, from an untrusted TSA, over another SignatureValue, with a changed or disallowed CanonicalizationMethod, a SHA-1 imprint under strict, extra children, or a second UnsignedProperties; one outside this signature's QualifyingProperties is not read | pass (S-22, `xades_timestamp_verifier_spec.rb`) |
+| X3 | `Xades::Augmenter` leaves the signed bytes unchanged, does not touch the caller's document, and refuses an unsigned template, other XAdES versions and ambiguous containers | pass (S-22, `xades_augmenter_spec.rb`) |
+| X4 | LT validation at the timestamp time fails for stale evidence (unless `revocation_grace:`), a revocation at or before that time even beside good evidence, evidence the anchor does not vouch for, an OCSP responder not valid when it answered, unparseable values, and LT values without a SignatureTimeStamp; a later revocation is accepted | pass (S-23, `xades_long_term_verifier_spec.rb`) |
+| X5 | An ArchiveTimeStamp fails when anything it covers changes, from an untrusted TSA or without TSA trust; a method other than inclusive c14n over a node-set Reference is refused; a renewal covers the earlier one; values added after it stay outside | pass (S-24, `xades_archive_timestamp_spec.rb`) |
+| X6 | Real-world LT and LTA: SignXML's DSS-produced HU_POL-3 validates with `revocation_grace: 1` and its ArchiveTimeStamp verifies | pass (S-23, S-24, `spec/interop/xades_interop_spec.rb`) |
+| X7 | Past-signature validation: an expired TSA certificate covered by a newer ArchiveTimeStamp still verifies | not implemented (#173) |
+
 ---
 
 ## 4. Fixtures to add

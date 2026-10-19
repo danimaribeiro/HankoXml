@@ -18,9 +18,10 @@ It works nicely with Nokogiri, signing and verifying the documents you already h
 - **Full XML-DSig Support:** Sign and verify Enveloped, Enveloping, and Detached signatures.
 - **Nokogiri Native, Nokogiri Optional:** Signs and verifies the Nokogiri documents you already hold, with opt-in `doc.sign!` / `doc.signature_valid?` shorthands (`require "hanko_xml/nokogiri_ext"`), and verifies Strings, files and IOs without Nokogiri.
 - **XSW Defense:** Provides a robust `Policy` engine and structural `signed?(node)` checks to defeat XML Signature Wrapping (XSW) attacks.
+- **XAdES, B to LTA:** `HankoXml::Xades::Signer`, `Augmenter` and `Verifier` sign, timestamp (RFC 3161, through a TSA exchange you supply), embed validation data and add renewable archive timestamps, and verify all of it fail closed. See the [XAdES guide](docs/src/content/guide/xades.md).
 - **Rust-Backed:** Memory-safe FFI boundaries, zero shell-outs to CLI binaries, and massive performance gains over pure-Ruby cryptography.
 
-A feature and security comparison with Python [SignXML](https://pypi.org/project/signxml/), including a plan to close the remaining gaps (XAdES first), lives in [`docs/src/content/guide/comparison-signxml.md`](docs/src/content/guide/comparison-signxml.md).
+A feature and security comparison with Python [SignXML](https://pypi.org/project/signxml/), including the plan that closed the XAdES gap, lives in [`docs/src/content/guide/comparison-signxml.md`](docs/src/content/guide/comparison-signxml.md).
 
 ## Requirements
 

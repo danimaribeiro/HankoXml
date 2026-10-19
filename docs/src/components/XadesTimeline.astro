@@ -1,0 +1,220 @@
+---
+/**
+ * Interactive "over twenty years" timeline for the XAdES guide: one contract
+ * signed in March 2025, verified at a date the reader picks, under the ETSI
+ * validation model or what HankoXml does today.
+ *
+ * Markdown can't hold components or raw HTML here, so the guide keeps a
+ * static table under the "Over twenty years" heading and this component,
+ * rendered hidden by the guide route, takes that table's place once its
+ * script runs. Without JavaScript the table stays.
+ */
+const lanes = [
+  { label: 'Signing certificate', short: 'Signing cert', bar: 'bg-blue-500', pin: 'bg-red-500' },
+  { label: 'SignatureTimeStamp TSA', short: 'Signature TSA', bar: 'bg-teal-500', pin: 'bg-teal-500' },
+  { label: 'LT evidence', short: 'LT evidence', bar: 'bg-amber-500', pin: 'bg-amber-500' },
+  { label: 'ArchiveTimeStamp 1', short: 'Archive TS 1', bar: 'bg-purple-500', pin: 'bg-purple-500' },
+  { label: 'ArchiveTimeStamp 2', short: 'Archive TS 2', bar: 'bg-purple-500', pin: 'bg-purple-500' },
+  { label: 'ArchiveTimeStamp 3', short: 'Archive TS 3', bar: 'bg-purple-500', pin: 'bg-purple-500' },
+];
+const ticks = [2025, 2030, 2035, 2040, 2045];
+const modeButton =
+  'px-3 py-1.5 text-gray-600 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-white/10 glass:text-gray-300 glass:hover:bg-white/[0.08] ' +
+  'aria-pressed:bg-blue-600 aria-pressed:text-white aria-pressed:hover:bg-blue-600 glass:aria-pressed:bg-white/[0.18] ' +
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500';
+---
+
+<div
+  id="xades-timeline"
+  hidden
+  class="not-prose my-6 p-5 rounded-lg border border-gray-200 bg-white text-sm dark:bg-slate-800 dark:border-gray-700 glass:rounded-xl glass:bg-white/[0.08] glass:backdrop-blur-xl glass:border-white/[0.12] glass:shadow-[inset_0_1px_1px_rgba(255,255,255,0.06)]"
+>
+  <div class="flex flex-wrap items-center gap-x-6 gap-y-3 mb-5">
+    <div class="inline-flex rounded-lg border border-gray-200 overflow-hidden dark:border-gray-700 glass:border-white/[0.15]" role="group" aria-label="Validation model">
+      <button type="button" data-mode="std" aria-pressed="true" class={modeButton}>ETSI model</button>
+      <button type="button" data-mode="hanko" aria-pressed="false" class={modeButton}>HankoXml today</button>
+    </div>
+    <label class="flex flex-1 min-w-56 items-center gap-3 text-gray-600 dark:text-gray-400 glass:text-gray-300">
+      Verify in
+      <input data-year type="range" min="2025" max="2045" step="0.25" value="2030" class="flex-1 min-w-0 accent-blue-600" />
+      <output data-year-out class="w-20 font-mono text-base font-semibold tabular-nums text-gray-900 dark:text-white">Jan 2030</output>
+    </label>
+  </div>
+
+  <div class="overflow-x-auto">
+    <div class="min-w-[18rem] grid grid-cols-[6.5rem_minmax(0,1fr)] sm:grid-cols-[10rem_minmax(0,1fr)] gap-x-3 pr-4 text-xs">
+      <div>
+        {lanes.map((lane) => (
+          <div class="h-7 leading-7 truncate text-gray-500 dark:text-gray-400 glass:text-gray-300">
+            <span class="sm:hidden" title={lane.label}>{lane.short}</span><span class="hidden sm:inline">{lane.label}</span>
+          </div>
+        ))}
+      </div>
+      <div class="relative">
+        {lanes.map((lane, i) => (
+          <div class="h-7 relative" data-lane={i}>
+            <span data-span class:list={['absolute top-1/2 -translate-y-1/2 h-3 rounded opacity-30', lane.bar]}></span>
+            <span data-pin class:list={['absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-1 h-[1.125rem] rounded-sm', lane.pin]}></span>
+          </div>
+        ))}
+        <div class="relative h-5 font-mono text-[0.7rem] text-gray-400 dark:text-gray-500 glass:text-gray-400" aria-hidden="true">
+          {ticks.map((year) => (
+            <span class="absolute top-1 -translate-x-1/2" style={`left:${((year - 2025) / 20) * 100}%`}>{year}</span>
+          ))}
+        </div>
+        <div data-now class="absolute top-0 bottom-5 w-0.5 -translate-x-1/2 bg-red-500 pointer-events-none"></div>
+      </div>
+    </div>
+  </div>
+
+  <div data-verdicts class="mt-5 grid grid-cols-2 md:grid-cols-4 gap-3" aria-live="polite"></div>
+
+  <p class="mt-4 text-xs text-gray-500 dark:text-gray-400 glass:text-gray-300">
+    Illustrative dates: a 3-year signing certificate, TSA certificates of about 6 years, ArchiveTimeStamps
+    renewed every 5 years.
+  </p>
+</div>
+
+<script>
+  const START = 2025;
+  const END = 2045;
+  const SIGNED = 2025.2;
+  const CERT_END = 2027.33;
+  const TSA1_END = 2032.0;
+  const ATS = [
+    { at: 2031.0, end: 2037.0 },
+    { at: 2036.0, end: 2042.0 },
+    { at: 2041.0, end: 2047.0 },
+  ];
+
+  // [span start, span end] (null: no span) and the pin, per lane.
+  const LANES: Array<[[number, number] | null, number]> = [
+    [[2024.33, CERT_END], SIGNED],
+    [[2023.0, TSA1_END], SIGNED],
+    [null, SIGNED + 0.02],
+    ...ATS.map((a): [[number, number], number] => [[a.at, a.end], a.at]),
+  ];
+
+  type Verdict = ['ok' | 'risk' | 'fail', string];
+
+  const PILL = {
+    ok: ['valid', 'text-green-700 border-green-600/40 dark:text-green-400 glass:text-green-300'],
+    risk: ['at risk', 'text-amber-700 border-amber-600/40 dark:text-amber-400 glass:text-amber-300'],
+    fail: ['fails', 'text-red-700 border-red-600/40 dark:text-red-400 glass:text-red-300'],
+  } as const;
+
+  const pct = (y: number) => ((Math.max(START, Math.min(END, y)) - START) / (END - START)) * 100;
+
+  function verdicts(now: number, mode: string): Verdict[] {
+    const certOk = now < CERT_END;
+    const tsaOk = now < TSA1_END;
+    const renewed = now < TSA1_END || ATS.some((a) => a.at <= now && now < a.end);
+    if (mode === 'std') {
+      return [
+        certOk
+          ? ['ok', 'The signing certificate is still valid today.']
+          : ['fail', 'The certificate expired in 2027, and nothing proves when the signature was made.'],
+        certOk
+          ? ['ok', 'A valid certificate, plus a trusted time.']
+          : tsaOk
+            ? ['risk', 'The timestamp holds, but revocation data must be fetched now. The CA may no longer publish it.']
+            : ['fail', 'The 2025 TSA certificate has expired; the timestamp proves nothing now.'],
+        tsaOk
+          ? ['ok', 'Checked as of March 2025 with the saved evidence.']
+          : ['fail', "The SignatureTimeStamp's TSA certificate expired in 2032, so the validation time is lost."],
+        renewed
+          ? ['ok', 'The newest archive timestamp is sound and vouches for every layer below it.']
+          : ['fail', 'No archive timestamp was renewed in time.'],
+      ];
+    }
+    return [
+      certOk
+        ? ['ok', 'The signing certificate is still valid today.']
+        : ['fail', "The certificate is checked at today's date and has expired."],
+      certOk
+        ? ['ok', 'The timestamp verifies; the certificate is still valid today.']
+        : ['fail', "Without LT data the signature itself is checked at today's date."],
+      tsaOk
+        ? ['ok', 'Validated as of March 2025 with the embedded evidence.']
+        : ['fail', "The SignatureTimeStamp's TSA chain is checked at today's date, and expired in 2032."],
+      tsaOk
+        ? ['ok', 'Every archive timestamp verifies, and LT holds too.']
+        : ['fail', 'As LT: archive timestamps are verified, but not yet used to check older TSAs at an earlier date.'],
+    ];
+  }
+
+  function formatDate(y: number) {
+    const month = ['Jan', 'Apr', 'Jul', 'Oct'][Math.round((y % 1) * 4)] ?? 'Jan';
+    return `${month} ${Math.floor(y)}`;
+  }
+
+  function mount(root: HTMLElement) {
+    const heading = document.getElementById('over-twenty-years');
+    let table: Element | null = heading?.nextElementSibling ?? null;
+    while (table && table.tagName !== 'TABLE' && !/^H[1-6]$/.test(table.tagName)) table = table.nextElementSibling;
+    if (!table || table.tagName !== 'TABLE') return;
+
+    table.before(root);
+    (table as HTMLElement).hidden = true;
+    root.hidden = false;
+
+    root.querySelectorAll<HTMLElement>('[data-lane]').forEach((lane, i) => {
+      const [span, pin] = LANES[i];
+      const bar = lane.querySelector<HTMLElement>('[data-span]')!;
+      if (span) {
+        bar.style.left = `${pct(span[0])}%`;
+        bar.style.width = `${pct(span[1]) - pct(span[0])}%`;
+      } else {
+        bar.remove();
+      }
+      lane.querySelector<HTMLElement>('[data-pin]')!.style.left = `${pct(pin)}%`;
+    });
+
+    const input = root.querySelector<HTMLInputElement>('[data-year]')!;
+    const output = root.querySelector<HTMLOutputElement>('[data-year-out]')!;
+    const nowLine = root.querySelector<HTMLElement>('[data-now]')!;
+    const host = root.querySelector<HTMLElement>('[data-verdicts]')!;
+    const buttons = root.querySelectorAll<HTMLButtonElement>('[data-mode]');
+    let mode = 'std';
+
+    function render() {
+      const now = parseFloat(input.value);
+      output.textContent = formatDate(now);
+      nowLine.style.left = `${pct(now)}%`;
+      host.replaceChildren(
+        ...verdicts(now, mode).map(([kind, text], i) => {
+          const card = document.createElement('div');
+          card.className =
+            'rounded-lg border border-gray-200 p-3 dark:border-gray-700 glass:border-white/[0.12] glass:bg-white/[0.04]';
+          const head = document.createElement('div');
+          head.className = 'flex items-center justify-between gap-2 mb-1';
+          const level = document.createElement('span');
+          level.className = 'font-bold text-base text-gray-900 dark:text-white';
+          level.textContent = ['B', 'T', 'LT', 'LTA'][i];
+          const pill = document.createElement('span');
+          pill.className = `rounded-full border px-2 py-0.5 text-[0.7rem] font-semibold uppercase tracking-wide ${PILL[kind][1]}`;
+          pill.textContent = PILL[kind][0];
+          head.append(level, pill);
+          const body = document.createElement('p');
+          body.className = 'text-xs leading-snug text-gray-600 dark:text-gray-400 glass:text-gray-300';
+          body.textContent = text;
+          card.append(head, body);
+          return card;
+        }),
+      );
+    }
+
+    input.addEventListener('input', render);
+    buttons.forEach((button) =>
+      button.addEventListener('click', () => {
+        mode = button.dataset.mode!;
+        buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === button)));
+        render();
+      }),
+    );
+    render();
+  }
+
+  const root = document.getElementById('xades-timeline');
+  if (root) mount(root);
+</script>

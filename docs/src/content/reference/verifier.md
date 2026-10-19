@@ -51,7 +51,7 @@ requires the certificate's KeyUsage, when present, to allow `digitalSignature` o
 | `:first` | verify the first `<ds:Signature>` in document order; ignores any others (unsafe opt-in) |
 | `:only` | as `:first`, but raise `MultipleSignatures` if the document has more than one — the safest choice for protocols that expect exactly one |
 | `Integer` | the nth signature, document order, 0-based |
-| `:all` | not supported in 0.1.0: raises `ConfigurationError` pointing at `#verify_all` |
+| `:all` | not supported: raises `ConfigurationError` pointing at `#verify_all` |
 | `String` | an XPath selecting exactly one `<ds:Signature>` |
 
 ## `schema:`
@@ -104,4 +104,5 @@ verifier.verify!(xml, allow_untrusted: true)  # => Verification
 It takes every `Verifier` keyword except the trust sources, and the policy still applies. The key is
 still pinned rather than chosen by xmlsec: it is the public key of the single end-entity
 certificate in `<KeyInfo>`, and a document without one, or with two, fails. `Xades::Verifier` does
-not offer this mode, since XAdES signed properties commit to a certificate you must trust.
+not offer this mode, since XAdES signed properties commit to a certificate you must trust. Its own
+options are in the [Xades reference](/reference/xades).

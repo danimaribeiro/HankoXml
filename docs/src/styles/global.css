@@ -42,3 +42,12 @@
 .glass-orb-3 {
   background: radial-gradient(circle, rgba(140, 80, 220, 0.2) 0%, transparent 55%);
 }
+
+/* Wide Markdown tables scroll on their own instead of widening the page on
+   phones. Only below the md breakpoint, so desktop tables keep full width. */
+@media (max-width: 767px) {
+  .prose table {
+    display: block;
+    overflow-x: auto;
+  }
+}

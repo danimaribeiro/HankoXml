@@ -1,12 +1,12 @@
 ---
 title: Comparison with SignXML
-description: Feature and security comparison of HankoXml and SignXML, plus a plan to close the remaining gaps (XAdES first).
-order: 8
+description: Feature and security comparison of HankoXml and SignXML, plus the plan that closed the XAdES gap.
+order: 9
 ---
 
 # Comparison with SignXML
 
-This page compares HankoXml `0.1.0` with [SignXML](https://pypi.org/project/signxml/) `5.1.0`, the Python XML Signature and XAdES library. Both implement W3C XML-DSig. Neither implements XML Encryption.
+This page compares HankoXml `0.2.0` with [SignXML](https://pypi.org/project/signxml/) `5.1.0`, the Python XML Signature and XAdES library. Both implement W3C XML-DSig. Neither implements XML Encryption.
 
 | | HankoXml | SignXML |
 |---|---|---|
@@ -36,7 +36,7 @@ HankoXml is a general Ruby XML-DSig library with a strict policy and an XSW API.
 | XPath / XSLT / XPointer transforms | Registered as insecure; **denied by `Policy.strict`** | Disabled by default (no network, XSLT, or XPath) |
 | External references | Denied by default; native URI types limited to empty/same-document | Only if you pass `uri_resolver` |
 | Schema check of `<ds:Signature>` | On by default (`Policy.strict.schema == :default`); `schema: nil` opts out | `validate_schema=True` by default |
-| XAdES | XAdES-B signing and verification (`Xades::Signer` / `Xades::Verifier`) | Yes (`XAdESSigner` / `XAdESVerifier`) — see [XAdES](#xades) |
+| XAdES | B, T, LT and LTA: signing, augmenting and verification (`Xades::Signer` / `Xades::Augmenter` / `Xades::Verifier`) | Baseline (`XAdESSigner` / `XAdESVerifier`) — see [XAdES](#xades) |
 | XML Encryption | No | No |
 | PKCS#12 / A1 bundles | `Key.from_pkcs12` | PEM / cryptography objects |
 | Historical signature time | `verification_time:` on every trust source; `clock_skew` on pinned trust | `SignatureConfiguration(verification_time=...)` |
@@ -62,7 +62,7 @@ HankoXml is a general Ruby XML-DSig library with a strict policy and an XSW API.
 
 ### Where SignXML is stronger
 
-1. **XML-DSig 1.1 defaults.** SignXML allows RSA-PSS, SHA-3 and ECDSA-SHA3 by default. HankoXml registers them but keeps them behind `Policy.xades` (#60). HMAC and archival XAdES remain SignXML-only.
+1. **XML-DSig 1.1 defaults.** SignXML allows RSA-PSS, SHA-3 and ECDSA-SHA3 by default. HankoXml registers them but keeps them behind `Policy.xades` (#60). HMAC remains SignXML-only.
 2. **Certificate path policy.** SignXML supports `ee_policy` / `ca_policy`. HankoXml’s `store:` checks KeyUsage (`require_signing_key_usage`) and exact subject matching (`certificate_subject:`), but has no equivalent of arbitrary end-entity/CA policy objects beyond what `OpenSSL::X509::Store` configures.
 3. **Comment / c14n truncation.** SignXML documents comment-induced truncation and excises comments from `signed_xml` when they were not signed. HankoXml leaves “read the node you checked with `signed?`” to the caller.
 4. **Maturity.** Years of interop vectors and two published HMAC CVEs that were fixed. HankoXml is new and has no foreign interop corpus yet (below).
@@ -158,7 +158,7 @@ No vector showed HankoXml's Ruby layer rejecting a signature that xmlsec accepts
 
 SignXML implements a **baseline XAdES** wrapper (`XAdESSigner` / `XAdESVerifier`): extra `ds:Object` / `QualifyingProperties` references, `SignaturePolicyIdentifier`, `ClaimedRoles`, `DataObjectFormat`. It is not a full archival profile (XAdES-A / T / C / XL with RFC 3161 timestamps, OCSP, and certificate values).
 
-HankoXml signs XAdES-B with `HankoXml::Xades::Signer` (#57): `QualifyingProperties` with `SigningTime`, `SigningCertificateV2`, `SignaturePolicyIdentifier`, `SignerRoleV2` and `DataObjectFormat`, and a second reference over `SignedProperties`, conforming to the ETSI XAdES 1.3.2 schema. `HankoXml::Xades::Verifier` (#58) checks them on verification, reading only the SignedProperties xmlsec digested and binding `SigningCertificate(V2)` to the certificate that verified; it verifies SignXML's real-world XAdES samples, reads the older XAdES 1.2.2 and 1.1.1 namespaces too (#86), and refuses the EU DSS signature-wrapping attacks. SignXML's own `XAdESSigner` output verifies under `Policy.strict` (#59). RSA-PSS, SHA-3 and ECDSA-SHA3 are first-class `Algorithms` entries behind `Policy.xades` (#60). XAdES-T is supported: `Xades::Signer`'s `timestamper:` embeds an RFC 3161 SignatureTimeStamp through a TSA exchange the caller supplies (#162), and `Xades::Verifier` verifies it against separate TSA trust, failing closed (#163). `Xades::Augmenter` (and the Signer's `validation_data:`) embeds XAdES-LT certificate and revocation values (#167), and `Xades::Verifier` validates them at the timestamp's time, failing closed (#168). XAdES-LTA is supported too: `Xades::Augmenter` adds and renews ArchiveTimeStamps, and `Xades::Verifier` verifies them, including SignXML's DSS-produced HU_POL-3 (#169).
+HankoXml signs XAdES-B with `HankoXml::Xades::Signer` (#57): `QualifyingProperties` with `SigningTime`, `SigningCertificateV2`, `SignaturePolicyIdentifier`, `SignerRoleV2` and `DataObjectFormat`, and a second reference over `SignedProperties`, conforming to the ETSI XAdES 1.3.2 schema. `HankoXml::Xades::Verifier` (#58) checks them on verification, reading only the SignedProperties xmlsec digested and binding `SigningCertificate(V2)` to the certificate that verified; it verifies SignXML's real-world XAdES samples, reads the older XAdES 1.2.2 and 1.1.1 namespaces too (#86), and refuses the EU DSS signature-wrapping attacks. SignXML's own `XAdESSigner` output verifies under `Policy.strict` (#59). RSA-PSS, SHA-3 and ECDSA-SHA3 are first-class `Algorithms` entries behind `Policy.xades` (#60). XAdES-T is supported: `Xades::Signer`'s `timestamper:` embeds an RFC 3161 SignatureTimeStamp through a TSA exchange the caller supplies (#162), and `Xades::Verifier` verifies it against separate TSA trust, failing closed (#163). `Xades::Augmenter` (and the Signer's `validation_data:`) embeds XAdES-LT certificate and revocation values (#167), and `Xades::Verifier` validates them at the timestamp's time, failing closed (#168). XAdES-LTA is supported too: `Xades::Augmenter` adds and renews ArchiveTimeStamps, and `Xades::Verifier` verifies them, including SignXML's DSS-produced HU_POL-3 (#169). The [XAdES guide](/guide/xades) explains each level.
 
 ### XAdES is an overlay, not a different crypto
 
@@ -168,7 +168,7 @@ HankoXml signs XAdES-B with `HankoXml::Xades::Signer` (#57): `QualifyingProperti
 - a **second** `<Reference>` whose URI points at `SignedProperties` (so those properties are themselves signed)
 - later levels add *unsigned* properties: signature timestamps, revocation values, archive timestamps
 
-The digest/signature algorithms stay XML-DSig. A library that can already emit two references and an `<Object>` is most of the way to XAdES-B. Timestamps and revocation are a different product.
+The digest/signature algorithms stay XML-DSig. A library that can already emit two references and an `<Object>` is most of the way to XAdES-B. Timestamps and revocation are a larger product; HankoXml has since built them on the same Signer and Verifier, see the [XAdES guide](/guide/xades).
 
 ### Does the NFe-shaped fixture need it? No.
 
@@ -193,7 +193,7 @@ Nothing in that XML subset asks for `SignedProperties`, a signature policy OID, 
 | WS-Security / SOAP | No — XML-DSig over the body / timestamp |
 | EBICS | XML-DSig; XAdES only if a specific order type says so |
 
-SignXML listing XAdES as a target is real for EU legal signatures. **XAdES is the largest feature gap versus SignXML.** SAML, WS-Security, and the NFe-shaped fixture do not need it.
+SignXML listing XAdES as a target is real for EU legal signatures. XAdES was the largest feature gap versus SignXML; it is closed (#57–#59), and HankoXml now goes further, to XAdES-LTA (#162–#169). SAML, WS-Security, and the NFe-shaped fixture do not need it.
 
 ---
 
@@ -209,13 +209,13 @@ HankoXml is the same kind of library: general XML-DSig. The NFe-shaped spec fixt
 | **SAML 2.0** | Enveloped **fragment** (Assertion, not Response), exclusive c14n, often **InclusiveNamespaces PrefixList**, Assertion `ID` | `Policy.fragment` + `#at_signed` + `Transform.exc_c14n(inclusive_prefixes:)` | Documented; InclusiveNamespaces first-class; `location=` for the Assertion |
 | **WS-Security** | Sign SOAP Body / Timestamp; `wsu:Id`; sometimes STR-Transform / `BinarySecurityToken` | Custom `id_attributes` might cover `wsu:Id`; STR-Transform no | Some interop fixtures; not a WSS stack |
 | **EBICS** | XML-DSig over order data + X.509 | Generic XML-DSig | Generic XML-DSig |
-| **XAdES / eIDAS / ICP-Brasil AD-\*** | Extra signed properties, later timestamps/revocation | XAdES-B (#57–#59); archival no | Baseline XAdES yes; archival incomplete |
+| **XAdES / eIDAS / ICP-Brasil AD-\*** | Extra signed properties, later timestamps/revocation | XAdES-B, -T, -LT and -LTA (#57–#59, #162–#169); past-signature validation not yet (#173) | Baseline XAdES yes; archival incomplete |
 
 ### Practical takeaway
 
 - **Ruby XML-DSig with pinned trust and `#signed?(node)`:** HankoXml. Use `signature: :only` (or `verify_all`) and `result.at_signed(...)` rather than trusting `valid?` alone.
-- **Python, HMAC, or archival XAdES:** SignXML. Always pass an explicit trust anchor, set `expect_config=SignatureConfiguration(location=...)`, and only consume `verify().signed_xml`.
-- **Do not treat either as a drop-in for the other.** HankoXml has XAdES-B and RSA-PSS/SHA-3 behind `Policy.xades`, and no HMAC key. SignXML has no Ruby/Nokogiri integration and a much looser default trust story. SignXML's `XAdESVerifier` defaults to `expect_references=3` because `XAdESSigner` also signs `<KeyInfo>`; HankoXml signs two references (payload + SignedProperties), so the reverse check passes `expect_references=2`.
+- **Python or HMAC:** SignXML. Always pass an explicit trust anchor, set `expect_config=SignatureConfiguration(location=...)`, and only consume `verify().signed_xml`.
+- **Do not treat either as a drop-in for the other.** HankoXml has XAdES-B to -LTA and RSA-PSS/SHA-3 behind `Policy.xades`, and no HMAC key. SignXML has no Ruby/Nokogiri integration and a much looser default trust story. SignXML's `XAdESVerifier` defaults to `expect_references=3` because `XAdESSigner` also signs `<KeyInfo>`; HankoXml signs two references (payload + SignedProperties), so the reverse check passes `expect_references=2`.
 
 ---
 
@@ -223,9 +223,9 @@ HankoXml is the same kind of library: general XML-DSig. The NFe-shaped spec fixt
 
 The main **feature** gap was XAdES-B. SignXML can emit and verify baseline qualifying properties; HankoXml now does too (#57–#59). RSA-PSS/SHA-3 sit behind `Policy.xades` (#60). Beyond parity, XAdES-T has since landed (#162, #163), XAdES-LT embedding and validation (#167, #168), and XAdES-LTA (#169).
 
-Stay at **XAdES-B** (BES / baseline B) to match what SignXML actually ships. Do not start with XAdES-T/C/XL/A (RFC 3161 timestamps, OCSP, archive timestamps) — that is a PKI-lifetime product, not SignXML parity.
+Every phase below is done. Parity meant XAdES-B (BES / baseline B), which is what SignXML actually ships; the archival levels came after, as their own work. Using an ArchiveTimeStamp to validate expired TSA certificates at a past time (past-signature validation) is still open, tracked in #173. The [XAdES guide](/guide/xades) walks through every level.
 
-### Phase 1 — XAdES-B sign and verify (parity with `XAdESSigner` / `XAdESVerifier`)
+### Phase 1 — XAdES-B sign and verify (done, #57–#59)
 
 1. Add `HankoXml::XAdES` (or `HankoXml::Xades::Signer` / `Verifier`) as a thin layer over `Signer` / `Verifier`, not a second crypto stack. libxmlsec1 already does the digests; Ruby builds the `xades:QualifyingProperties` `ds:Object` and the extra `ds:Reference` whose URI is `#…-signedprops`.
 2. Signed properties to implement, matching SignXML: `SigningTime`, `SigningCertificate` / `SigningCertificateV2` (cert digest), optional `SignaturePolicyIdentifier`, `SignerRole/ClaimedRoles`, `DataObjectFormat`.
@@ -253,7 +253,7 @@ Vendor merlin-twenty-three / phaos-three under `spec/interop/`. Verify with `Pol
 
 | Item | Why not in this plan |
 |---|---|
-| XAdES-T / C / XL / A | SignXML does not really ship archival XAdES either |
+| XAdES-T / LT / LTA | Not needed for parity, since SignXML does not really ship archival XAdES; built afterwards anyway (#162–#169) |
 | HMAC `key:` path | SignXML has it; HankoXml’s default deny is a security choice, not a missing XAdES feature |
 | SOAP / EBICS / SAML stacks | Neither library is a protocol implementation |
 | `lib/hanko_xml/profiles/nfe.rb` | Do not add an NF-e product profile. The existing XML fixture is enough |
