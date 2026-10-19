@@ -32,7 +32,8 @@ StandardError
     │   ├── HankoXml::DigestMismatch         one <Reference>'s digest is wrong;
     │   │                                    carries #reference_uri
     │   ├── HankoXml::ResolutionMismatch     resolver vs xmlsec disagree
-    │   └── HankoXml::XadesError             a XAdES signed-properties check failed
+    │   └── HankoXml::XadesError             a XAdES check failed: signed
+    │                                        properties, a timestamp, LT data
     ├── HankoXml::NotSignedError     Verification#at_signed found a node that
     │                                the signature does not cover
     ├── HankoXml::FrozenSignatureError  a mutator was called on a

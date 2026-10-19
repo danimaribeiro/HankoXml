@@ -8,10 +8,10 @@
 
 ## Context
 
-`hanko_xml` is unreleased (0.1.0, no tags). Release groundwork already landed this
-session: a `spec.files` allowlist, a require-time ABI guard
-(`HankoXml::NativeVersion`), an Ubuntu+macOS × Ruby 3.1–3.4 CI matrix, and a
-tag-triggered `release.yml` using RubyGems trusted publishing.
+Before the first release (0.1.0), release groundwork landed: a `spec.files`
+allowlist, a require-time ABI guard (`HankoXml::NativeVersion`), an
+Ubuntu+macOS × Ruby 3.1–3.4 CI matrix, and a tag-triggered `release.yml` using
+RubyGems trusted publishing.
 
 Today `gem install hanko_xml` compiles on the user's machine and therefore needs
 `libxmlsec1-dev`, `libxml2-dev`, `pkg-config`, libclang (bindgen), and a Rust

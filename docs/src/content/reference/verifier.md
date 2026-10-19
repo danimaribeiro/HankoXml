@@ -104,4 +104,5 @@ verifier.verify!(xml, allow_untrusted: true)  # => Verification
 It takes every `Verifier` keyword except the trust sources, and the policy still applies. The key is
 still pinned rather than chosen by xmlsec: it is the public key of the single end-entity
 certificate in `<KeyInfo>`, and a document without one, or with two, fails. `Xades::Verifier` does
-not offer this mode, since XAdES signed properties commit to a certificate you must trust.
+not offer this mode, since XAdES signed properties commit to a certificate you must trust. Its own
+options are in the [Xades reference](/reference/xades).
