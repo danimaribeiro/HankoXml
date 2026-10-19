@@ -6,7 +6,7 @@ order: 9
 
 # Comparison with SignXML
 
-This page compares HankoXml `0.1.0` with [SignXML](https://pypi.org/project/signxml/) `5.1.0`, the Python XML Signature and XAdES library. Both implement W3C XML-DSig. Neither implements XML Encryption.
+This page compares HankoXml `0.2.0` with [SignXML](https://pypi.org/project/signxml/) `5.1.0`, the Python XML Signature and XAdES library. Both implement W3C XML-DSig. Neither implements XML Encryption.
 
 | | HankoXml | SignXML |
 |---|---|---|

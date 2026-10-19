@@ -1,6 +1,6 @@
 # hanko_xml — API Contract
 
-Status: **implemented, as of 0.1.0.** This document is the spec for the public
+Status: **implemented, as of 0.2.0.** This document is the spec for the public
 API, and it changes along with the code. Sections that describe plans rather
 than shipped behaviour say so.
 
@@ -492,7 +492,7 @@ hidden behind an empty array.
 | `:first` | verify the first `<ds:Signature>` in document order, even if others exist — an explicit, unsafe opt-in |
 | `:only` | same as the default: raise `MultipleSignatures` if the document has more than one |
 | `Integer` | the nth signature, document order, 0-based — matches `Signer#sign!`'s `signature:` index |
-| `:all` | not supported in 0.1.0: raises `ConfigurationError` pointing at `#verify_all` (#105) |
+| `:all` | not supported: raises `ConfigurationError` pointing at `#verify_all` (#105) |
 | `String` | an XPath selecting exactly one `<ds:Signature>`, evaluated with `namespaces:` merged over `HankoXml::NS` (so `ds:` is always bound). More than one match raises `MultipleSignatures`; no match, or a match that is not a `<ds:Signature>`, is a `SignatureMissing` result (#95) |
 
 Methods:
@@ -1997,7 +1997,7 @@ cross-checking property, zero maintained surface.
 
 ### 7.4 Zero-copy: the opt-in escape hatch
 
-**Not implemented.** In 0.1.0 `HankoXml.zero_copy_available?` is always
+**Not implemented.** `HankoXml.zero_copy_available?` is always
 `false` and nothing takes a `zero_copy:` keyword; every call serializes. The
 rest of this section is the design, kept for when someone measures a need.
 

@@ -51,7 +51,7 @@ requires the certificate's KeyUsage, when present, to allow `digitalSignature` o
 | `:first` | verify the first `<ds:Signature>` in document order; ignores any others (unsafe opt-in) |
 | `:only` | as `:first`, but raise `MultipleSignatures` if the document has more than one — the safest choice for protocols that expect exactly one |
 | `Integer` | the nth signature, document order, 0-based |
-| `:all` | not supported in 0.1.0: raises `ConfigurationError` pointing at `#verify_all` |
+| `:all` | not supported: raises `ConfigurationError` pointing at `#verify_all` |
 | `String` | an XPath selecting exactly one `<ds:Signature>` |
 
 ## `schema:`
