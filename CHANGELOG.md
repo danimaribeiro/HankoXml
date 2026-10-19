@@ -8,6 +8,14 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ## [Unreleased]
 
+### Added
+
+- **#180:** each GitHub release carries `hanko_xml-X.Y.Z.cdx.json`, a
+  CycloneDX 1.6 SBOM of what the platform gems link statically: libxml2,
+  xmlsec1 and OpenSSL with their pinned versions, SHA-256 and CPE, and the
+  Rust crates compiled into the extension. Dependency scanners can't see
+  those copies inside `hanko_xml.so`; this lets them.
+
 ### Security
 
 - **#178:** `SECURITY.md` explains how to report a vulnerability privately
