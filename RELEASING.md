@@ -141,6 +141,26 @@ OS vendor's updates do not reach a statically linked copy.
   next one, which the patch-level check does not catch (#65 found libxml2 2.14
   in that state).
 
+## OpenSSF Scorecard
+
+`.github/workflows/scorecard.yml` publishes the repository's Scorecard result
+on every push to `main` and weekly; the README badge shows it, and the
+findings appear under Security → Code scanning. A local run on 2026-10-18
+scored 5.2. These checks stay low on purpose or for now, and why:
+
+| Check | Why it stays low | What would change it |
+|---|---|---|
+| Code-Review, Branch-Protection (approvers, admin enforcement, CODEOWNERS) | One maintainer: GitHub doesn't let you approve your own PR, and requiring approval would block every merge. Admins bypass the PR rule so documentation can go straight to `main` (CLAUDE.md, Workflow). | A second maintainer. |
+| Maintained | The repository is younger than 90 days. | Time. |
+| CII-Best-Practices | No badge yet (#188). | Filling in the bestpractices.dev questionnaire. |
+| Fuzzing | No fuzz target yet. | #184. |
+| Signed-Releases | Releases carry no provenance yet. | #179. |
+| CI-Tests | Most merged PRs predate CI resuming in October 2026 (#110). | Rises as new PRs merge with CI green. |
+| Contributors | Counts organizations, not people. | Outside contributors. |
+
+`codeql.yml` covers SAST, and the docs site's npm lockfile is kept free of
+known advisories for the Vulnerabilities check.
+
 ## Trusted build inputs
 
 The SHA-256 pins protect the *download*. They do not protect everything a

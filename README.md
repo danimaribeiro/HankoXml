@@ -8,6 +8,10 @@
   A high-performance, strictly secure XML Digital Signature (XML-DSig) library for Ruby.
 </p>
 
+<p align="center">
+  <a href="https://scorecard.dev/viewer/?uri=github.com/danimaribeiro/HankoXml"><img src="https://api.scorecard.dev/projects/github.com/danimaribeiro/HankoXml/badge" alt="OpenSSF Scorecard"></a>
+</p>
+
 ---
 
 HankoXml is backed by a native Rust extension that binds directly to [libxmlsec1](https://www.aleksey.com/xmlsec/) using [Magnus](https://github.com/matsadler/magnus). It is designed to be completely byte-faithful, blazingly fast, and natively immune to XML Signature Wrapping (XSW) attacks.
