@@ -1,11 +1,22 @@
 //! Magnus glue: the functions on `HankoXml::Native`, matching the §7 contract.
 //!
 //! Every argument from Ruby is copied into a Rust-owned `Vec<u8>` or `String`
-//! **before** any native call, so there is no `unsafe` in this file — no
-//! `RString::as_slice()` across a call that might release the GVL.
+//! **before** any native call, so the only `unsafe` in this file is that copy
+//! ([`rstring_to_bytes`]) — no `RString::as_slice()` across a call that might
+//! release the GVL.
+//!
+//! `unsafe` is denied crate-wide and allowed only on the FFI modules below and
+//! on `rstring_to_bytes`. Every `unsafe` block needs a `// SAFETY:` comment
+//! (ASSURANCE.md §4); `spec/hanko_xml/native_spec.rb` checks both.
 
+#![deny(unsafe_code)]
+#![warn(clippy::undocumented_unsafe_blocks)]
+
+#[allow(unsafe_code)]
 mod dsig;
+#[allow(unsafe_code)]
 mod errors;
+#[allow(unsafe_code)]
 mod sys;
 
 use magnus::{
@@ -69,6 +80,7 @@ fn dsig_error(ruby: &Ruby, err: dsig::DsigError) -> Error {
 // ---------------------------------------------------------------------------
 
 /// Extracts an RString to an owned Vec<u8>.
+#[allow(unsafe_code)]
 fn rstring_to_bytes(s: RString) -> Vec<u8> {
     // SAFETY: s is a live Ruby String argument on the call stack.
     // We immediately copy to a Vec<u8> so the slice is not retained.

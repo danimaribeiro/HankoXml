@@ -14,8 +14,13 @@ In place today:
   keys) and the interop fixtures under `spec/interop`.
 - `SECURITY_REVIEW.md`, whose `S-xx` findings are cited by the specs that guard
   them.
-- A spec that keeps `unsafe` confined to `dsig.rs` and `errors.rs`
-  (`spec/hanko_xml/native_spec.rb`).
+- `unsafe` confined by the compiler: `#![deny(unsafe_code)]` at the crate root
+  of `ext/hanko_xml`, with `#[allow(unsafe_code)]` only on the `dsig`,
+  `errors` and `sys` modules and on `rstring_to_bytes` in `lib.rs`. Every
+  `unsafe` block carries a `// SAFETY:` comment, enforced by
+  `clippy::undocumented_unsafe_blocks` under CI's `clippy -D warnings`.
+  `spec/hanko_xml/native_spec.rb` fails if any of these attributes is removed
+  or widened (#185).
 - CI on system and vendored libxml2/xmlsec1, plus `cargo-deny`,
   `clippy -D warnings` and `bundler-audit` (`.github/workflows/security.yml`).
 
@@ -138,16 +143,14 @@ the other kind and is what finds memory errors and hangs (I-08).
   built with AddressSanitizer and LeakSanitizer. This is the cheapest way to find
   a double free or a leak on an error path, because the specs already exercise
   those paths.
-- **Document every `unsafe` block.** Many blocks in `dsig.rs` already carry a
-  `// SAFETY:` comment stating the precondition they rely on (pointer non-null,
-  who owns it, which lifetime covers it). Finish the rest and enable
-  `clippy::undocumented_unsafe_blocks` so new ones cannot land without one. These comments are the pre and postconditions a proof would need,
-  and writing them tends to find the bug.
-- **Replace the `unsafe` counting spec with the compiler.** Put
-  `#![deny(unsafe_code)]` at the crate root with `#[allow(unsafe_code)]` on the
-  `dsig` and `errors` modules (and on the one reviewed block in `lib.rs`), so
-  the rule in `native_spec.rb` is enforced by
-  rustc instead of by counting lines that contain a word.
+- **Document every `unsafe` block.** Done (#185, see "Where we are"). Each
+  `// SAFETY:` comment states the precondition its block relies on (pointer
+  non-null, who owns it, which lifetime covers it). These comments are the pre
+  and postconditions a proof would need, so keep them precise when the code
+  changes.
+- **Replace the `unsafe` counting spec with the compiler.** Done (#185):
+  rustc enforces `deny(unsafe_code)`, and `native_spec.rb` only checks that
+  the attributes stay in place.
 - **RAII for every xmlsec and libxml2 handle.** `OwnedXmlDoc` exists. If any
   context, key, or key manager is still freed by hand on some path, wrap it, so
   "freed exactly once" is guaranteed by the type and not by reading each return.
@@ -179,7 +182,7 @@ Miri is not useful here for the same FFI reason.
 | 1 | Invariants `I-01`..`I-09` in `API_CONTRACT.md` | small | unclear requirements |
 | 2 | Mutation and KeyInfo independence properties | medium | wrapping and trust bugs |
 | 3 | ASan/LSan run of the existing suite | small | memory errors on error paths |
-| 4 | `// SAFETY:` comments, clippy lint, `forbid(unsafe_code)` | small | unsound assumptions |
+| 4 | ~~`// SAFETY:` comments, clippy lint, `deny(unsafe_code)`~~ (done, #185) | small | unsound assumptions |
 | 5 | `cargo-fuzz` verify target, scheduled | medium | crashes, hangs, I-08 |
 | 6 | Differential test against `xmlsec1` CLI | medium | interop and semantics bugs |
 | 7 | Mutation testing on policy and verifier | small | missing specs |
