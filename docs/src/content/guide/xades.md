@@ -321,8 +321,9 @@ lets renewal work. The results are in `result.archive_timestamps`.
 ## Over twenty years
 
 The same contract, signed in March 2025, verified at different dates, with a 3-year signing
-certificate, TSA certificates of about 6 years and ArchiveTimeStamps renewed every 5 years. The ETSI
-validation model and HankoXml today part ways after 2032, for the reason in the next section.
+certificate, TSA certificates of about 6 years and ArchiveTimeStamps renewed every 5 years. Move the
+verification date and compare the levels, under the ETSI validation model and under what HankoXml
+does today. The two part ways after 2032, for the reason in the next section.
 
 | Verified in | B | T | LT | LTA (ETSI model) | LTA (HankoXml today) |
 |---|---|---|---|---|---|
