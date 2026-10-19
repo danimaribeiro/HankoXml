@@ -207,6 +207,7 @@ impl OwnedXmlDoc {
         // SAFETY: buf is non-null, allocated by libxml2, and size is its
         // length. We copy the bytes out, then free the libxml2 buffer.
         let bytes = unsafe { std::slice::from_raw_parts(buf as *const u8, size as usize) }.to_vec();
+        // SAFETY: buf came from xmlDocDumpMemory above and is not used after this.
         unsafe { xml_free(buf as *mut _) };
 
         Ok(bytes)
@@ -261,7 +262,9 @@ fn collect_signature_nodes(node: sys::xmlNodePtr, result: &mut Vec<sys::xmlNodeP
 
     // Check if this is a <Signature> in the dsig namespace
     if node_ref.type_ == sys::xmlElementType_XML_ELEMENT_NODE {
+        // SAFETY: node is a valid element (checked above).
         let name = unsafe { node_name(node) };
+        // SAFETY: node is a valid element (checked above).
         let ns_href = unsafe { node_ns_href(node) };
 
         if name == "Signature" && ns_href == "http://www.w3.org/2000/09/xmldsig#" {
@@ -273,6 +276,7 @@ fn collect_signature_nodes(node: sys::xmlNodePtr, result: &mut Vec<sys::xmlNodeP
     let mut child = node_ref.children;
     while !child.is_null() {
         collect_signature_nodes(child, result);
+        // SAFETY: child is non-null and a node of the same document.
         child = unsafe { (*child).next };
     }
 }
@@ -318,6 +322,7 @@ unsafe fn get_attribute(node: sys::xmlNodePtr, attr_name: &[u8]) -> Option<Strin
     }
     let cstr = std::ffi::CStr::from_ptr(val as *const _);
     let result = cstr.to_str().unwrap_or("").to_string();
+    // SAFETY: val came from xmlGetProp and is not used after the copy above.
     unsafe { xml_free(val as *mut _) };
     Some(result)
 }
@@ -348,6 +353,7 @@ unsafe fn in_scope_namespaces(node: sys::xmlNodePtr) -> Vec<(String, String)> {
         out.push((text(ns.prefix), text(ns.href)));
         entry = entry.add(1);
     }
+    // SAFETY: list came from xmlGetNsList, we own it, and no entry is used after the loop.
     unsafe { xml_free(list.cast()) };
     out
 }
@@ -363,6 +369,7 @@ unsafe fn get_text_content(node: sys::xmlNodePtr) -> String {
     }
     let cstr = std::ffi::CStr::from_ptr(content as *const _);
     let result = cstr.to_str().unwrap_or("").to_string();
+    // SAFETY: content came from xmlNodeGetContent and is not used after the copy above.
     unsafe { xml_free(content as *mut _) };
     result
 }
@@ -740,12 +747,10 @@ impl<'mngr> DsigCtx<'mngr> {
             sys::xmlSecOpenSSLTransformSha512GetKlass,
         ];
 
-        // SAFETY: self.ptr is a live xmlSecDSigCtx we exclusively own.
-        // xmlSecDSigCtxEnableReferenceTransform initializes the
-        // enabledReferenceTransforms list on first call and adds the
-        // transform ID. After this, only transforms in the list are allowed.
         for get_klass in safe_transforms {
+            // SAFETY: the *GetKlass functions take no arguments and return a static transform ID.
             let transform_id = unsafe { get_klass() };
+            // SAFETY: self.ptr is a live xmlSecDSigCtx we exclusively own and transform_id is a static klass. The first call initializes enabledReferenceTransforms; after that only listed transforms are allowed.
             let rc = unsafe {
                 sys::xmlSecDSigCtxEnableReferenceTransform(self.ptr, transform_id)
             };
@@ -1089,7 +1094,8 @@ const XPATH_FILTER2_NS: &str = "http://www.w3.org/2002/06/xmldsig-filter2";
 /// Inspects the nth `<ds:Signature>` without performing any cryptography.
 /// Returns metadata about the signature for policy enforcement.
 ///
-/// No `unsafe` in this function body — every FFI call is behind a helper.
+/// Every node pointer below comes from `doc`, which lives until the function
+/// returns, so each `unsafe` helper call reads a valid node.
 pub fn inspect_document(
     xml: &[u8],
     signature_index: usize,
@@ -1105,28 +1111,36 @@ pub fn inspect_document(
         .ok_or(DsigError::native("signature index out of range"))?;
 
     // Extract <SignedInfo>
+    // SAFETY: a node of `doc`, which lives until this function returns.
     let signed_info = unsafe { find_child(sig_node, "SignedInfo", DSIG_NS) }
         .ok_or(DsigError::native("no <SignedInfo> element in <Signature>"))?;
 
     // CanonicalizationMethod/@Algorithm
+    // SAFETY: a node of `doc`, which lives until this function returns.
     let c14n_method = unsafe { find_child(signed_info, "CanonicalizationMethod", DSIG_NS) }
         .and_then(|n| unsafe { get_attribute(n, b"Algorithm\0") })
         .unwrap_or_default();
 
     // SignatureMethod/@Algorithm
+    // SAFETY: a node of `doc`, which lives until this function returns.
     let sig_method = unsafe { find_child(signed_info, "SignatureMethod", DSIG_NS) }
         .and_then(|n| unsafe { get_attribute(n, b"Algorithm\0") })
         .unwrap_or_default();
 
     // References
+    // SAFETY: a node of `doc`, which lives until this function returns.
     let ref_nodes = unsafe { find_children(signed_info, "Reference", DSIG_NS) };
     let mut references = Vec::new();
     for ref_node in ref_nodes {
+        // SAFETY: a node of `doc`, which lives until this function returns.
         let uri = unsafe { get_attribute(ref_node, b"URI\0") }.unwrap_or_default();
+        // SAFETY: a node of `doc`, which lives until this function returns.
         let id = unsafe { get_attribute(ref_node, b"Id\0") };
+        // SAFETY: a node of `doc`, which lives until this function returns.
         let type_attr = unsafe { get_attribute(ref_node, b"Type\0") };
 
         // DigestMethod/@Algorithm
+        // SAFETY: a node of `doc`, which lives until this function returns.
         let digest_method = unsafe { find_child(ref_node, "DigestMethod", DSIG_NS) }
             .and_then(|n| unsafe { get_attribute(n, b"Algorithm\0") })
             .unwrap_or_default();
@@ -1134,15 +1148,22 @@ pub fn inspect_document(
         // Transforms
         let mut transforms = Vec::new();
         let mut xpath_filters = Vec::new();
+        // SAFETY: a node of `doc`, which lives until this function returns.
         if let Some(transforms_node) = unsafe { find_child(ref_node, "Transforms", DSIG_NS) } {
+            // SAFETY: a node of `doc`, which lives until this function returns.
             let transform_nodes = unsafe { find_children(transforms_node, "Transform", DSIG_NS) };
             for t_node in transform_nodes {
+                // SAFETY: a node of `doc`, which lives until this function returns.
                 if let Some(alg) = unsafe { get_attribute(t_node, b"Algorithm\0") } {
                     if alg == XPATH_FILTER2_NS {
+                        // SAFETY: a node of `doc`, which lives until this function returns.
                         for xpath in unsafe { find_children(t_node, "XPath", XPATH_FILTER2_NS) } {
                             xpath_filters.push(XPathFilter {
+                                // SAFETY: a node of `doc`, which lives until this function returns.
                                 filter: unsafe { get_attribute(xpath, b"Filter\0") }.unwrap_or_default(),
+                                // SAFETY: a node of `doc`, which lives until this function returns.
                                 expression: unsafe { get_text_content(xpath) },
+                                // SAFETY: a node of `doc`, which lives until this function returns.
                                 namespaces: unsafe { in_scope_namespaces(xpath) },
                             });
                         }
@@ -1168,10 +1189,13 @@ pub fn inspect_document(
     let mut has_retrieval_method = false;
     let mut empty_key_names = false;
     let mut key_derived_values = false;
+    // SAFETY: a node of `doc`, which lives until this function returns.
     if let Some(key_info) = unsafe { find_child(sig_node, "KeyInfo", DSIG_NS) } {
         // KeyName elements
+        // SAFETY: a node of `doc`, which lives until this function returns.
         let key_name_nodes = unsafe { find_children(key_info, "KeyName", DSIG_NS) };
         for kn in key_name_nodes {
+            // SAFETY: a node of `doc`, which lives until this function returns.
             let text = unsafe { get_text_content(kn) };
             if text.trim().is_empty() {
                 empty_key_names = true;
@@ -1183,9 +1207,12 @@ pub fn inspect_document(
 
         // Key-derived leaves with any child node, as the Ruby DOM path
         // checks them (Signer#empty_key_derived_leaves!).
+        // SAFETY: a node of `doc`, which lives until this function returns.
         let mut leaves = unsafe { find_children(key_info, "KeyValue", DSIG_NS) };
+        // SAFETY: a node of `doc`, which lives until this function returns.
         for x509_data in unsafe { find_children(key_info, "X509Data", DSIG_NS) } {
             for name in ["X509Certificate", "X509SubjectName", "X509IssuerSerial", "X509SKI"] {
+                // SAFETY: a node of `doc`, which lives until this function returns.
                 leaves.extend(unsafe { find_children(x509_data, name, DSIG_NS) });
             }
         }
@@ -1193,10 +1220,13 @@ pub fn inspect_document(
         key_derived_values = leaves.iter().any(|&leaf| unsafe { !(*leaf).children.is_null() });
 
         // X509Data/X509Certificate elements
+        // SAFETY: a node of `doc`, which lives until this function returns.
         let x509_data_nodes = unsafe { find_children(key_info, "X509Data", DSIG_NS) };
         for x509_data in x509_data_nodes {
+            // SAFETY: a node of `doc`, which lives until this function returns.
             let cert_nodes = unsafe { find_children(x509_data, "X509Certificate", DSIG_NS) };
             for cert_node in cert_nodes {
+                // SAFETY: a node of `doc`, which lives until this function returns.
                 let text = unsafe { get_text_content(cert_node) }.trim().to_string();
                 if !text.is_empty() {
                     // Wrap in PEM markers for consistency
@@ -1206,6 +1236,7 @@ pub fn inspect_document(
             }
         }
 
+        // SAFETY: a node of `doc`, which lives until this function returns.
         has_retrieval_method =
             unsafe { find_child(key_info, "RetrievalMethod", DSIG_NS) }.is_some();
     }
@@ -1260,6 +1291,7 @@ pub fn scan_document(xml: &[u8], id_attrs: &[String], strict: bool) -> Result<Sc
     let signature_values = signatures
         .iter()
         .map(|&sig| {
+            // SAFETY: sig is a node of `doc`, which lives until this function returns.
             unsafe { find_child(sig, "SignatureValue", DSIG_NS) }
                 .map(|value| !ruby_strip(&unsafe { get_text_content(value) }).is_empty())
                 .unwrap_or(false)
@@ -1278,6 +1310,7 @@ pub fn scan_document(xml: &[u8], id_attrs: &[String], strict: bool) -> Result<Sc
     doc.register_id_attributes(root, id_attrs);
     let root_ids = id_values
         .iter()
+        // SAFETY: attr is an attribute of `doc`, collected above.
         .filter(|(attr, _)| unsafe { (**attr).parent } == root)
         .filter(|(_, value)| element_for_id(&doc, value) == Some(root))
         .map(|(_, value)| value.clone())
@@ -1327,6 +1360,7 @@ fn collect_id_attributes(node: sys::xmlNodePtr, id_attrs: &[String], out: &mut V
                 } else {
                     // SAFETY: non-null, NUL-terminated, freed right after.
                     let text = unsafe { CStr::from_ptr(value.cast()) }.to_str().unwrap_or("").to_string();
+                    // SAFETY: value came from xmlNodeListGetString and is not used after the copy above.
                     unsafe { xml_free(value.cast()) };
                     text
                 };
@@ -1768,15 +1802,18 @@ fn collect_reference_element_indexes(
     root: sys::xmlNodePtr,
     sig_node: sys::xmlNodePtr,
 ) -> Vec<Option<usize>> {
+    // SAFETY: sig_node and its descendants are nodes of `doc`, which the caller keeps alive.
     let signed_info = unsafe { find_child(sig_node, "SignedInfo", DSIG_NS) };
     let Some(signed_info) = signed_info else {
         return Vec::new();
     };
 
+    // SAFETY: signed_info is a node of `doc`, which the caller keeps alive.
     let ref_nodes = unsafe { find_children(signed_info, "Reference", DSIG_NS) };
     ref_nodes
         .into_iter()
         .map(|ref_node| {
+            // SAFETY: ref_node is a node of `doc`, which the caller keeps alive.
             let uri = unsafe { get_attribute(ref_node, b"URI\0") }.unwrap_or_default();
             resolve_reference_element(doc, root, &uri)
                 .and_then(|node| element_document_index(root, node))
@@ -1821,6 +1858,7 @@ fn element_for_id(doc: &OwnedXmlDoc, id: &str) -> Option<sys::xmlNodePtr> {
     if parent.is_null() {
         return None;
     }
+    // SAFETY: parent is non-null (checked above) and a node of this document.
     let parent_ref = unsafe { &*parent };
     if parent_ref.type_ != sys::xmlElementType_XML_ELEMENT_NODE {
         return None;
@@ -1857,6 +1895,7 @@ fn find_element_index(
             if let Some(found) = find_element_index(child, target, index) {
                 return Some(found);
             }
+            // SAFETY: child is non-null and a sibling in the same document.
             child = unsafe { (*child).next };
         }
     }

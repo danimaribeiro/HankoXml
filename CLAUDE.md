@@ -25,8 +25,11 @@ Nokogiri is the optional DOM layer.
   `<Signature>` skeleton.
 - `ext/hanko_xml/src/`: `lib.rs` is the Ruby boundary, `dsig.rs` drives xmlsec,
   `errors.rs` captures xmlsec's error log, and `sys.rs` holds the bindgen output.
-  `unsafe` belongs only in `dsig.rs` and `errors.rs`; `spec/hanko_xml/native_spec.rb`
-  enforces this.
+  `unsafe` belongs only in `dsig.rs`, `errors.rs`, `sys.rs` and the one
+  `rstring_to_bytes` copy in `lib.rs`: the crate root denies `unsafe_code` and
+  allows it only there, and every `unsafe` block needs a `// SAFETY:` comment
+  (`clippy::undocumented_unsafe_blocks`). `spec/hanko_xml/native_spec.rb`
+  checks these attributes stay in place.
 - `sig/`: RBS signatures. Update them when a public signature changes.
 - `lib/hanko_xml/xmldsig-core-schema.xsd`: the W3C schema with local changes,
   each marked with a `HankoXml:` comment.

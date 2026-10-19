@@ -321,24 +321,30 @@ RSpec.describe "HankoXml::Native" do
     end
   end
 
+  # rustc and clippy enforce these rules; this spec keeps anyone from
+  # quietly switching them off (ASSURANCE.md §4).
   describe "safety budget" do
-    it "keeps unsafe blocks contained in dsig.rs and errors.rs" do
-      src_dir = Pathname.new(__dir__).join("../../ext/hanko_xml/src")
-      rust_files = Dir.glob(src_dir.join("*.rs"))
+    let(:src_dir) { Pathname.new(__dir__).join("../../ext/hanko_xml/src") }
+    let(:lib_rs) { src_dir.join("lib.rs").read(encoding: "UTF-8") }
 
-      unsafe_counts = {}
-      rust_files.each do |file|
+    it "denies unsafe crate-wide and requires a SAFETY comment on every block" do
+      expect(lib_rs).to include("#![deny(unsafe_code)]")
+      expect(lib_rs).to include("#![warn(clippy::undocumented_unsafe_blocks)]")
+    end
+
+    it "allows unsafe only on the FFI modules and the one RString copy in lib.rs" do
+      allowed = lib_rs.scan(/#\[allow\(unsafe_code\)\]\s*\n\s*(?:mod|fn) (\w+)/).flatten
+
+      expect(allowed).to contain_exactly("dsig", "errors", "sys", "rstring_to_bytes")
+    end
+
+    it "keeps every other Rust file free of crate-level unsafe overrides" do
+      Dir.glob(src_dir.join("*.rs")).each do |file|
         content = File.read(file, encoding: "UTF-8")
-        lines = content.lines.reject do |l|
-          s = l.strip
-          s.start_with?("//") || s.start_with?("/*") || s.start_with?("*")
-        end
-        count = lines.count { |l| l.include?("unsafe") }
-        unsafe_counts[File.basename(file)] = count
-      end
 
-      # lib.rs should only have 1 unsafe block for converting RString to byte slice
-      expect(unsafe_counts["lib.rs"]).to be <= 1
+        expect(content).not_to match(/#!\[(allow|warn|expect)\(unsafe_code\)\]/), file
+        expect(content).not_to match(/#!\[allow\(clippy::undocumented_unsafe_blocks\)\]/), file
+      end
     end
   end
 end
