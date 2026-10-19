@@ -203,6 +203,15 @@ HankoXml.verify!(
 )
 ```
 
+## Stability
+
+Until 1.0, a breaking change bumps the minor version. From 1.0, the public API
+in [API_CONTRACT.md](API_CONTRACT.md) §5 and the error classes follow SemVer,
+with one exception: a security fix may make a default stricter in a minor
+release, and the CHANGELOG says so. `HankoXml::Native` is private. The full
+policy, including which versions get security fixes, is under "Stability
+policy" in [RELEASING.md](RELEASING.md).
+
 ## Contributing
 
 Bug reports and pull requests are welcome on GitHub at https://github.com/danimaribeiro/HankoXml.
