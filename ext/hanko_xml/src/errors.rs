@@ -93,6 +93,8 @@ unsafe extern "C" fn error_callback(
 ///
 /// `xmlSecErrorsSetCallback` is safe to call after `xmlSecInit()`.
 pub unsafe fn install_error_callback() {
+    // SAFETY: the caller guarantees xmlSecInit() has run; error_callback is a
+    // plain extern fn that lives for the whole process.
     unsafe {
         crate::sys::xmlSecErrorsSetCallback(Some(error_callback));
     }

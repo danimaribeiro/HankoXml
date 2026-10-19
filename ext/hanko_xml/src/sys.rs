@@ -12,7 +12,9 @@
     non_camel_case_types,
     non_snake_case,
     dead_code,
-    clippy::upper_case_acronyms
+    clippy::upper_case_acronyms,
+    // bindgen's generated bitfield helpers; not our code to annotate.
+    clippy::undocumented_unsafe_blocks
 )]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
