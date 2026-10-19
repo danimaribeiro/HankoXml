@@ -203,6 +203,9 @@ HankoXml.verify!(
 
 Bug reports and pull requests are welcome on GitHub at https://github.com/danimaribeiro/HankoXml.
 
+To report a security vulnerability, don't open an issue: follow
+[SECURITY.md](SECURITY.md) instead.
+
 `bundle exec rake compile spec` by default builds the Rust extension against
 your system's `libxmlsec1` (see "Building from source" above), which is fine
 for day-to-day development. But the system library's build configuration can

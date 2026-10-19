@@ -36,6 +36,8 @@ Nokogiri is the optional DOM layer.
 - `API_CONTRACT.md`: the spec for the public API. Change it along with behavior.
 - `CHANGELOG.md`: add an entry under `[Unreleased]` for every user-visible
   change, tagged with its issue number (`**#NN:**`).
+- `SECURITY.md`: the disclosure policy. Update its supported-versions table
+  with each minor release.
 - `SECURITY_REVIEW.md`: findings numbered `S-xx`. Cite them in comments and
   specs where a check exists because of one.
 - `SIGNING_TEST_COVERAGE.md`, `VENDORING.md`, `RELEASING.md`: update these when
