@@ -8,6 +8,17 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ## [Unreleased]
 
+### Security
+
+- **#178:** `SECURITY.md` explains how to report a vulnerability privately
+  (GitHub private vulnerability reporting, now enabled), the response times,
+  and the supported versions. RELEASING.md describes how a fix is published:
+  a GitHub Security Advisory with a CVE, then an entry in ruby-advisory-db for
+  `bundler-audit`.
+- **#186:** a written stability policy (RELEASING.md, "Stability policy"):
+  what stays stable from 1.0, that a security fix may make a default stricter
+  in a minor release, what is private, and which versions get security fixes.
+
 ## [0.2.0] - 2026-10-19
 
 ### Added

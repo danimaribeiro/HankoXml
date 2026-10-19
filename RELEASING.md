@@ -41,6 +41,44 @@ static copies.
   release, and a vendored **security** fix is a patch release with the CVE
   named in the CHANGELOG. See "Responding to upstream security fixes" below.
 
+## Stability policy
+
+What a version number promises. Until 1.0, a breaking change bumps the minor
+(above). From 1.0 on:
+
+- **Stable:** the public Ruby API as API_CONTRACT.md §5 documents it
+  (`HankoXml.sign`, `.valid?`, `.verify!`, `Signer`, `Verifier`,
+  `Verification`, `Placement`, `Key`, `Algorithms`, `Policy`, `Xades::*`), the
+  error class hierarchy in §5.10, and the RBS signatures in `sig/`. Removing or
+  renaming any of it, changing a keyword's meaning, or moving an error to a
+  different parent class waits for 2.0.
+- **What each `Policy` preset means is stable.** `Policy.strict` stays the
+  default, and each preset keeps its purpose: `legacy_sha1` allows SHA-1,
+  `xades` allows what XAdES needs, and so on.
+- **Defaults can get stricter in a minor release.** When a security fix needs
+  it, a preset or default may stop accepting an algorithm, transform or input
+  shape it accepted before, for example `Policy.strict` dropping an algorithm
+  that has been broken. Callers who still need it opt back in explicitly
+  (`Policy#with`, or another preset). The CHANGELOG entry says so under
+  `### Security`, with the reason. Defaults never get looser outside a major
+  release.
+- **Not public:** `HankoXml::Native` (API_CONTRACT.md §7), anything marked
+  `@api private` or `private_constant`, error message text, and the exact
+  bytes of a signature's serialization beyond what XML-DSig requires. These can
+  change in any release.
+- **Removed at 1.0:** the deprecated aliases API_CONTRACT.md §10 lists, such as
+  `HankoXml.validate`.
+- **Supported platforms:** Ruby 3.1 and newer (`required_ruby_version`), and
+  for the source gem libxmlsec1 `>= 1.2.30, < 1.4`
+  (`metadata["xmlsec1_version_requirement"]`). Dropping a Ruby version that is
+  still maintained upstream, or narrowing the libxmlsec1 range, is a major
+  change. Dropping an end-of-life Ruby is a minor change, announced in the
+  CHANGELOG one release ahead.
+- **Security fixes:** the latest minor release always gets them. After 1.0,
+  the previous minor also gets them for six months after its successor ships.
+  [SECURITY.md](SECURITY.md) keeps the table of supported versions; update it
+  with every minor release.
+
 ## One-time setup, before the first real release
 
 1. **Register the trusted publisher.** On
@@ -160,6 +198,46 @@ scored 5.2. These checks stay low on purpose or for now, and why:
 
 `codeql.yml` covers SAST, and the docs site's npm lockfile is kept free of
 known advisories for the Vulnerabilities check.
+## Publishing a security fix
+
+A vulnerability reported through [SECURITY.md](SECURITY.md) arrives as a
+private report under Security → Advisories. From there:
+
+1. **Triage.** Acknowledge the report within 7 days. Reproduce it, rate it
+   (CVSS, plus the severity scale SECURITY_REVIEW.md uses), and list the
+   affected versions.
+2. **Draft the advisory.** Accept the report into a draft GitHub Security
+   Advisory, or open one yourself under Security → Advisories → New draft.
+   Fill in the affected and patched version ranges for the `hanko_xml`
+   RubyGems package and credit the reporter unless they asked not to be.
+3. **Request a CVE** from the draft (GitHub is a CNA). It is assigned before
+   publication and stays private until then.
+4. **Fix it privately.** Use the advisory's temporary private fork, so the fix,
+   its spec and the review never appear in public PRs. The spec cites the new
+   `S-xx` finding, which is added to SECURITY_REVIEW.md in the same change.
+   Run the suite on both the system and the vendored builds locally, since the
+   public CI does not see the fork.
+5. **Release.** Merge the fork, then cut a patch release from this file's
+   "Cutting a release". The CHANGELOG entry goes under `### Security` with the
+   CVE and the issue or advisory ID. For a supported previous minor, cut its
+   patch release from a `X.Y-stable` branch too.
+6. **Publish the advisory** once the gems are on RubyGems. GitHub then alerts
+   Dependabot users.
+7. **ruby-advisory-db.** Open a PR to
+   <https://github.com/rubysec/ruby-advisory-db> adding
+   `gems/hanko_xml/CVE-YYYY-NNNNN.yml` (`gem`, `cve`, `ghsa`, `url`, `title`,
+   `date`, `description`, `cvss_v3`, `patched_versions`), so `bundler-audit`
+   warns too.
+
+When the fix is a vendored upstream release instead (libxml2, xmlsec1 or
+OpenSSL, see "Responding to upstream security fixes"):
+
+- If the upstream CVE is exploitable through HankoXml as platform gems use it,
+  publish a HankoXml advisory naming both CVEs, with the platform gems as the
+  affected packages and the source gem left out (it uses the system libraries).
+- If it isn't reachable, for example a bug in an OpenSSL API we never call, ship
+  the patch release with the CVE in the CHANGELOG and no advisory. Say in the
+  CHANGELOG entry why it isn't reachable.
 
 ## Trusted build inputs
 
