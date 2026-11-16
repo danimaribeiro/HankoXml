@@ -8,6 +8,8 @@ tracked separately, and is reported by `HankoXml::NativeVersion.build_versions`.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-15
+
 ### Added
 
 - **#180:** each GitHub release carries `hanko_xml-X.Y.Z.cdx.json`, a
