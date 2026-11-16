@@ -14,7 +14,9 @@
     dead_code,
     clippy::upper_case_acronyms,
     // bindgen's generated bitfield helpers; not our code to annotate.
-    clippy::undocumented_unsafe_blocks
+    clippy::undocumented_unsafe_blocks,
+    clippy::ptr_offset_with_cast,
+    clippy::manual_div_ceil
 )]
 
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));

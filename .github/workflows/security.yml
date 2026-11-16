@@ -52,7 +52,9 @@ jobs:
 
   clippy:
     name: clippy
-    runs-on: ubuntu-latest
+    # Same pin as main.yml: clippy lints the bindings bindgen generates from
+    # the system headers, so it needs the same libxml2 and xmlsec1.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
