@@ -73,6 +73,9 @@ const navLinks = topNav.map((item) => {
         } catch (e) {}
       })();
     </script>
+    <!-- Google Analytics and its consent banner, shared with the YARD API
+         docs (yard-template/default/layout/html/layout.erb). -->
+    <script is:inline src={withBase('analytics.js')}></script>
   </head>
   <body class="bg-slate-50 dark:bg-slate-900 glass:bg-transparent text-slate-800 dark:text-slate-200 glass:text-gray-200">
     <GlassBackdrop />

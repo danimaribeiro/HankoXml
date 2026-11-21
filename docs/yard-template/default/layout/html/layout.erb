@@ -4,6 +4,8 @@
     <%= erb(:headers) %>
     <link rel="icon" type="image/svg+xml" href="<%= site_root_url %>favicon.svg">
     <link rel="icon" href="<%= site_root_url %>favicon.ico" sizes="32x32">
+    <%# Google Analytics and its consent banner, shared with the Astro site (public/analytics.js). %>
+    <script src="<%= site_root_url %>analytics.js"></script>
   </head>
   <body>
     <div id="main_progress" aria-hidden="true"></div>
